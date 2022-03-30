@@ -101,7 +101,8 @@ impl KeyboardInteration
 		//line
 		//XXX We do not want to have echo or similar.
 		//FIXME: ^C behaves weird on rpassword
-		rpassword::read_password_from_tty(Some("Password: ")).unwrap()
+		//rpassword::read_password_from_tty(Some("Password: ")).unwrap()//rpassword-5.0
+		rpassword::prompt_password("Password: ").unwrap()//rpassword-6.0
 	}
 }
 
@@ -116,7 +117,8 @@ impl ssh2::KeyboardInteractivePrompt for KeyboardInteration
 		//let mut line = String::new();
 		//stdin().lock().read_line(&mut line).unwrap();
 		//vec![line]
-		vec![rpassword::read_password_from_tty(Some("Password: ")).unwrap()]
+		//vec![rpassword::read_password_from_tty(Some("Password: ")).unwrap()]//rpassword-5.0
+		vec![rpassword::prompt_password("Password: ").unwrap()]//rpassword-6.0
 	}
 }
 
@@ -1935,7 +1937,7 @@ impl ActionProgress
 		let message : String = values.iter().filter_map(|(x,s)|{
 			if *x>0 { Some(format!("{} {}",x,s)) } else { None }
 		}).collect::<Vec<_>>().join(", ");
-		self.bar.set_message(&message);
+		self.bar.set_message(message);
 	}
 }
 

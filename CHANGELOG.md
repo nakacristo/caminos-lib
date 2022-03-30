@@ -5,6 +5,13 @@
 ### 2022-03-30
 `TimeSequenced::should_generate` now returns false instead of panicking when the traffic index gets over the limit.
 git commit -m "fixed TimeSequenced stop."
+Added reasons for the dependencies.
+Upgrade ssh2-0.8.2 to ssh2-0.9. No changes made in code.
+Upgrade rpassword-5.0 to rpassword-6.0. A little rewrite required.
+Upgrade indicatif-0.15.0 to indicatif-0.16. Removed an ampersand.
+Upgrade procfs-0.9 to procfs-0.12. No changes made in code.
+Removed dependency on lazy_static.
+git commit -m "Commit after upgrading all dependencies to date."
 
 ### 2022-03-29
 git commit -m "error and match_object macros. With the action shell and source the remote folder name is rewritten."

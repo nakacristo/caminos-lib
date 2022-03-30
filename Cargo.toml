@@ -13,16 +13,37 @@ license = "MIT/Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+
+#Parsing the configuration grammar.
 gramatica = "0.2"
 #gramatica = { path = "../../../tutorials/rust/gramatica" }
+
+#Generate random numbers.
 rand = "0.8"
+
+#Process command line options.
 getopts = "0.2"
+
+#Formatting current time.
 chrono = "0.4"
-ssh2 = "0.8.2"
-rpassword = "5.0"
-indicatif = "0.15.0"
-procfs = "0.9"
-lazy_static = "1.4.0" #somehow not automatically added by indicatif
+
+#Accessing remote hosts.
+ssh2 = "0.9"
+
+#Ask password by terminal.
+rpassword = "6.0"
+
+#For the progress bar.
+indicatif = "0.16"
+
+# Get the ticks per second to interpretate user and system time correctly.
+procfs = "0.12"
+
+# At some point this was somehow not automatically added by indicatif but were required.
+#lazy_static = "1.4.0"
+
+# Make diffs between files. To show inconsistencies of the configuration files in remote hosts.
+diff = "0.1.12"
+
 quantifiable-derive = "0.1.0"
 #quantifiable-derive = { path = "../quantifiable-derive" }
-diff = "0.1.12"
