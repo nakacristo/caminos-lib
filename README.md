@@ -24,6 +24,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * Functions on the output module now use ExperimentFiles instead of Path.
 * Added a server argument to `Traffic::try_consume`.
 * Added phit to `RequestInfo`.
+* Upgrade from rand-0.4 to rand-0.8.
 
 ## [0.3.0] to [0.4.0]
 

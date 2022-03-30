@@ -1162,7 +1162,11 @@ impl Traffic for TimeSequenced
 			offset -= self.times[traffic_index];
 			traffic_index += 1;
 		}
-		self.traffics[traffic_index].should_generate(server,cycle,rng)
+		if traffic_index<self.traffics.len(){
+			self.traffics[traffic_index].should_generate(server,cycle,rng)
+		} else {
+			false
+		}
 	}
 	fn server_state(&self, server:usize, cycle:usize) -> ServerTrafficState
 	{
