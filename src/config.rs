@@ -1593,5 +1593,29 @@ impl ConfigurationValue
 			_ => Err(error!(ill_formed_configuration, self.clone() )),
 		}
 	}
+	pub fn as_str(&self) -> Result<&str,Error>
+	{
+		match self
+		{
+			&ConfigurationValue::Literal(ref s) => Ok(s),
+			_ => Err(error!(ill_formed_configuration, self.clone() )),
+		}
+	}
+	pub fn as_f64(&self) -> Result<f64,Error>
+	{
+		match self
+		{
+			&ConfigurationValue::Number(x) => Ok(x),
+			_ => Err(error!(ill_formed_configuration, self.clone() )),
+		}
+	}
+	pub fn as_array(&self) -> Result<&Vec<ConfigurationValue>,Error>
+	{
+		match self
+		{
+			&ConfigurationValue::Array(ref x) => Ok(x),
+			_ => Err(error!(ill_formed_configuration, self.clone() )),
+		}
+	}
 }
 

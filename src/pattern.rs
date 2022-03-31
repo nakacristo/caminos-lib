@@ -335,40 +335,9 @@ impl UniformPattern
 {
 	fn new(arg:PatternBuilderArgument) -> UniformPattern
 	{
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Uniform"
-			{
-				panic!("A UniformPattern must be created from a `Uniform` object not `{}`",cv_name);
-			}
-			for &(ref name,ref _value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"legend_name" => (),
-					//"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
-					//"servers" => match value
-					//{
-					//	&ConfigurationValue::Number(f) => servers=Some(f as usize),
-					//	_ => panic!("bad value for servers"),
-					//}
-					//"load" => match value
-					//{
-					//	&ConfigurationValue::Number(f) => load=Some(f as f32),
-					//	_ => panic!("bad value for load"),
-					//}
-					//"message_size" => (),
-					_ => panic!("Nothing to do with field {} in UniformPattern",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a UniformPattern from a non-Object");
-		}
+		match_object_panic!(arg.cv,"Uniform",_value);
 		UniformPattern{
-			size:0,
+			size:0,//to be initialized later
 		}
 	}
 }
@@ -405,27 +374,7 @@ impl RandomPermutation
 {
 	fn new(arg:PatternBuilderArgument) -> RandomPermutation
 	{
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="RandomPermutation"
-			{
-				panic!("A RandomPermutation must be created from a `RandomPermutation` object not `{}`",cv_name);
-			}
-			for &(ref name,ref _value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					//"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in RandomPermutation",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a RandomPermutation from a non-Object");
-		}
+		match_object_panic!(arg.cv,"RandomPermutation",_value);
 		RandomPermutation{
 			permutation: vec![],
 		}
@@ -442,22 +391,6 @@ pub struct RandomInvolution
 {
 	permutation: Vec<usize>,
 }
-
-//impl Quantifiable for RandomInvolution
-//{
-//	fn total_memory(&self) -> usize
-//	{
-//		unimplemented!();
-//	}
-//	fn print_memory_breakdown(&self)
-//	{
-//		unimplemented!();
-//	}
-//	fn forecast_total_memory(&self) -> usize
-//	{
-//		unimplemented!();
-//	}
-//}
 
 impl Pattern for RandomInvolution
 {
@@ -535,27 +468,7 @@ impl RandomInvolution
 {
 	fn new(arg:PatternBuilderArgument) -> RandomInvolution
 	{
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="RandomInvolution"
-			{
-				panic!("A RandomInvolution must be created from a `RandomInvolution` object not `{}`",cv_name);
-			}
-			for &(ref name,ref _value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					//"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in RandomInvolution",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a RandomInvolution from a non-Object");
-		}
+		match_object_panic!(arg.cv,"RandomInvolution",_value);
 		RandomInvolution{
 			permutation: vec![],
 		}
@@ -571,22 +484,6 @@ pub struct FileMap
 {
 	permutation: Vec<usize>,
 }
-
-//impl Quantifiable for FileMap
-//{
-//	fn total_memory(&self) -> usize
-//	{
-//		unimplemented!();
-//	}
-//	fn print_memory_breakdown(&self)
-//	{
-//		unimplemented!();
-//	}
-//	fn forecast_total_memory(&self) -> usize
-//	{
-//		unimplemented!();
-//	}
-//}
 
 impl Pattern for FileMap
 {
@@ -606,32 +503,9 @@ impl FileMap
 	fn new(arg:PatternBuilderArgument) -> FileMap
 	{
 		let mut filename=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="FileMap"
-			{
-				panic!("A FileMap must be created from a `FileMap` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"filename" => match value
-					{
-						&ConfigurationValue::Literal(ref s) => filename=Some(s.to_string()),
-						_ => panic!("bad value for filename"),
-					},
-					//"pattern" => pattern=Some(new_pattern(value)),
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in FileMap",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a FileMap from a non-Object");
-		}
+		match_object_panic!(arg.cv,"FileMap",value,
+			"filename" => filename = Some(value.as_str().expect("bad value for filename").to_string()),
+		);
 		let filename=filename.expect("There were no filename");
 		let file=File::open(&filename).expect("could not open pattern file.");
 		let reader = BufReader::new(&file);
@@ -696,39 +570,11 @@ impl ProductPattern
 		let mut block_size=None;
 		let mut block_pattern=None;
 		let mut global_pattern=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Product"
-			{
-				panic!("A ProductPattern must be created from a `Product` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"block_pattern" => block_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
-					"global_pattern" => global_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
-					"block_size" => match value
-					{
-						&ConfigurationValue::Number(f) => block_size=Some(f as usize),
-						_ => panic!("bad value for block_size"),
-					}
-					//"load" => match value
-					//{
-					//	&ConfigurationValue::Number(f) => load=Some(f as f32),
-					//	_ => panic!("bad value for load"),
-					//}
-					//"message_size" => (),
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in ProductPattern",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a ProductPattern from a non-Object");
-		}
+		match_object_panic!(arg.cv,"Product",value,
+			"block_pattern" => block_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+			"global_pattern" => global_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+			"block_size" => block_size=Some(value.as_f64().expect("bad value for block_size") as usize),
+		);
 		let block_size=block_size.expect("There were no block_size");
 		let block_pattern=block_pattern.expect("There were no block_pattern");
 		let global_pattern=global_pattern.expect("There were no global_pattern");
@@ -825,42 +671,12 @@ impl ComponentsPattern
 		let mut component_classes=None;
 		//let mut block_pattern=None;
 		let mut global_pattern=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Components"
-			{
-				panic!("A ComponentsPattern must be created from a `Components` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					//"block_pattern" => block_pattern=Some(new_pattern(value,plugs)),
-					"global_pattern" => global_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
-					"component_classes" => match value
-					{
-						&ConfigurationValue::Array(ref a) => component_classes=Some(a.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => f as usize,
-							_ => panic!("bad value in component_classes"),
-						}).collect()),
-						_ => panic!("bad value for component_classes"),
-					}
-					//"load" => match value
-					//{
-					//	&ConfigurationValue::Number(f) => load=Some(f as f32),
-					//	_ => panic!("bad value for load"),
-					//}
-					//"message_size" => (),
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in ComponentsPattern",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a ComponentsPattern from a non-Object");
-		}
+		match_object_panic!(arg.cv,"Components",value,
+			"global_pattern" => global_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+			"component_classes" => component_classes = Some(value.as_array()
+				.expect("bad value for component_classes").iter()
+				.map(|v|v.as_f64().expect("bad value in component_classes") as usize).collect()),
+		);
 		let component_classes=component_classes.expect("There were no component_classes");
 		//let block_pattern=block_pattern.expect("There were no block_pattern");
 		let global_pattern=global_pattern.expect("There were no global_pattern");
@@ -946,111 +762,17 @@ impl CartesianTransform
 		let mut permute=None;
 		let mut complement=None;
 		let mut project=None;
-		//if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		//{
-		//	if cv_name!="CartesianTransform"
-		//	{
-		//		panic!("A CartesianTransform must be created from a `CartesianTransform` object not `{}`",cv_name);
-		//	}
-		//	for &(ref name,ref value) in cv_pairs
-		//	{
-		//		//match name.as_ref()
-		//		match AsRef::<str>::as_ref(&name)
-		//		{
-		//			"sides" => match value
-		//			{
-		//				&ConfigurationValue::Array(ref a) => sides=Some(a.iter().map(|v|match v{
-		//					&ConfigurationValue::Number(f) => f as usize,
-		//					_ => panic!("bad value in sides"),
-		//				}).collect()),
-		//				_ => panic!("bad value for sides"),
-		//			}
-		//			"shift" => match value
-		//			{
-		//				&ConfigurationValue::Array(ref a) => shift=Some(a.iter().map(|v|match v{
-		//					&ConfigurationValue::Number(f) => f as usize,
-		//					_ => panic!("bad value in shift"),
-		//				}).collect()),
-		//				_ => panic!("bad value for shift"),
-		//			}
-		//			"permute" => match value
-		//			{
-		//				&ConfigurationValue::Array(ref a) => permute=Some(a.iter().map(|v|match v{
-		//					&ConfigurationValue::Number(f) => f as usize,
-		//					_ => panic!("bad value in permute"),
-		//				}).collect()),
-		//				_ => panic!("bad value for permute"),
-		//			}
-		//			"complement" => match value
-		//			{
-		//				&ConfigurationValue::Array(ref a) => complement=Some(a.iter().map(|v|match v{
-		//					&ConfigurationValue::True => true,
-		//					&ConfigurationValue::False => false,
-		//					_ => panic!("bad value in complement"),
-		//				}).collect()),
-		//				_ => panic!("bad value for complement"),
-		//			}
-		//			"project" => match value
-		//			{
-		//				&ConfigurationValue::Array(ref a) => project=Some(a.iter().map(|v|match v{
-		//					&ConfigurationValue::True => true,
-		//					&ConfigurationValue::False => false,
-		//					_ => panic!("bad value in project"),
-		//				}).collect()),
-		//				_ => panic!("bad value for project"),
-		//			}
-		//			"legend_name" => (),
-		//			_ => panic!("Nothing to do with field {} in CartesianTransform",name),
-		//		}
-		//	}
-		//}
-		//else
-		//{
-		//	panic!("Trying to create a CartesianTransform from a non-Object");
-		//}
 		match_object_panic!(arg.cv,"CartesianTransform",value,
-			"sides" => match value
-			{
-				&ConfigurationValue::Array(ref a) => sides=Some(a.iter().map(|v|match v{
-					&ConfigurationValue::Number(f) => f as usize,
-					_ => panic!("bad value in sides"),
-				}).collect()),
-				_ => panic!("bad value for sides"),
-			}
-			"shift" => match value
-			{
-				&ConfigurationValue::Array(ref a) => shift=Some(a.iter().map(|v|match v{
-					&ConfigurationValue::Number(f) => f as usize,
-					_ => panic!("bad value in shift"),
-				}).collect()),
-				_ => panic!("bad value for shift"),
-			}
-			"permute" => match value
-			{
-				&ConfigurationValue::Array(ref a) => permute=Some(a.iter().map(|v|match v{
-					&ConfigurationValue::Number(f) => f as usize,
-					_ => panic!("bad value in permute"),
-				}).collect()),
-				_ => panic!("bad value for permute"),
-			}
-			"complement" => match value
-			{
-				&ConfigurationValue::Array(ref a) => complement=Some(a.iter().map(|v|match v{
-					&ConfigurationValue::True => true,
-					&ConfigurationValue::False => false,
-					_ => panic!("bad value in complement"),
-				}).collect()),
-				_ => panic!("bad value for complement"),
-			}
-			"project" => match value
-			{
-				&ConfigurationValue::Array(ref a) => project=Some(a.iter().map(|v|match v{
-					&ConfigurationValue::True => true,
-					&ConfigurationValue::False => false,
-					_ => panic!("bad value in project"),
-				}).collect()),
-				_ => panic!("bad value for project"),
-			}
+			"sides" => sides = Some(value.as_array().expect("bad value for sides").iter()
+				.map(|v|v.as_f64().expect("bad value in sides") as usize).collect()),
+			"shift" => shift=Some(value.as_array().expect("bad value for shift").iter()
+				.map(|v|v.as_f64().expect("bad value in shift") as usize).collect()),
+			"permute" => permute=Some(value.as_array().expect("bad value for permute").iter()
+				.map(|v|v.as_f64().expect("bad value in permute") as usize).collect()),
+			"complement" => complement=Some(value.as_array().expect("bad value for complement").iter()
+				.map(|v|v.as_bool().expect("bad value in complement")).collect()),
+			"project" => project=Some(value.as_array().expect("bad value for project").iter()
+				.map(|v|v.as_bool().expect("bad value in project")).collect()),
 			//"legend_name" => (),
 			//_ => panic!("Nothing to do with field {} in CartesianTransform",name),
 		);
@@ -1101,31 +823,10 @@ impl Composition
 	fn new(arg:PatternBuilderArgument) -> Composition
 	{
 		let mut patterns=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Composition"
-			{
-				panic!("A Composition must be created from a `Composition` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"patterns" => match value
-					{
-						&ConfigurationValue::Array(ref l) => patterns=Some(l.iter().map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
-						_ => panic!("bad value for patterns"),
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in Composition",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Composition from a non-Object");
-		}
+		match_object_panic!(arg.cv,"Composition",value,
+			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+		);
 		let patterns=patterns.expect("There were no patterns");
 		Composition{
 			patterns,
@@ -1167,39 +868,9 @@ impl Pow
 	{
 		let mut pattern=None;
 		let mut exponent=None;
-		//if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		//{
-		//	if cv_name!="Pow"
-		//	{
-		//		panic!("A Pow must be created from a `Pow` object not `{}`",cv_name);
-		//	}
-		//	for &(ref name,ref value) in cv_pairs
-		//	{
-		//		//match name.as_ref()
-		//		match AsRef::<str>::as_ref(&name)
-		//		{
-		//			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
-		//			"exponent" => match value
-		//			{
-		//				&ConfigurationValue::Number(x) => exponent=Some(x as usize),
-		//				_ => panic!("bad value for exponent"),
-		//			},
-		//			"legend_name" => (),
-		//			_ => panic!("Nothing to do with field {} in Pow",name),
-		//		}
-		//	}
-		//}
-		//else
-		//{
-		//	panic!("Trying to create a Pow from a non-Object");
-		//}
 		match_object_panic!(arg.cv,"Pow",value,
 			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
-			"exponent" => match value
-				{
-					&ConfigurationValue::Number(x) => exponent=Some(x as usize),
-					_ => panic!("bad value for exponent"),
-				},
+			"exponent" => exponent=Some(value.as_f64().expect("bad value for exponent") as usize),
 		);
 		let pattern=pattern.expect("There were no pattern");
 		let exponent=exponent.expect("There were no exponent");
@@ -1250,42 +921,12 @@ impl CartesianFactor
 	{
 		let mut sides=None;
 		let mut factors=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="CartesianFactor"
-			{
-				panic!("A CartesianFactor must be created from a `CartesianFactor` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"sides" => match value
-					{
-						&ConfigurationValue::Array(ref a) => sides=Some(a.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => f as usize,
-							_ => panic!("bad value in sides"),
-						}).collect()),
-						_ => panic!("bad value for sides"),
-					}
-					"factors" => match value
-					{
-						&ConfigurationValue::Array(ref a) => factors=Some(a.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => f,
-							_ => panic!("bad value in factors"),
-						}).collect()),
-						_ => panic!("bad value for factors"),
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in CartesianFactor",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a CartesianFactor from a non-Object");
-		}
+		match_object_panic!(arg.cv,"CartesianFactor",value,
+			"sides" => sides=Some(value.as_array().expect("bad value for sides").iter()
+				.map(|v|v.as_f64().expect("bad value in sides") as usize).collect()),
+			"factors" => factors=Some(value.as_array().expect("bad value for factors").iter()
+				.map(|v|v.as_f64().expect("bad value in factors")).collect()),
+		);
 		let sides=sides.expect("There were no sides");
 		let factors=factors.expect("There were no factors");
 		CartesianFactor{
@@ -1335,39 +976,12 @@ impl Hotspots
 	{
 		let mut destinations=None;
 		let mut extra_random_destinations=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Hotspots"
-			{
-				panic!("A Hotspots must be created from a `Hotspots` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"destinations" => match value
-					{
-						&ConfigurationValue::Array(ref a) => destinations=Some(a.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => f as usize,
-							_ => panic!("bad value in destinations"),
-						}).collect()),
-						_ => panic!("bad value for destinations"),
-					}
-					"extra_random_destinations" => match value
-					{
-						&ConfigurationValue::Number(f) => extra_random_destinations=Some(f as usize),
-						_ => panic!("bad value for extra_random_destinations ({:?})",value),
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in Hotspots",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Hotspots from a non-Object");
-		}
+		match_object_panic!(arg.cv,"Hotspots",value,
+			"destinations" => destinations=Some(value.as_array().expect("bad value for destinations").iter()
+				.map(|v|v.as_f64().expect("bad value in destinations") as usize).collect()),
+			"extra_random_destinations" => extra_random_destinations=Some(
+				value.as_f64().unwrap_or_else(|_|panic!("bad value for extra_random_destinations ({:?})",value)) as usize),
+		);
 		let destinations=destinations.unwrap_or_else(Vec::new);
 		let extra_random_destinations=extra_random_destinations.unwrap_or(0);
 		Hotspots{
@@ -1427,39 +1041,12 @@ impl RandomMix
 	{
 		let mut patterns=None;
 		let mut weights=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="RandomMix"
-			{
-				panic!("A RandomMix must be created from a `RandomMix` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"patterns" => match value
-					{
-						&ConfigurationValue::Array(ref a) => patterns=Some(a.iter().map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
-						_ => panic!("bad value for patterns"),
-					}
-					"weights" => match value
-					{
-						&ConfigurationValue::Array(ref a) => weights=Some(a.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => f as usize,
-							_ => panic!("bad value in weights"),
-						}).collect()),
-						_ => panic!("bad value for weights"),
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in RandomMix",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a RandomMix from a non-Object");
-		}
+		match_object_panic!(arg.cv,"RandomMix",value,
+			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+			"weights" => weights=Some(value.as_array().expect("bad value for weights").iter()
+				.map(|v|v.as_f64().expect("bad value in weights") as usize).collect()),
+		);
 		let patterns=patterns.expect("There were no patterns");
 		let weights=weights.expect("There were no weights");
 		RandomMix{
@@ -1513,38 +1100,7 @@ impl GloballyShufflingDestinations
 {
 	fn new(arg:PatternBuilderArgument) -> GloballyShufflingDestinations
 	{
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="GloballyShufflingDestinations"
-			{
-				panic!("A GloballyShufflingDestinations must be created from a `GloballyShufflingDestinations` object not `{}`",cv_name);
-			}
-			for &(ref name,ref _value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"legend_name" => (),
-					//"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
-					//"servers" => match value
-					//{
-					//	&ConfigurationValue::Number(f) => servers=Some(f as usize),
-					//	_ => panic!("bad value for servers"),
-					//}
-					//"load" => match value
-					//{
-					//	&ConfigurationValue::Number(f) => load=Some(f as f32),
-					//	_ => panic!("bad value for load"),
-					//}
-					//"message_size" => (),
-					_ => panic!("Nothing to do with field {} in GloballyShufflingDestinations",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a GloballyShufflingDestinations from a non-Object");
-		}
+		match_object_panic!(arg.cv,"GloballyShufflingDestinations",_value);
 		GloballyShufflingDestinations{
 			size:0,//to be filled in initialization
 			pending:RefCell::new(Vec::new()),//to be filled in initialization
@@ -1677,31 +1233,9 @@ impl UniformDistance
 	fn new(arg:PatternBuilderArgument) -> UniformDistance
 	{
 		let mut distance =  None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="UniformDistance"
-			{
-				panic!("A UniformDistance must be created from a `UniformDistance` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"distance" => match value
-					{
-						&ConfigurationValue::Number(f) => distance=Some(f as usize),
-						_ => panic!("bad value for distance"),
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in UniformDistance",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a UniformDistance from a non-Object");
-		}
+		match_object_panic!(arg.cv,"UniformDistance",value,
+			"distance" => distance=Some(value.as_f64().expect("bad value for distance") as usize),
+		);
 		let distance = distance.expect("There were no distance");
 		UniformDistance{
 			distance,
