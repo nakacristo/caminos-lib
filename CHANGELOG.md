@@ -6,6 +6,7 @@
 BUGFIX: Protect the building of temporal statistics from routers having different measurement arrays of different lengths.
 git commit -m "several small fixes."
 git commit -m "More helpers in config.rs and all pattern constructors updated to use them."
+git commit -m "Updated routing constructors to use the config helpers."
 
 ### 2022-03-30
 `TimeSequenced::should_generate` now returns false instead of panicking when the traffic index gets over the limit.

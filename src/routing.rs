@@ -19,7 +19,7 @@ use crate::topology::cartesian::{DOR,O1TURN,ValiantDOR,OmniDimensionalDeroute};
 use crate::topology::{Topology,Location,NeighbourRouterIteratorItem};
 use crate::matrix::Matrix;
 use quantifiable_derive::Quantifiable;//the derive macro
-use crate::Plugs;
+use crate::{Plugs,match_object_panic};
 
 ///Information stored in the packet for the `Routing` algorithms to operate.
 #[derive(Quantifiable)]
@@ -452,37 +452,7 @@ impl Shortest
 {
 	pub fn new(arg: RoutingBuilderArgument) -> Shortest
 	{
-		//let mut order=None;
-		//let mut servers_per_router=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Shortest"
-			{
-				panic!("A Shortest must be created from a `Shortest` object not `{}`",cv_name);
-			}
-			for &(ref name,ref _value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					//"order" => match value
-					//{
-					//	&ConfigurationValue::Array(ref a) => order=Some(a.iter().map(|v|match v{
-					//		&ConfigurationValue::Number(f) => f as usize,
-					//		_ => panic!("bad value in order"),
-					//	}).collect()),
-					//	_ => panic!("bad value for order"),
-					//}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in Shortest",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Shortest from a non-Object");
-		}
-		//let order=order.expect("There were no order");
+		match_object_panic!(arg.cv,"Shortest",_value);
 		Shortest{
 		}
 	}
@@ -707,64 +677,17 @@ impl Valiant
 		let mut selection_exclude_indirect_routers=false;
 		let mut first_reserved_virtual_channels=vec![];
 		let mut second_reserved_virtual_channels=vec![];
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Valiant"
-			{
-				panic!("A Valiant must be created from a `Valiant` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					//"order" => match value
-					//{
-					//	&ConfigurationValue::Array(ref a) => order=Some(a.iter().map(|v|match v{
-					//		&ConfigurationValue::Number(f) => f as usize,
-					//		_ => panic!("bad value in order"),
-					//	}).collect()),
-					//	_ => panic!("bad value for order"),
-					//}
-					"first" =>
-					{
-						first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg}));
-					}
-					"second" =>
-					{
-						second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg}));
-					}
-					"selection_exclude_indirect_routers" => match value
-					{
-						&ConfigurationValue::True => selection_exclude_indirect_routers=true,
-						&ConfigurationValue::False => selection_exclude_indirect_routers=false,
-						_ => panic!("bad value for selection_exclude_indirect_routers"),
-					},
-					"first_reserved_virtual_channels" => match value
-					{
-						&ConfigurationValue::Array(ref a) => first_reserved_virtual_channels=a.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => f as usize,
-							_ => panic!("bad value in first_reserved_virtual_channels"),
-						}).collect(),
-						_ => panic!("bad value for first_reserved_virtual_channels"),
-					}
-					"second_reserved_virtual_channels" => match value
-					{
-						&ConfigurationValue::Array(ref a) => second_reserved_virtual_channels=a.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => f as usize,
-							_ => panic!("bad value in second_reserved_virtual_channels"),
-						}).collect(),
-						_ => panic!("bad value for first_reserved_virtual_channels"),
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in Valiant",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Valiant from a non-Object");
-		}
+		match_object_panic!(arg.cv,"Valiant",value,
+			"first" => first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"second" => second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"selection_exclude_indirect_routers" => selection_exclude_indirect_routers = value.as_bool().expect("bad value for selection_exclude_indirect_routers"),
+			"first_reserved_virtual_channels" => first_reserved_virtual_channels=value.
+				as_array().expect("bad value for first_reserved_virtual_channels").iter()
+				.map(|v|v.as_f64().expect("bad value in first_reserved_virtual_channels") as usize).collect(),
+			"second_reserved_virtual_channels" => second_reserved_virtual_channels=value.
+				as_array().expect("bad value for second_reserved_virtual_channels").iter()
+				.map(|v|v.as_f64().expect("bad value in second_reserved_virtual_channels") as usize).collect(),
+		);
 		let first=first.expect("There were no first");
 		let second=second.expect("There were no second");
 		//let first_reserved_virtual_channels=first_reserved_virtual_channels.expect("There were no first_reserved_virtual_channels");
@@ -1146,55 +1069,19 @@ impl SumRouting
 		let mut second_allowed_virtual_channels=None;
 		let mut first_extra_label=0i32;
 		let mut second_extra_label=0i32;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Sum"
-			{
-				panic!("A SumRouting must be created from a `Sum` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"policy" => policy=Some(new_sum_routing_policy(value)),
-					"first_routing" => first_routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
-					"second_routing" => second_routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
-					"first_allowed_virtual_channels" => match value
-					{
-						&ConfigurationValue::Array(ref a) => first_allowed_virtual_channels=Some(a.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => f as usize,
-							_ => panic!("bad value in first_allowed_virtual_channels"),
-						}).collect()),
-						_ => panic!("bad value for first_allowed_virtual_channels"),
-					}
-					"second_allowed_virtual_channels" => match value
-					{
-						&ConfigurationValue::Array(ref a) => second_allowed_virtual_channels=Some(a.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => f as usize,
-							_ => panic!("bad value in second_allowed_virtual_channels"),
-						}).collect()),
-						_ => panic!("bad value for first_allowed_virtual_channels"),
-					}
-					"first_extra_label" => match value
-					{
-						&ConfigurationValue::Number(x) => first_extra_label=x as i32,
-						_ => panic!("bad value for first_extra_label"),
-					},
-					"second_extra_label" => match value
-					{
-						&ConfigurationValue::Number(x) => second_extra_label=x as i32,
-						_ => panic!("bad value for second_extra_label"),
-					},
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in SumRouting",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a SumRouting from a non-Object");
-		}
+		match_object_panic!(arg.cv,"Sum",value,
+			"policy" => policy=Some(new_sum_routing_policy(value)),
+			"first_routing" => first_routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"second_routing" => second_routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"first_allowed_virtual_channels" => first_allowed_virtual_channels = Some(value.as_array()
+				.expect("bad value for first_allowed_virtual_channels").iter()
+				.map(|v|v.as_f64().expect("bad value in first_allowed_virtual_channels") as usize).collect()),
+			"second_allowed_virtual_channels" => second_allowed_virtual_channels = Some(value.as_array()
+				.expect("bad value for second_allowed_virtual_channels").iter()
+				.map(|v|v.as_f64().expect("bad value in second_allowed_virtual_channels") as usize).collect()),
+			"first_extra_label" => first_extra_label = value.as_f64().expect("bad value for first_extra_label") as i32,
+			"second_extra_label" => second_extra_label = value.as_f64().expect("bad value for second_extra_label") as i32,
+		);
 		let policy=policy.expect("There were no policy");
 		let first_routing=first_routing.expect("There were no first_routing");
 		let second_routing=second_routing.expect("There were no second_routing");
@@ -1290,26 +1177,7 @@ impl Mindless
 {
 	pub fn new(arg: RoutingBuilderArgument) -> Mindless
 	{
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Mindless"
-			{
-				panic!("A Mindless must be created from a `Mindless` object not `{}`",cv_name);
-			}
-			for &(ref name,ref _value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in Mindless",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Mindless from a non-Object");
-		}
+		match_object_panic!(arg.cv,"Mindless",_value);
 		Mindless{
 		}
 	}
@@ -1409,37 +1277,12 @@ impl WeighedShortest
 {
 	pub fn new(arg: RoutingBuilderArgument) -> WeighedShortest
 	{
-		//let mut order=None;
-		//let mut servers_per_router=None;
 		let mut class_weight=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="WeighedShortest"
-			{
-				panic!("A WeighedShortest must be created from a `WeighedShortest` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"class_weight" => match value
-					{
-						&ConfigurationValue::Array(ref a) => class_weight=Some(a.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => f as usize,
-							_ => panic!("bad value in class_weight"),
-						}).collect()),
-						_ => panic!("bad value for class_weight"),
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in WeighedShortest",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a WeighedShortest from a non-Object");
-		}
+		match_object_panic!(arg.cv,"WeighedShortest",value,
+			"class_weight" => class_weight = Some(value.as_array()
+				.expect("bad value for class_weight").iter()
+				.map(|v|v.as_f64().expect("bad value in class_weight") as usize).collect()),
+		);
 		let class_weight=class_weight.expect("There were no class_weight");
 		WeighedShortest{
 			class_weight,
@@ -1543,30 +1386,9 @@ impl Stubborn
 	pub fn new(arg: RoutingBuilderArgument) -> Stubborn
 	{
 		let mut routing=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Stubborn"
-			{
-				panic!("A Stubborn must be created from a `Stubborn` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"routing" =>
-					{
-						routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg}));
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in Stubborn",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Stubborn from a non-Object");
-		}
+		match_object_panic!(arg.cv,"Stubborn",value,
+			"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+		);
 		let routing=routing.expect("There were no routing");
 		Stubborn{
 			routing,
@@ -1653,37 +1475,7 @@ impl UpDown
 {
 	pub fn new(arg: RoutingBuilderArgument) -> UpDown
 	{
-		//let mut order=None;
-		//let mut servers_per_router=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="UpDown"
-			{
-				panic!("A UpDown must be created from a `UpDown` object not `{}`",cv_name);
-			}
-			for &(ref name,ref _value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					//"order" => match value
-					//{
-					//	&ConfigurationValue::Array(ref a) => order=Some(a.iter().map(|v|match v{
-					//		&ConfigurationValue::Number(f) => f as usize,
-					//		_ => panic!("bad value in order"),
-					//	}).collect()),
-					//	_ => panic!("bad value for order"),
-					//}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in UpDown",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a UpDown from a non-Object");
-		}
-		//let order=order.expect("There were no order");
+		match_object_panic!(arg.cv,"UpDown",_value);
 		UpDown{
 		}
 	}
@@ -1849,35 +1641,10 @@ impl ExplicitUpDown
 {
 	pub fn new(arg: RoutingBuilderArgument) -> ExplicitUpDown
 	{
-		//let mut order=None;
-		//let mut servers_per_router=None;
 		let mut root = None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="UpDownStar"
-			{
-				panic!("A UpDownStar must be created from a `UpDownStar` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"root" => match value
-					{
-						&ConfigurationValue::Number(f) => root=Some(f as usize),
-						_ => panic!("bad value for root"),
-					},
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in ExplicitUpDown",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a ExplicitUpDown from a non-Object");
-		}
-		//let order=order.expect("There were no order");
+		match_object_panic!(arg.cv,"UpDownStar",value,
+			"root" => root=Some(value.as_f64().expect("bad value for root") as usize),
+		);
 		ExplicitUpDown{
 			root,
 			up_down_distances: Matrix::constant(None,0,0),
@@ -1940,38 +1707,14 @@ impl ChannelsPerHop
 	{
 		let mut routing =None;
 		let mut channels =None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="ChannelsPerHop"
-			{
-				panic!("A ChannelsPerHop must be created from a `ChannelsPerHop` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
-					"channels" => match value
-					{
-						&ConfigurationValue::Array(ref hoplist) => channels=Some(hoplist.iter().map(|v|match v{
-							&ConfigurationValue::Array(ref vcs) => vcs.iter().map(|v|match v{
-								&ConfigurationValue::Number(f) => f as usize,
-								_ => panic!("bad value in channels"),
-							}).collect(),
-							_ => panic!("bad value in channels"),
-						}).collect()),
-						_ => panic!("bad value for channels"),
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in ChannelsPerHop",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a ChannelsPerHop from a non-Object");
-		}
+		match_object_panic!(arg.cv,"ChannelsPerHop",value,
+			"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"channels" => channels=Some(value.as_array().expect("bad value in channels").iter()
+				.map(|vcs_this_hop| vcs_this_hop.as_array().expect("bad value in channels").iter()
+					.map(|vc| vc.as_f64().expect("bad value in channels") as usize).collect()
+				).collect()
+			),
+		);
 		let routing=routing.expect("There were no routing");
 		let channels=channels.expect("There were no channels");
 		ChannelsPerHop{
@@ -2061,41 +1804,23 @@ impl ChannelsPerHopPerLinkClass
 	{
 		let mut routing =None;
 		let mut channels =None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="ChannelsPerHopPerLinkClass"
+		match_object_panic!(arg.cv,"ChannelsPerHopPerLinkClass",value,
+			"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"channels" => match value
 			{
-				panic!("A ChannelsPerHopPerLinkClass must be created from a `ChannelsPerHopPerLinkClass` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
-					"channels" => match value
-					{
-						&ConfigurationValue::Array(ref classlist) => channels=Some(classlist.iter().map(|v|match v{
-							&ConfigurationValue::Array(ref hoplist) => hoplist.iter().map(|v|match v{
-								&ConfigurationValue::Array(ref vcs) => vcs.iter().map(|v|match v{
-									&ConfigurationValue::Number(f) => f as usize,
-									_ => panic!("bad value in channels"),
-								}).collect(),
-								_ => panic!("bad value in channels"),
-							}).collect(),
+				&ConfigurationValue::Array(ref classlist) => channels=Some(classlist.iter().map(|v|match v{
+					&ConfigurationValue::Array(ref hoplist) => hoplist.iter().map(|v|match v{
+						&ConfigurationValue::Array(ref vcs) => vcs.iter().map(|v|match v{
+							&ConfigurationValue::Number(f) => f as usize,
 							_ => panic!("bad value in channels"),
-						}).collect()),
-						_ => panic!("bad value for channels"),
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in ChannelsPerHopPerLinkClass",name),
-				}
+						}).collect(),
+						_ => panic!("bad value in channels"),
+					}).collect(),
+					_ => panic!("bad value in channels"),
+				}).collect()),
+				_ => panic!("bad value for channels"),
 			}
-		}
-		else
-		{
-			panic!("Trying to create a ChannelsPerHopPerLinkClass from a non-Object");
-		}
+		);
 		let routing=routing.expect("There were no routing");
 		let channels=channels.expect("There were no channels");
 		ChannelsPerHopPerLinkClass{
@@ -2183,35 +1908,12 @@ impl AscendantChannelsWithLinkClass
 	{
 		let mut routing =None;
 		let mut bases =None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="AscendantChannelsWithLinkClass"
-			{
-				panic!("A AscendantChannelsWithLinkClass must be created from a `AscendantChannelsWithLinkClass` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
-					"bases" => match value
-					{
-						&ConfigurationValue::Array(ref classlist) => bases=Some(classlist.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => f as usize,
-							_ => panic!("bad value in bases"),
-						}).collect()),
-						_ => panic!("bad value in bases"),
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in AscendantChannelsWithLinkClass",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a AscendantChannelsWithLinkClass from a non-Object");
-		}
+		match_object_panic!(arg.cv,"AscendantChannelsWithLinkClass",value,
+			"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"bases" => bases = Some(value.as_array()
+				.expect("bad value for bases").iter()
+				.map(|v|v.as_f64().expect("bad value in bases") as usize).collect()),
+		);
 		let routing=routing.expect("There were no routing");
 		let bases=bases.expect("There were no bases");
 		AscendantChannelsWithLinkClass{
@@ -2283,38 +1985,20 @@ impl ChannelMap
 	{
 		let mut routing =None;
 		let mut map =None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="ChannelMap"
+		match_object_panic!(arg.cv,"ChannelMap",value,
+			"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"map" => match value
 			{
-				panic!("A ChannelMap must be created from a `ChannelMap` object not `{}`",cv_name);
+				&ConfigurationValue::Array(ref hoplist) => map=Some(hoplist.iter().map(|v|match v{
+					&ConfigurationValue::Array(ref vcs) => vcs.iter().map(|v|match v{
+						&ConfigurationValue::Number(f) => f as usize,
+						_ => panic!("bad value in map"),
+					}).collect(),
+					_ => panic!("bad value in map"),
+				}).collect()),
+				_ => panic!("bad value for map"),
 			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
-					"map" => match value
-					{
-						&ConfigurationValue::Array(ref hoplist) => map=Some(hoplist.iter().map(|v|match v{
-							&ConfigurationValue::Array(ref vcs) => vcs.iter().map(|v|match v{
-								&ConfigurationValue::Number(f) => f as usize,
-								_ => panic!("bad value in map"),
-							}).collect(),
-							_ => panic!("bad value in map"),
-						}).collect()),
-						_ => panic!("bad value for map"),
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in ChannelMap",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a ChannelMap from a non-Object");
-		}
+		);
 		let routing=routing.expect("There were no routing");
 		let map=map.expect("There were no map");
 		ChannelMap{
