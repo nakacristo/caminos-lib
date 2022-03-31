@@ -25,10 +25,10 @@ use crate::topology::{Topology,Location};
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::{Plugs};
 
-use self::basic::*;
-use self::extra::*;
-use self::channel_operations::*;
-use self::updown::*;
+pub use self::basic::*;
+pub use self::extra::*;
+pub use self::channel_operations::*;
+pub use self::updown::*;
 
 ///Information stored in the packet for the `Routing` algorithms to operate.
 #[derive(Quantifiable)]

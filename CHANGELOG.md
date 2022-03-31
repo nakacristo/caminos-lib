@@ -10,6 +10,7 @@ git commit -m "Updated routing constructors to use the config helpers."
 git commit -m "Updated policies constructors to use the config helpers."
 git commit -m "Moved routing into its own folder to break it later into multiple files"
 git commit -m "Split the routing mod into five files: mod, basic, extra, channel_operations, updown."
+git commit -m "More fix to the temporal statistics of the Basic router."
 
 ### 2022-03-30
 `TimeSequenced::should_generate` now returns false instead of panicking when the traffic index gets over the limit.

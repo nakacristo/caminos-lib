@@ -286,12 +286,19 @@ impl<TM:'static+TransmissionMechanism> Router for Basic<TM>
 									// we can safely ignore `begin_cycle` as is only used when gathering data.
 									BasicRouterMeasurement::new(vcs)
 								});
+								println!("temporal_statistics.len()={}",temporal_statistics.len());
 								for temporal_index in 0..temporal_statistics.len()
 								{
 									for measurement_index in 0..temporal_statistics[temporal_index].output_buffer_occupation_per_vc.len()
 									{
-										temporal_statistics[temporal_index].output_buffer_occupation_per_vc[measurement_index] += local_average_output_buffer_occupation_per_vc[temporal_index][measurement_index];
-										temporal_statistics[temporal_index].reception_space_occupation_per_vc[measurement_index] += local_average_reception_space_occupation_per_vc[temporal_index][measurement_index];
+										if temporal_index<local_average_output_buffer_occupation_per_vc.len()
+										{
+											temporal_statistics[temporal_index].output_buffer_occupation_per_vc[measurement_index] += local_average_output_buffer_occupation_per_vc[temporal_index][measurement_index];
+										}
+										if temporal_index<local_average_reception_space_occupation_per_vc.len()
+										{
+											temporal_statistics[temporal_index].reception_space_occupation_per_vc[measurement_index] += local_average_reception_space_occupation_per_vc[temporal_index][measurement_index];
+										}
 									}
 								}
 							}
