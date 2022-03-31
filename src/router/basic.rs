@@ -276,8 +276,16 @@ impl<TM:'static+TransmissionMechanism> Router for Basic<TM>
 										_ => panic!(),
 									}
 								}
-								assert!(temporal_statistics.len()==local_average_output_buffer_occupation_per_vc.len());
-								assert!(temporal_statistics.len()==local_average_reception_space_occupation_per_vc.len());
+								let n = temporal_statistics.len()
+									.max(local_average_output_buffer_occupation_per_vc.len())
+									.max(local_average_reception_space_occupation_per_vc.len());
+								//assert!(n==local_average_output_buffer_occupation_per_vc.len());
+								//assert!(n==local_average_reception_space_occupation_per_vc.len());
+								let vcs = self.num_virtual_channels();
+								temporal_statistics.resize_with(n,||{
+									// we can safely ignore `begin_cycle` as is only used when gathering data.
+									BasicRouterMeasurement::new(vcs)
+								});
 								for temporal_index in 0..temporal_statistics.len()
 								{
 									for measurement_index in 0..temporal_statistics[temporal_index].output_buffer_occupation_per_vc.len()

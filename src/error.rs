@@ -103,8 +103,8 @@ macro_rules! source_location{
 }
 #[macro_export]
 macro_rules! error{
-	($kind:ident,$($args:tt),*) => {{
-		Error::$kind( source_location!(), $($args),* )
+	($kind:ident,$($args:tt)*) => {{
+		Error::$kind( source_location!(), $($args)* )
 	}};
 }
 

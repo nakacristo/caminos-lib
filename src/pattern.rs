@@ -274,38 +274,7 @@ impl Identity
 {
 	fn new(arg:PatternBuilderArgument) -> Identity
 	{
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Identity"
-			{
-				panic!("A Identity must be created from a `Identity` object not `{}`",cv_name);
-			}
-			for &(ref name,ref _value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					"legend_name" => (),
-					//"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
-					//"servers" => match value
-					//{
-					//	&ConfigurationValue::Number(f) => servers=Some(f as usize),
-					//	_ => panic!("bad value for servers"),
-					//}
-					//"load" => match value
-					//{
-					//	&ConfigurationValue::Number(f) => load=Some(f as f32),
-					//	_ => panic!("bad value for load"),
-					//}
-					//"message_size" => (),
-					_ => panic!("Nothing to do with field {} in Identity",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Identity from a non-Object");
-		}
+		match_object_panic!(arg.cv,"Identity",_value);
 		Identity{
 		}
 	}
@@ -1782,32 +1751,9 @@ impl FixedRandom
 	fn new(arg:PatternBuilderArgument) -> FixedRandom
 	{
 		let mut allow_self = false;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="FixedRandom"
-			{
-				panic!("A FixedRandom must be created from a `FixedRandom` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match AsRef::<str>::as_ref(&name)
-				{
-					//"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
-					"allow_self" => match value
-					{
-						&ConfigurationValue::True => allow_self=true,
-						&ConfigurationValue::False => allow_self=false,
-						_ => panic!("bad value for allow_self"),
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in FixedRandom",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a FixedRandom from a non-Object");
-		}
+		match_object_panic!(arg.cv,"FixedRandom",value,
+			"allow_self" => allow_self=value.as_bool().expect("bad value for allow_self"),
+		);
 		FixedRandom{
 			map: vec![],//to be intializated
 			allow_self,

@@ -2,6 +2,10 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-03-31
+BUGFIX: Protect the building of temporal statistics from routers having different measurement arrays of different lengths.
+git commit -m "several small fixes."
+
 ### 2022-03-30
 `TimeSequenced::should_generate` now returns false instead of panicking when the traffic index gets over the limit.
 git commit -m "fixed TimeSequenced stop."
@@ -12,6 +16,9 @@ Upgrade indicatif-0.15.0 to indicatif-0.16. Removed an ampersand.
 Upgrade procfs-0.9 to procfs-0.12. No changes made in code.
 Removed dependency on lazy_static.
 git commit -m "Commit after upgrading all dependencies to date."
+Little fix on the `error!` macro.
+Added function `as_bool` to ConfigurationValue.
+Use `StdRng::seed_from_u64` instead of creating a `[u8;32]` for `::seed`.
 
 ### 2022-03-29
 git commit -m "error and match_object macros. With the action shell and source the remote folder name is rewritten."

@@ -6,6 +6,8 @@ use std::path::Path;
 use std::fs::File;
 
 use crate::config_parser::{self,ConfigurationValue,Expr};
+use crate::{error,source_location};
+use crate::error::*;
 
 ///Given a list of vectors, `[A1,A2,A3,A4,...]`, `Ai` beging a `Vec<T>` and second vector `b:&Vec<T>=[b1,b2,b3,b4,...]`, each `bi:T`.
 ///It creates a list of vectors with each combination Ai+bj.
@@ -1553,6 +1555,9 @@ macro_rules! match_object{
 ///Like `match_object!` but panicking on errors.
 #[macro_export]
 macro_rules! match_object_panic{
+	($cv:expr, $name:literal, $valueid:ident ) => {{
+		match_object_panic!($cv,$name,$valueid,)
+	}};
 	($cv:expr, $name:literal, $valueid:ident, $($arm:tt)* ) => {{
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs) = $cv
 		{
@@ -1577,4 +1582,16 @@ macro_rules! match_object_panic{
 	}};
 }
 
+impl ConfigurationValue
+{
+	pub fn as_bool(&self) -> Result<bool,Error>
+	{
+		match self
+		{
+			&ConfigurationValue::True => Ok(true),
+			&ConfigurationValue::False => Ok(false),
+			_ => Err(error!(ill_formed_configuration, self.clone() )),
+		}
+	}
+}
 

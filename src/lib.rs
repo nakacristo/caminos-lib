@@ -1301,15 +1301,8 @@ impl<'a> Simulation<'a>
 		let router_cfg=router_cfg.expect("There were no router");
 		let mut routing=routing.expect("There were no routing");
 		let link_classes:Vec<LinkClass>=link_classes.expect("There were no link_classes");
-		let rng=RefCell::new(StdRng::from_seed({
-			//This has been changed from rand-0.4 to rand-0.8
-			let mut std_rng_seed = [0u8;32];
-			for (index,value) in seed.to_ne_bytes().iter().enumerate()
-			{
-				std_rng_seed[index]=*value;
-			}
-			std_rng_seed
-		}));
+		//This has been changed from rand-0.4 to rand-0.8
+		let rng=RefCell::new(StdRng::seed_from_u64(seed as u64));
 		let topology=new_topology(TopologyBuilderArgument{
 			cv:topology,
 			plugs,
