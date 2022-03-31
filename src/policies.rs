@@ -12,7 +12,7 @@ use crate::config_parser::ConfigurationValue;
 use crate::routing::CandidateEgress;
 use crate::router::Router;
 use crate::topology::{Topology,Location};
-use crate::{Plugs,Phit};
+use crate::{Plugs,Phit,match_object_panic};
 
 use std::cell::{RefCell};
 use std::fmt::Debug;
@@ -377,49 +377,6 @@ impl Random
 {
 	pub fn new(_arg:VCPolicyBuilderArgument) -> Random
 	{
-		//let mut servers=None;
-		//let mut load=None;
-		//let mut pattern=None;
-		//let mut message_size=None;
-		//if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
-		//{
-		//	if cv_name!="Random"
-		//	{
-		//		panic!("A Random must be created from a `Random` object not `{}`",cv_name);
-		//	}
-		//	for &(ref name,ref value) in cv_pairs
-		//	{
-		//		//match name.as_ref()
-		//		match name.as_ref()
-		//		{
-		//			//"pattern" => pattern=Some(new_pattern(value)),
-		//			//"servers" => match value
-		//			//{
-		//			//	&ConfigurationValue::Number(f) => servers=Some(f as usize),
-		//			//	_ => panic!("bad value for servers"),
-		//			//}
-		//			//"load" => match value
-		//			//{
-		//			//	&ConfigurationValue::Number(f) => load=Some(f as f32),
-		//			//	_ => panic!("bad value for load ({:?})",value),
-		//			//}
-		//			//"message_size" => match value
-		//			//{
-		//			//	&ConfigurationValue::Number(f) => message_size=Some(f as usize),
-		//			//	_ => panic!("bad value for message_size"),
-		//			//}
-		//			_ => panic!("Nothing to do with field {} in Random",name),
-		//		}
-		//	}
-		//}
-		//else
-		//{
-		//	panic!("Trying to create a Random from a non-Object");
-		//}
-		//let servers=servers.expect("There were no servers");
-		//let message_size=message_size.expect("There were no message_size");
-		//let load=load.expect("There were no load");
-		//let mut pattern=pattern.expect("There were no pattern");
 		Random{}
 	}
 }
@@ -613,29 +570,9 @@ impl WideHops
 	pub fn new(arg:VCPolicyBuilderArgument) -> WideHops
 	{
 		let mut width=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="WideHops"
-			{
-				panic!("A WideHops must be created from a `WideHops` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match AsRef::<str>::as_ref(&name)
-				{
-					"width" => match value
-					{
-						&ConfigurationValue::Number(f) => width=Some(f as usize),
-						_ => panic!("bad value for width"),
-					}
-					_ => panic!("Nothing to do with field {} in WideHops",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a WideHops from a non-Object");
-		}
+		match_object_panic!(arg.cv,"WideHops",value,
+			"width" => width = Some(value.as_f64().expect("bad value for width") as usize),
+		);
 		let width=width.expect("There were no width");
 		WideHops{
 			width
@@ -804,67 +741,18 @@ impl LowestSinghWeight
 		let mut use_internal_space=false;
 		let mut use_neighbour_space=true;
 		let mut use_estimation=true;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="LowestSinghWeight"
-			{
-				panic!("A LowestSinghWeight must be created from a `LowestSinghWeight` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match AsRef::<str>::as_ref(&name)
-				{
- 					"extra_congestion" => match value
- 					{
- 						&ConfigurationValue::Number(f) => extra_congestion=Some(f as usize),
- 						_ => panic!("bad value for extra_congestion"),
- 					}
- 					"extra_distance" => match value
- 					{
- 						&ConfigurationValue::Number(f) => extra_distance=Some(f as usize),
- 						_ => panic!("bad value for extra_distance"),
- 					}
- 					"aggregate" => match value
- 					{
- 						&ConfigurationValue::True => aggregate=true,
- 						&ConfigurationValue::False => aggregate=false,
- 						_ => panic!("bad value for aggregate"),
- 					}
- 					"aggregate_buffers" => {
-						println!("WARNING: the name `aggregate_buffers` has been deprecated in favour of just `aggregate`");
-						match value
-						{
-							&ConfigurationValue::True => aggregate=true,
-							&ConfigurationValue::False => aggregate=false,
-							_ => panic!("bad value for aggregate_buffers"),
-						}
-					},
- 					"use_internal_space" => match value
- 					{
- 						&ConfigurationValue::True => use_internal_space=true,
- 						&ConfigurationValue::False => use_internal_space=false,
- 						_ => panic!("bad value for use_internal_space"),
- 					}
- 					"use_neighbour_space" => match value
- 					{
- 						&ConfigurationValue::True => use_neighbour_space=true,
- 						&ConfigurationValue::False => use_neighbour_space=false,
- 						_ => panic!("bad value for use_neighbour_space"),
- 					}
- 					"use_estimation" => match value
- 					{
- 						&ConfigurationValue::True => use_estimation=true,
- 						&ConfigurationValue::False => use_estimation=false,
- 						_ => panic!("bad value for use_estimation"),
- 					}
-					_ => panic!("Nothing to do with field {} in LowestSinghWeight",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a LowestSinghWeight from a non-Object");
-		}
+		match_object_panic!(arg.cv,"LowestSinghWeight",value,
+			"extra_congestion" => extra_congestion = Some(value.as_f64().expect("bad value for extra_congestion") as usize),
+			"extra_distance" => extra_distance= Some(value.as_f64().expect("bad value for extra_distance") as usize),
+			"aggregate" => aggregate = value.as_bool().expect("bad value for aggregate"),
+			"aggregate_buffers" => {
+				println!("WARNING: the name `aggregate_buffers` has been deprecated in favour of just `aggregate`");
+				aggregate = value.as_bool().expect("bad value for aggregate_buffers");
+			},
+			"use_internal_space" => use_internal_space = value.as_bool().expect("bad value for use_internal_space"),
+			"use_neighbour_space" => use_neighbour_space = value.as_bool().expect("bad value for use_neighbour_space"),
+			"use_estimation" => use_estimation = value.as_bool().expect("bad value for use_estimation"),
+		);
 		let extra_congestion=extra_congestion.unwrap_or(0);
 		let extra_distance=extra_distance.unwrap_or(0);
 		LowestSinghWeight{
@@ -1003,35 +891,10 @@ impl LabelSaturate
 	{
 		let mut xvalue=None;
 		let mut bottom=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="LabelSaturate"
-			{
-				panic!("A LabelSaturate must be created from a `LabelSaturate` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match AsRef::<str>::as_ref(&name)
-				{
-					"value" => match value
-					{
-						&ConfigurationValue::Number(f) => xvalue=Some(f as i32),
-						_ => panic!("bad value for value"),
-					}
-					"bottom" => match value
-					{
-						&ConfigurationValue::True => bottom=Some(true),
-						&ConfigurationValue::False => bottom=Some(false),
-						_ => panic!("bad value for bottom"),
-					}
-					_ => panic!("Nothing to do with field {} in LabelSaturate",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a LabelSaturate from a non-Object");
-		}
+		match_object_panic!(arg.cv,"LabelSaturate",value,
+			"value" => xvalue=Some(value.as_f64().expect("bad value for value") as i32),
+			"bottom" => bottom=Some(value.as_bool().expect("bad value for bottom")),
+		);
 		let value=xvalue.expect("There were no value");
 		let bottom=bottom.expect("There were no bottom");
 		LabelSaturate{
@@ -1132,54 +995,14 @@ impl LabelTransform
 		let mut saturate_top=None;
 		let mut minimum=None;
 		let mut maximum=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="LabelTransform"
-			{
-				panic!("A LabelTransform must be created from a `LabelTransform` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match AsRef::<str>::as_ref(&name)
-				{
-					"multiplier" => match value
-					{
-						&ConfigurationValue::Number(f) => multiplier=Some(f as i32),
-						_ => panic!("bad value for multiplier"),
-					}
-					"summand" => match value
-					{
-						&ConfigurationValue::Number(f) => summand=Some(f as i32),
-						_ => panic!("bad value for summand"),
-					}
-					"saturate_bottom" => match value
-					{
-						&ConfigurationValue::Number(f) => saturate_bottom=Some(f as i32),
-						_ => panic!("bad value for saturate_bottom"),
-					}
-					"saturate_top" => match value
-					{
-						&ConfigurationValue::Number(f) => saturate_top=Some(f as i32),
-						_ => panic!("bad value for saturate_top"),
-					}
-					"minimum" => match value
-					{
-						&ConfigurationValue::Number(f) => minimum=Some(f as i32),
-						_ => panic!("bad value for minimum"),
-					}
-					"maximum" => match value
-					{
-						&ConfigurationValue::Number(f) => maximum=Some(f as i32),
-						_ => panic!("bad value for maximum"),
-					}
-					_ => panic!("Nothing to do with field {} in LabelTransform",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a LabelTransform from a non-Object");
-		}
+		match_object_panic!(arg.cv,"LabelTransform",value,
+			"multiplier" => multiplier=Some(value.as_f64().expect("bad value for multiplier") as i32),
+			"summand" => summand=Some(value.as_f64().expect("bad value for summand") as i32),
+			"saturate_bottom" => saturate_bottom=Some(value.as_f64().expect("bad value for saturate_bottom") as i32),
+			"saturate_top" => saturate_top=Some(value.as_f64().expect("bad value for saturate_top") as i32),
+			"minimum" => minimum=Some(value.as_f64().expect("bad value for minimum") as i32),
+			"maximum" => maximum=Some(value.as_f64().expect("bad value for maximum") as i32),
+		);
 		let multiplier=multiplier.expect("There were no multiplier");
 		let summand=summand.expect("There were no summand");
 		LabelTransform{
@@ -1298,62 +1121,15 @@ impl OccupancyFunction
 		let mut use_internal_space=false;
 		let mut use_neighbour_space=false;
 		let mut aggregate=true;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="OccupancyFunction"
-			{
-				panic!("A OccupancyFunction must be created from a `OccupancyFunction` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match AsRef::<str>::as_ref(&name)
-				{
-					"label_coefficient" => match value
-					{
-						&ConfigurationValue::Number(f) => label_coefficient=Some(f as i32),
-						_ => panic!("bad value for label_coefficient"),
-					}
-					"occupancy_coefficient" => match value
-					{
-						&ConfigurationValue::Number(f) => occupancy_coefficient=Some(f as i32),
-						_ => panic!("bad value for occupancy_coefficient"),
-					}
-					"product_coefficient" => match value
-					{
-						&ConfigurationValue::Number(f) => product_coefficient=Some(f as i32),
-						_ => panic!("bad value for product_coefficient"),
-					}
-					"constant_coefficient" => match value
-					{
-						&ConfigurationValue::Number(f) => constant_coefficient=Some(f as i32),
-						_ => panic!("bad value for constant_coefficient"),
-					}
- 					"use_neighbour_space" => match value
- 					{
- 						&ConfigurationValue::True => use_neighbour_space=true,
- 						&ConfigurationValue::False => use_neighbour_space=false,
- 						_ => panic!("bad value for use_neighbour_space"),
- 					}
- 					"use_internal_space" => match value
- 					{
- 						&ConfigurationValue::True => use_internal_space=true,
- 						&ConfigurationValue::False => use_internal_space=false,
- 						_ => panic!("bad value for use_internal_space"),
- 					}
- 					"aggregate" => match value
- 					{
- 						&ConfigurationValue::True => aggregate=true,
- 						&ConfigurationValue::False => aggregate=false,
- 						_ => panic!("bad value for aggregate"),
- 					}
-					_ => panic!("Nothing to do with field {} in OccupancyFunction",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a OccupancyFunction from a non-Object");
-		}
+		match_object_panic!(arg.cv,"OccupancyFunction",value,
+			"label_coefficient" => label_coefficient=Some(value.as_f64().expect("bad value for label_coefficient") as i32),
+			"occupancy_coefficient" => occupancy_coefficient=Some(value.as_f64().expect("bad value for occupancy_coefficient") as i32),
+			"product_coefficient" => product_coefficient=Some(value.as_f64().expect("bad value for product_coefficient") as i32),
+			"constant_coefficient" => constant_coefficient=Some(value.as_f64().expect("bad value for constant_coefficient") as i32),
+			"use_neighbour_space" => use_neighbour_space=value.as_bool().expect("bad value for use_neighbour_space"),
+			"use_internal_space" => use_internal_space=value.as_bool().expect("bad value for use_internal_space"),
+			"aggregate" => aggregate=value.as_bool().expect("bad value for aggregate"),
+		);
 		let label_coefficient=label_coefficient.expect("There were no multiplier");
 		let occupancy_coefficient=occupancy_coefficient.expect("There were no multiplier");
 		let product_coefficient=product_coefficient.expect("There were no multiplier");
@@ -1409,29 +1185,7 @@ impl NegateLabel
 {
 	pub fn new(arg:VCPolicyBuilderArgument) -> NegateLabel
 	{
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="NegateLabel"
-			{
-				panic!("A NegateLabel must be created from a `NegateLabel` object not `{}`",cv_name);
-			}
-			for &(ref name,ref _value) in cv_pairs
-			{
-				match AsRef::<str>::as_ref(&name)
-				{
-					//"multiplier" => match value
-					//{
-					//	&ConfigurationValue::Number(f) => multiplier=Some(f as i32),
-					//	_ => panic!("bad value for multiplier"),
-					//}
-					_ => panic!("Nothing to do with field {} in NegateLabel",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a NegateLabel from a non-Object");
-		}
+		match_object_panic!(arg.cv,"NegateLabel",_value);
 		NegateLabel{}
 	}
 }
@@ -1495,32 +1249,10 @@ impl VecLabel
 	pub fn new(arg:VCPolicyBuilderArgument) -> VecLabel
 	{
 		let mut label_vector=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="VecLabel"
-			{
-				panic!("A VecLabel must be created from a `VecLabel` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match AsRef::<str>::as_ref(&name)
-				{
- 					"label_vector" => match value
- 					{
-						&ConfigurationValue::Array(ref l) => label_vector=Some(l.iter().map(|v| match v{
-							ConfigurationValue::Number(f) => *f as i32,
-							_ => panic!("bad value for label_vector"),
-						}).collect()),
- 						_ => panic!("bad value for label_vector"),
- 					}
-					_ => panic!("Nothing to do with field {} in VecLabel",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a VecLabel from a non-Object");
-		}
+		match_object_panic!(arg.cv,"VecLabel",value,
+			"label_vector" => label_vector=Some(value.as_array().expect("bad value for label_vector").iter()
+				.map(|v|v.as_f64().expect("bad value in label_vector") as i32).collect()),
+		);
 		let label_vector=label_vector.expect("There were no label_vector");
 		VecLabel{
 			label_vector,
@@ -1600,42 +1332,12 @@ impl MapLabel
 		let mut label_to_policy=None;
 		let mut below_policy : Box<dyn VirtualChannelPolicy> =Box::new(Identity{});
 		let mut above_policy : Box<dyn VirtualChannelPolicy> =Box::new(Identity{});
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="MapLabel"
-			{
-				panic!("A MapLabel must be created from a `MapLabel` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match AsRef::<str>::as_ref(&name)
-				{
- 					"label_to_policy" => match value
- 					{
-						&ConfigurationValue::Array(ref l) => label_to_policy=Some(l.iter().map(|v| match v{
-							&ConfigurationValue::Object(_,_) => new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg}),
-							_ => panic!("bad value for label_to_policy"),
-						}).collect()),
- 						_ => panic!("bad value for label_to_policy"),
- 					}
-					"below_policy" => match value
-					{
-						&ConfigurationValue::Object(_,_) => below_policy = new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg}),
- 						_ => panic!("bad value for below_policy"),
-					}
-					"above_policy" => match value
-					{
-						&ConfigurationValue::Object(_,_) => above_policy = new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg}),
- 						_ => panic!("bad value for above_policy"),
-					}
-					_ => panic!("Nothing to do with field {} in MapLabel",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a MapLabel from a non-Object");
-		}
+		match_object_panic!(arg.cv,"MapLabel",value,
+			"label_to_policy" => label_to_policy=Some(value.as_array().expect("bad value for label_to_policy").iter()
+				.map(|v|new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg})).collect()),
+			"below_policy" => below_policy = new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg}),
+			"above_policy" => above_policy = new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg}),
+		);
 		let label_to_policy=label_to_policy.expect("There were no label_to_policy");
 		MapLabel{
 			label_to_policy,
@@ -1692,32 +1394,10 @@ impl ShiftEntryVC
 	pub fn new(arg:VCPolicyBuilderArgument) -> ShiftEntryVC
 	{
 		let mut shifts=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="ShiftEntryVC"
-			{
-				panic!("A ShiftEntryVC must be created from a `ShiftEntryVC` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match AsRef::<str>::as_ref(&name)
-				{
- 					"shifts" => match value
- 					{
-						&ConfigurationValue::Array(ref l) => shifts=Some(l.iter().map(|v| match v{
-							&ConfigurationValue::Number(x) => x as i32,
-							_ => panic!("bad value for shifts"),
-						}).collect()),
- 						_ => panic!("bad value for shifts"),
- 					}
-					_ => panic!("Nothing to do with field {} in ShiftEntryVC",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a ShiftEntryVC from a non-Object");
-		}
+		match_object_panic!(arg.cv,"ShiftEntryVC",value,
+			"shifts" => shifts=Some(value.as_array().expect("bad value for shifts").iter()
+				.map(|v|v.as_f64().expect("bad value in shifts") as i32).collect()),
+		);
 		let shifts=shifts.expect("There were no shifts");
 		ShiftEntryVC{
 			shifts,
@@ -1774,37 +1454,11 @@ impl MapHop
 	{
 		let mut hop_to_policy=None;
 		let mut above_policy : Box<dyn VirtualChannelPolicy> =Box::new(Identity{});
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="MapHop"
-			{
-				panic!("A MapHop must be created from a `MapHop` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match AsRef::<str>::as_ref(&name)
-				{
- 					"hop_to_policy" => match value
- 					{
-						&ConfigurationValue::Array(ref l) => hop_to_policy=Some(l.iter().map(|v| match v{
-							&ConfigurationValue::Object(_,_) => new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg}),
-							_ => panic!("bad value for hop_to_policy"),
-						}).collect()),
- 						_ => panic!("bad value for hop_to_policy"),
- 					}
-					"above_policy" => match value
-					{
-						&ConfigurationValue::Object(_,_) => above_policy = new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg}),
- 						_ => panic!("bad value for above_policy"),
-					}
-					_ => panic!("Nothing to do with field {} in MapHop",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a MapHop from a non-Object");
-		}
+		match_object_panic!(arg.cv,"MapHop",value,
+			"hop_to_policy" => hop_to_policy=Some(value.as_array().expect("bad value for hop_to_policy").iter()
+				.map(|v|new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg})).collect()),
+			"above_policy" => above_policy = new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg}),
+		);
 		let hop_to_policy=hop_to_policy.expect("There were no hop_to_policy");
 		MapHop{
 			hop_to_policy,
@@ -1858,32 +1512,10 @@ impl ArgumentVC
 	pub fn new(arg:VCPolicyBuilderArgument) -> ArgumentVC
 	{
 		let mut allowed=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="ArgumentVC"
-			{
-				panic!("A ArgumentVC must be created from a `ArgumentVC` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match AsRef::<str>::as_ref(&name)
-				{
- 					"allowed" => match value
- 					{
-						&ConfigurationValue::Array(ref l) => allowed=Some(l.iter().map(|v| match v{
-							&ConfigurationValue::Number(x) => x as usize,
-							_ => panic!("bad value for allowed"),
-						}).collect()),
- 						_ => panic!("bad value for allowed"),
- 					}
-					_ => panic!("Nothing to do with field {} in ArgumentVC",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a ArgumentVC from a non-Object");
-		}
+		match_object_panic!(arg.cv,"ArgumentVC",value,
+			"allowed" => allowed=Some(value.as_array().expect("bad value for allowed").iter()
+				.map(|v|v.as_f64().expect("bad value in allowed") as usize).collect()),
+		);
 		let allowed=allowed.expect("There were no allowed");
 		ArgumentVC{
 			allowed,
@@ -1941,32 +1573,10 @@ impl Either
 	pub fn new(arg:VCPolicyBuilderArgument) -> Either
 	{
 		let mut policies=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Either"
-			{
-				panic!("A Either must be created from a `Either` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match AsRef::<str>::as_ref(&name)
-				{
- 					"policies" => match value
- 					{
-						&ConfigurationValue::Array(ref l) => policies=Some(l.iter().map(|v| match v{
-							&ConfigurationValue::Object(_,_) => new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg}),
-							_ => panic!("bad value for policies"),
-						}).collect()),
- 						_ => panic!("bad value for policies"),
- 					}
-					_ => panic!("Nothing to do with field {} in Either",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Either from a non-Object");
-		}
+		match_object_panic!(arg.cv,"Either",value,
+			"policies" => policies=Some(value.as_array().expect("bad value for policies").iter()
+				.map(|v|new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg})).collect()),
+		);
 		let policies=policies.expect("There were no policies");
 		Either{
 			policies,
@@ -2031,37 +1641,11 @@ impl MapEntryVC
 	{
 		let mut vc_to_policy=None;
 		let mut above_policy : Box<dyn VirtualChannelPolicy> =Box::new(Identity{});
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="MapEntryVC"
-			{
-				panic!("A MapEntryVC must be created from a `MapEntryVC` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match AsRef::<str>::as_ref(&name)
-				{
- 					"vc_to_policy" => match value
- 					{
-						&ConfigurationValue::Array(ref l) => vc_to_policy=Some(l.iter().map(|v| match v{
-							&ConfigurationValue::Object(_,_) => new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg}),
-							_ => panic!("bad value for vc_to_policy"),
-						}).collect()),
- 						_ => panic!("bad value for vc_to_policy"),
- 					}
-					"above_policy" => match value
-					{
-						&ConfigurationValue::Object(_,_) => above_policy = new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg}),
- 						_ => panic!("bad value for above_policy"),
-					}
-					_ => panic!("Nothing to do with field {} in MapEntryVC",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a MapEntryVC from a non-Object");
-		}
+		match_object_panic!(arg.cv,"MapEntryVC",value,
+			"vc_to_policy" => vc_to_policy=Some(value.as_array().expect("bad value for vc_to_policy").iter()
+				.map(|v|new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg})).collect()),
+			"above_policy" => above_policy = new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg}),
+		);
 		let vc_to_policy=vc_to_policy.expect("There were no vc_to_policy");
 		MapEntryVC{
 			vc_to_policy,
@@ -2127,40 +1711,12 @@ impl MapMessageSize
 	{
 		let mut policies : Option<Vec<_>> =None;
 		let mut limits : Option<Vec<_>> =None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="MapMessageSize"
-			{
-				panic!("A MapMessageSize must be created from a `MapMessageSize` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match AsRef::<str>::as_ref(&name)
-				{
- 					"policies" => match value
- 					{
-						&ConfigurationValue::Array(ref l) => policies=Some(l.iter().map(|v| match v{
-							&ConfigurationValue::Object(_,_) => new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg}),
-							_ => panic!("bad value for policies"),
-						}).collect()),
- 						_ => panic!("bad value for policies"),
- 					}
- 					"limits" => match value
- 					{
-						&ConfigurationValue::Array(ref l) => limits=Some(l.iter().map(|v| match v{
-							&ConfigurationValue::Number(x) => x as usize,
-							_ => panic!("bad value for limits"),
-						}).collect()),
- 						_ => panic!("bad value for limits"),
- 					}
-					_ => panic!("Nothing to do with field {} in MapMessageSize",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a MapMessageSize from a non-Object");
-		}
+		match_object_panic!(arg.cv,"MapMessageSize",value,
+			"policies" => policies=Some(value.as_array().expect("bad value for policies").iter()
+				.map(|v|new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg})).collect()),
+			"limits" => limits=Some(value.as_array().expect("bad value for limits").iter()
+				.map(|v|v.as_f64().expect("bad value in limits") as usize).collect()),
+		);
 		let policies=policies.expect("There were no policies");
 		let limits=limits.expect("There were no limits");
 		assert!(policies.len()==limits.len()+1,"In MapMessageSize the `policies` array must have one element more than `limits`, as the last range is unbounded.");
