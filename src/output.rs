@@ -19,7 +19,7 @@ use crate::config_parser::{ConfigurationValue,Expr};
 use crate::config::{self,combine,evaluate,reevaluate,values_to_f32_with_count};
 use crate::experiments::ExperimentFiles;
 use crate::error::{Error,SourceLocation};
-use crate::{get_git_id,source_location};
+use crate::{get_git_id,source_location,match_object_panic,match_object,error};
 
 
 /** Creates some output using an output description object as guide.
@@ -384,71 +384,30 @@ impl<'a> Plotkind<'a>
 		let mut bottom_box_limit=None;
 		let mut box_middle=None;
 		let mut ordinate_post_expression=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=description
-		{
-			if cv_name!="Plotkind"
+		match_object_panic!(description,"Plotkind",value,
+			"parameter" => parameter=Some(value),
+			"abscissas" => abscissas=Some(value),
+			"ordinates" => ordinates=Some(value),
+			"histogram" => histogram=Some(value),
+			"array" => array=Some(value),
+			"label_abscissas" => label_abscissas=Some(value.as_str().unwrap_or_else(|_|panic!("bad value for label_abscissas ({:?})",value)).to_string()),
+			"label_ordinates" => label_ordinates=Some(value.as_str().unwrap_or_else(|_|panic!("bad value for label_ordinates ({:?})",value)).to_string()),
+			"min_ordinate" => min_ordinate=Some(value.as_f64().expect("bad value for min_ordinate") as f32),
+			"max_ordinate" => max_ordinate=Some(value.as_f64().expect("bad value for max_ordinate") as f32),
+			"min_abscissa" => min_abscissa=Some(value.as_f64().expect("bad value for min_abscissa") as f32),
+			"max_abscissa" => max_abscissa=Some(value.as_f64().expect("bad value for max_abscissa") as f32),
+			"bar" => bar=value.as_bool().expect("bad value for bar"),
+			"ordinate_post_expression" => match &value
 			{
-				panic!("A Plotkind must be created from a `Plotkind` object not `{}`",cv_name);
+				&ConfigurationValue::Expression(e) => ordinate_post_expression = Some(e.clone()),
+				_ => panic!("bad value for ordinate_post_expression"),
 			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match name.as_ref()
-				{
-					"parameter" => parameter=Some(value),
-					"abscissas" => abscissas=Some(value),
-					"ordinates" => ordinates=Some(value),
-					"histogram" => histogram=Some(value),
-					"array" => array=Some(value),
-					"label_abscissas" => match value
-					{
-						&ConfigurationValue::Literal(ref s) => label_abscissas=Some(s.to_string()),
-						_ => panic!("bad value for label_abscissas ({:?})",value),
-					},
-					"label_ordinates" => match value
-					{
-						&ConfigurationValue::Literal(ref s) => label_ordinates=Some(s.to_string()),
-						_ => panic!("bad value for label_ordinates ({:?})",value),
-					},
-					"min_ordinate" => match value
-					{
-						&ConfigurationValue::Number(f) => min_ordinate=Some(f as f32),
-						_ => panic!("bad value for min_ordinate"),
-					}
-					"max_ordinate" => match value
-					{
-						&ConfigurationValue::Number(f) => max_ordinate=Some(f as f32),
-						_ => panic!("bad value for max_ordinate"),
-					}
-					"min_abscissa" => match value
-					{
-						&ConfigurationValue::Number(f) => min_abscissa=Some(f as f32),
-						_ => panic!("bad value for min_abscissa"),
-					}
-					"max_abscissa" => match value
-					{
-						&ConfigurationValue::Number(f) => max_abscissa=Some(f as f32),
-						_ => panic!("bad value for max_abscissa"),
-					}
-					"bar" => match value
-					{
-						&ConfigurationValue::True => bar=true,
-						&ConfigurationValue::False => bar=false,
-						_ => panic!("bad value for bar"),
-					}
-					"ordinate_post_expression" => match &value
-					{
-						&ConfigurationValue::Expression(e) => ordinate_post_expression = Some(e.clone()),
-						_ => panic!("bad value for ordinate_post_expression"),
-					}
-					"upper_whisker" => upper_whisker=Some(value),
-					"bottom_whisker" => bottom_whisker=Some(value),
-					"upper_box_limit" => upper_box_limit=Some(value),
-					"bottom_box_limit" => bottom_box_limit=Some(value),
-					"box_middle" => box_middle=Some(value),
-					_ => panic!("Nothing to do with field {} in Plotkind",name),
-				}
-			}
-		}
+			"upper_whisker" => upper_whisker=Some(value),
+			"bottom_whisker" => bottom_whisker=Some(value),
+			"upper_box_limit" => upper_box_limit=Some(value),
+			"bottom_box_limit" => bottom_box_limit=Some(value),
+			"box_middle" => box_middle=Some(value),
+		);
 		//let parameter=parameter.expect("There were no parameter");
 		//let abscissas=abscissas.expect("There were no abscissas");
 		//let ordinates=ordinates.expect("There were no ordinates");
@@ -486,41 +445,17 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, Configur
 	let mut backend=None;
 	let mut prefix=None;
 	let mut kind:Option<Vec<Plotkind>>=None;
-	if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=description
-	{
-		if cv_name!="Plots"
-		{
-			panic!("A series of Plots must be created from a `Plots` object not `{}`",cv_name);
-		}
-		for &(ref name,ref value) in cv_pairs
-		{
-			match name.as_ref()
-			{
-				"selector" => selector=Some(value),
-				"legend" => legend=Some(value),
-				"backend" => backend=Some(value),
-				"kind" => match value
-				{
-					&ConfigurationValue::Array(ref pks) => kind=Some(pks.iter().map(Plotkind::new).collect()),
-					_ => panic!("bad value for kind"),
-				},
-				"prefix" => match value
-				{
-					&ConfigurationValue::Literal(ref s) => prefix=Some(s.to_string()),
-					_ => panic!("bad value for prefix"),
-				},
-				_ => panic!("Nothing to do with field {} in Plots",name),
-			}
-		}
-	}
-	else
-	{
-		panic!("Trying to create a Plots from a non-Object");
-	}
-	let selector=selector.expect("There were no selector");
-	let legend=legend.expect("There were no legend");
-	let kind=kind.expect("There were no kind");
-	let backend=backend.expect("There were no backend");
+	match_object!(description,"Plots",value,
+		"selector" => selector=Some(value),
+		"legend" => legend=Some(value),
+		"backend" => backend=Some(value),
+		"kind" => kind = Some(value.as_array()?.iter().map(Plotkind::new).collect()),
+		"prefix" => prefix=Some(value.as_str()?.to_string()),
+	);
+	let selector = selector.ok_or_else(||description.ill("There were no selector"))?;
+	let legend=legend.ok_or_else(||description.ill("There were no legend"))?;
+	let kind=kind.ok_or_else(||description.ill("There were no kind"))?;
+	let backend=backend.ok_or_else(||description.ill("There were no backend"))?;
 	let prefix=prefix.unwrap_or_else(||"noprefix".to_string());
 	let outputs_path = files.get_outputs_path();
 	println!("Creating plots");
@@ -866,36 +801,12 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 {
 	let mut tex_filename=None;
 	let mut pdf_filename=None;
-	if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=backend
-	{
-		if cv_name!="Tikz"
-		{
-			panic!("A Tikz must be created from a `Tikz` object not `{}`",cv_name);
-		}
-		for &(ref name,ref value) in cv_pairs
-		{
-			match name.as_ref()
-			{
-				"tex_filename" => match value
-				{
-					&ConfigurationValue::Literal(ref s) => tex_filename=Some(s.to_string()),
-					_ => panic!("bad value for tex_filename ({:?})",value),
-				},
-				"pdf_filename" => match value
-				{
-					&ConfigurationValue::Literal(ref s) => pdf_filename=Some(s.to_string()),
-					_ => panic!("bad value for pdf_filename ({:?})",value),
-				},
-				_ => panic!("Nothing to do with field {} in Tikz",name),
-			}
-		}
-	}
-	else
-	{
-		panic!("Trying to create a Tikz from a non-Object");
-	}
-	let tex_filename=tex_filename.expect("There were no tex_filename");
-	let pdf_filename=pdf_filename.expect("There were no pdf_filename");
+	match_object!(backend,"Tikz",value,
+		"tex_filename" => tex_filename = Some(value.as_str()?.to_string()),
+		"pdf_filename" => pdf_filename = Some(value.as_str()?.to_string()),
+	);
+	let tex_filename=tex_filename.ok_or_else(||backend.ill("There were no tex_filename"))?;
+	let pdf_filename=pdf_filename.ok_or_else(||backend.ill("There were no pdf_filename"))?;
 	let outputs_path = files.get_outputs_path();
 	let root = files.root.clone().unwrap();
 	let tex_path=&outputs_path.join(tex_filename);
@@ -1614,36 +1525,16 @@ fn create_preprocess_arg_max(description: &ConfigurationValue, results: &Vec<(us
 	let mut target = None;
 	//Expression to store.
 	let mut argument = None;
-	if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=description
-	{
-		if cv_name!="PreprocessArgMax"
-		{
-			panic!("A PreprocessArgMax must be created from a `PreprocessArgMax` object not `{}`",cv_name);
-		}
-		for &(ref name,ref value) in cv_pairs
-		{
-			match name.as_ref()
-			{
-				"filename" => match value
-				{
-					&ConfigurationValue::Literal(ref s) => filename=Some(s.to_string()),
-					_ => panic!("bad value for filename ({:?})",value),
-				},
-				"selector" => selector=Some(value),
-				"target" => target=Some(value),
-				"argument" => argument=Some(value),
-				_ => panic!("Nothing to do with field {} in Plots",name),
-			}
-		}
-	}
-	else
-	{
-		panic!("Trying to create a PreprocessArgMax from a non-Object");
-	}
-	let filename=filename.expect("There were no filename");
-	let selector=selector.expect("There were no selector");
-	let target=target.expect("There were no target");
-	let argument=argument.expect("There were no argument");
+	match_object!(description,"PreprocessArgMax",value,
+		"filename" => filename = Some(value.as_str()?.to_string()),
+		"selector" => selector=Some(value),
+		"target" => target=Some(value),
+		"argument" => argument=Some(value),
+	);
+	let filename = filename.ok_or_else(||description.ill("There were no filename"))?;
+	let selector = selector.ok_or_else(||description.ill("There were no selector"))?;
+	let target = target.ok_or_else(||description.ill("There were no target"))?;
+	let argument = argument.ok_or_else(||description.ill("There were no argument"))?;
 	let outputs_path = files.get_outputs_path();
 	// --- Evaluate the records
 	//records [ selector, argument, target value ]

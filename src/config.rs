@@ -1539,16 +1539,16 @@ macro_rules! match_object{
 				{
 					//"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
 					$( $arm )*
-					"legend_name" => Ok(()),
+					"legend_name" => (),
 					//_ => panic!("Nothing to do with field {} in {}",name,$name),
-					_ => Err(error!(ill_formed_configuration,$cv).with_message(format!("Nothing to do with field {} in {}",name,$name)))?,
+					_ => Err(error!(ill_formed_configuration,$cv.clone()).with_message(format!("Nothing to do with field {} in {}",name,$name)))?,
 				}
 			}
 		}
 		else
 		{
 			//panic!("Trying to create a {} from a non-Object",$name);
-			Err(error!(ill_formed_configuration,$cv).with_message(format!("Trying to create a {} from a non-Object",$name)))?
+			Err(error!(ill_formed_configuration,$cv.clone()).with_message(format!("Trying to create a {} from a non-Object",$name)))?
 		}
 	}};
 }
@@ -1617,5 +1617,11 @@ impl ConfigurationValue
 			_ => Err(error!(ill_formed_configuration, self.clone() )),
 		}
 	}
+	pub fn ill(&self,message:&str) -> Error
+	{
+		error!(ill_formed_configuration,self.clone()).with_message(message.to_string())
+	}
 }
+
+
 
