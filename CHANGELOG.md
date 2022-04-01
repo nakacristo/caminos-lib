@@ -4,6 +4,7 @@
 
 ### 2022-04-01
 git commit -m "Upgraded constructors in lib.rs to use the config helpers."
+git commit -m "Upgraded the SlurmOptions constructor in experiment.rs"
 
 ### 2022-03-31
 BUGFIX: Protect the building of temporal statistics from routers having different measurement arrays of different lengths.

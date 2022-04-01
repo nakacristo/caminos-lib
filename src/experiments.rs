@@ -18,7 +18,7 @@ use ssh2::Session;
 use indicatif::{ProgressBar,ProgressStyle};
 
 use crate::config_parser::{self,ConfigurationValue};
-use crate::{Simulation,Plugs,source_location,error};
+use crate::{Simulation,Plugs,source_location,error,match_object_panic};
 use crate::output::{create_output};
 use crate::config::{self,evaluate,flatten_configuration_value};
 use crate::error::{Error,ErrorKind,SourceLocation};
@@ -156,50 +156,13 @@ impl SlurmOptions
 		let mut wrapper = None;
 		for lc in launch_configurations.iter()
 		{
-			match lc
-			{
-				&ConfigurationValue::Object(ref launch_name, ref launch_pairs) =>
-				{
-					if launch_name=="Slurm"
-					{
-						for &(ref slurm_name,ref slurm_value) in launch_pairs
-						{
-							match slurm_name.as_ref()
-							{
-								"maximum_jobs" => match slurm_value
-								{
-									&ConfigurationValue::Number(f) => maximum_jobs=Some(f as usize),
-									_ => panic!("bad value for maximum_jobs"),
-								}
-								"job_pack_size" => match slurm_value
-								{
-									&ConfigurationValue::Number(f) => job_pack_size=Some(f as usize),
-									_ => panic!("bad value for job_pack_size"),
-								}
-								"time" => match slurm_value
-								{
-									//&ConfigurationValue::Literal(ref s) => time=Some(&s[1..s.len()-1]),
-									&ConfigurationValue::Literal(ref s) => time=Some(s.as_ref()),
-									_ => panic!("bad value for time"),
-								}
-								"mem" => match slurm_value
-								{
-									//&ConfigurationValue::Literal(ref s) => mem=Some(&s[1..s.len()-1]),
-									&ConfigurationValue::Literal(ref s) => mem=Some(s.as_ref()),
-									_ => panic!("bad value for mem"),
-								}
-								"wrapper" => match slurm_value
-								{
-									&ConfigurationValue::Literal(ref s) => wrapper=Some(s.to_string()),
-									_ => panic!("bad value for a remote wrapper"),
-								},
-								_ => (),
-							}
-						}
-					}
-				}
-				_ => (),//XXX perhaps error on unknown launch configuration?
-			}
+			match_object_panic!(lc,"Slurm",slurm_value,
+				"maximum_jobs" => maximum_jobs=Some(slurm_value.as_f64().expect("bad value for maximum_jobs") as usize),
+				"job_pack_size" => job_pack_size=Some(slurm_value.as_f64().expect("bad value for job_pack_size") as usize),
+				"time" => time=Some(slurm_value.as_str().expect("bad value for time")),
+				"mem" => mem=Some(slurm_value.as_str().expect("bad value for mem")),
+				"wrapper" => wrapper=Some(slurm_value.as_str().expect("bad value for wrapper")),
+			);
 		}
 		Ok(SlurmOptions{
 			time: time.map(|x|x.to_string()).unwrap_or_else(||"0-24:00:00".to_string()),
