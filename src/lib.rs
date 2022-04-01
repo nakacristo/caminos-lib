@@ -614,30 +614,10 @@ impl LinkClass
 	fn new(cv:&ConfigurationValue) -> LinkClass
 	{
 		let mut delay=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
-		{
-			if cv_name!="LinkClass"
-			{
-				panic!("A LinkClass must be created from a `LinkClass` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match name.as_ref()
-				{
-					"delay" => match value
-					{
-						&ConfigurationValue::Number(f) => delay=Some(f as usize),
-						_ => panic!("bad value for delay"),
-					},
-					"transference_speed" => (),//FIXME
-					_ => panic!("Nothing to do with field {} in LinkClass",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a LinkClass from a non-Object");
-		}
+		match_object_panic!(cv,"LinkClass",value,
+			"delay" => delay=Some(value.as_f64().expect("bad value for delay") as usize),
+			"transference_speed" => (),//FIXME
+		);
 		let delay=delay.expect("There were no delay");
 		LinkClass{
 			delay,
@@ -1176,120 +1156,57 @@ impl<'a> Simulation<'a>
 		let mut statistics_packet_percentiles: Vec<u8> = vec![];
 		let mut statistics_packet_definitions:Vec< (Vec<Expr>,Vec<Expr>) > = vec![];
 		let mut server_queue_size = None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
-		{
-			if cv_name!="Configuration"
+		match_object_panic!(cv,"Configuration",value,
+			"random_seed" => seed=Some(value.as_f64().expect("bad value for random_seed") as usize),
+			"warmup" => warmup=Some(value.as_f64().expect("bad value for warmup") as usize),
+			"measured" => measured=Some(value.as_f64().expect("bad value for measured") as usize),
+			"topology" => topology=Some(value),
+			"traffic" => traffic=Some(value),
+			"maximum_packet_size" => maximum_packet_size=Some(value.as_f64().expect("bad value for maximum_packet_size") as usize),
+			"server_queue_size" => server_queue_size=Some(value.as_f64().expect("bad value for server_queue_size") as usize),
+			"router" => router_cfg=Some(&value),
+			"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,plugs})),
+			"link_classes" => link_classes = Some(value.as_array().expect("bad value for link_classes").iter()
+				.map(|v|LinkClass::new(v)).collect()),
+			"statistics_temporal_step" => statistics_temporal_step=value.as_f64().expect("bad value for statistics_temporal_step") as usize,
+			"launch_configurations" => launch_configurations = value.as_array().expect("bad value for launch_configurations").clone(),
+			"statistics_server_percentiles" => statistics_server_percentiles = value
+				.as_array().expect("bad value for statistics_server_percentiles").iter()
+				.map(|v|v.as_f64().expect("bad value in statistics_server_percentiles").round() as u8).collect(),
+			"statistics_packet_percentiles" => statistics_packet_percentiles = value
+				.as_array().expect("bad value for statistics_packet_percentiles").iter()
+				.map(|v|v.as_f64().expect("bad value in statistics_packet_percentiles").round() as u8).collect(),
+			"statistics_packet_definitions" => match value
 			{
-				panic!("A simulation must be created from a `Configuration` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match name.as_ref()
-				{
-					"random_seed" => match value
-					{
-						&ConfigurationValue::Number(f) => seed=Some(f.round() as usize),
-						_ => panic!("bad value for random_seed"),
-					}
-					"warmup" => match value
-					{
-						&ConfigurationValue::Number(f) => warmup=Some(f.round() as usize),
-						_ => panic!("bad value for warmup"),
-					}
-					"measured" => match value
-					{
-						&ConfigurationValue::Number(f) => measured=Some(f.round() as usize),
-						_ => panic!("bad value for measured"),
-					}
-					//"topology" => topology=Some(new_topology(value)),
-					"topology" => topology=Some(value),
-					"traffic" =>
-					{
-						//traffic=Some(new_traffic(value,self.rng));
-						traffic=Some(value);
-					},
-					"maximum_packet_size" => match value
-					{
-						&ConfigurationValue::Number(f) => maximum_packet_size=Some(f.round() as usize),
-						_ => panic!("bad value for maximum_packet_size"),
-					}
-					"server_queue_size" => match value
-					{
-						&ConfigurationValue::Number(f) => server_queue_size=Some(f.round() as usize),
-						_ => panic!("bad value for server_queue_size"),
-					}
-					"router" => router_cfg=Some(&value),
-					"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,plugs})),
-					"link_classes" => match value
-					{
-						&ConfigurationValue::Array(ref l) => link_classes=Some(l.iter().map(|v|LinkClass::new(v)).collect()),
-						_ => panic!("bad value for link_classes"),
-					}
-					"statistics_temporal_step" => match value
-					{
-						&ConfigurationValue::Number(f) => statistics_temporal_step=f.round() as usize,
-						_ => panic!("bad value for statistics_temporal_step"),
-					}
-					"launch_configurations" => match value
-					{
-						&ConfigurationValue::Array(ref l) => launch_configurations=l.clone(),
-						_ => panic!("bad value for launch_configurations"),
-					}
-					"statistics_server_percentiles" => match value
-					{
-						&ConfigurationValue::Array(ref l) => statistics_server_percentiles=l.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => u8::try_from(f.round() as u8).unwrap_or_else(|e|panic!("could not convert {} to u8 ({})",f,e)),
-							x => panic!("{} is a bad value for statistics_server_percentiles",x),
-						}).collect(),
-						_ => panic!("bad value for statistics_server_percentiles"),
-					}
-					"statistics_packet_percentiles" => match value
-					{
-						&ConfigurationValue::Array(ref l) => statistics_packet_percentiles=l.iter().map(|v|match v{
-							&ConfigurationValue::Number(f) => u8::try_from(f.round() as u8).unwrap_or_else(|e|panic!("could not convert {} to u8 ({})",f,e)),
-							x => panic!("{} is a bad value for statistics_packet_percentiles",x),
-						}).collect(),
-						_ => panic!("bad value for statistics_packet_percentiles"),
-					}
-					"statistics_packet_definitions" => match value
-					{
-						&ConfigurationValue::Array(ref l) => statistics_packet_definitions=l.iter().map(|definition|match definition {
-							&ConfigurationValue::Array(ref dl) => {
-								if dl.len()!=2
-								{
-									panic!("Each definition of statistics_packet_definitions must be composed of [keys,values]");
-								}
-								let keys = match dl[0]
-								{
-									ConfigurationValue::Array(ref lx) => lx.iter().map(|x|match x{
-										ConfigurationValue::Expression(expr) => expr.clone(),
-										_ => panic!("bad value for statistics_packet_definitions"),
-										}).collect(),
-									_ => panic!("bad value for statistics_packet_definitions"),
-								};
-								let values = match dl[1]
-								{
-									ConfigurationValue::Array(ref lx) => lx.iter().map(|x|match x{
-										ConfigurationValue::Expression(expr) => expr.clone(),
-										_ => panic!("bad value for statistics_packet_definitions"),
-										}).collect(),
-									_ => panic!("bad value for statistics_packet_definitions"),
-								};
-								(keys,values)
-							},
+				&ConfigurationValue::Array(ref l) => statistics_packet_definitions=l.iter().map(|definition|match definition {
+					&ConfigurationValue::Array(ref dl) => {
+						if dl.len()!=2
+						{
+							panic!("Each definition of statistics_packet_definitions must be composed of [keys,values]");
+						}
+						let keys = match dl[0]
+						{
+							ConfigurationValue::Array(ref lx) => lx.iter().map(|x|match x{
+								ConfigurationValue::Expression(expr) => expr.clone(),
+								_ => panic!("bad value for statistics_packet_definitions"),
+								}).collect(),
 							_ => panic!("bad value for statistics_packet_definitions"),
-						}).collect(),
-						_ => panic!("bad value for statistics_packet_definitions"),
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in Configuration",name),
-				}
+						};
+						let values = match dl[1]
+						{
+							ConfigurationValue::Array(ref lx) => lx.iter().map(|x|match x{
+								ConfigurationValue::Expression(expr) => expr.clone(),
+								_ => panic!("bad value for statistics_packet_definitions"),
+								}).collect(),
+							_ => panic!("bad value for statistics_packet_definitions"),
+						};
+						(keys,values)
+					},
+					_ => panic!("bad value for statistics_packet_definitions"),
+				}).collect(),
+				_ => panic!("bad value for statistics_packet_definitions"),
 			}
-		}
-		else
-		{
-			panic!("Trying to create a simulation from a non-Object");
-		}
+		);
 		let seed=seed.expect("There were no random_seed");
 		let warmup=warmup.expect("There were no warmup");
 		let measured=measured.expect("There were no measured");
