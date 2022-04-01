@@ -7,20 +7,22 @@ see [`new_traffic`](fn.new_traffic.html) for documentation on the configuration 
 
 */
 
-
-use crate::config_parser::ConfigurationValue;
 use std::boxed::Box;
 use std::cell::{RefCell};
-use crate::{Message,Plugs};
-use ::rand::{Rng,rngs::StdRng};
-use crate::pattern::{Pattern,new_pattern,PatternBuilderArgument};
 use std::rc::Rc;
 use std::collections::{BTreeSet,BTreeMap,VecDeque};
+//use std::mem::{size_of};
+use std::fmt::Debug;
+
+use ::rand::{Rng,rngs::StdRng};
+
+use crate::match_object_panic;
+use crate::config_parser::ConfigurationValue;
+use crate::{Message,Plugs};
+use crate::pattern::{Pattern,new_pattern,PatternBuilderArgument};
 use crate::topology::Topology;
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::quantify::Quantifiable;
-//use std::mem::{size_of};
-use std::fmt::Debug;
 
 ///Possible errors when trying to generate a message with a `Traffic`.
 #[derive(Debug)]
@@ -302,40 +304,12 @@ impl Homogeneous
 		let mut load=None;
 		let mut pattern=None;
 		let mut message_size=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="HomogeneousTraffic"
-			{
-				panic!("A Homogeneous must be created from a `HomogeneousTraffic` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match name.as_ref()
-				{
-					"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
-					"servers" => match value
-					{
-						&ConfigurationValue::Number(f) => servers=Some(f as usize),
-						_ => panic!("bad value for servers"),
-					}
-					"load" => match value
-					{
-						&ConfigurationValue::Number(f) => load=Some(f as f32),
-						_ => panic!("bad value for load ({:?})",value),
-					}
-					"message_size" => match value
-					{
-						&ConfigurationValue::Number(f) => message_size=Some(f as usize),
-						_ => panic!("bad value for message_size"),
-					}
-					_ => panic!("Nothing to do with field {} in HomogeneousTraffic",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Homogeneous from a non-Object");
-		}
+		match_object_panic!(arg.cv,"HomogeneousTraffic",value,
+			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"servers" => servers=Some(value.as_f64().expect("bad value for servers") as usize),
+			"load" => load=Some(value.as_f64().expect("bad value for load") as f32),
+			"message_size" => message_size=Some(value.as_f64().expect("bad value for message_size") as usize),
+		);
 		let servers=servers.expect("There were no servers");
 		let message_size=message_size.expect("There were no message_size");
 		let load=load.expect("There were no load");
@@ -457,30 +431,10 @@ impl Sum
 	pub fn new(arg:TrafficBuilderArgument) -> Sum
 	{
 		let mut list=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="TrafficSum"
-			{
-				panic!("A Sum must be created from a `TrafficSum` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match name.as_ref()
-				{
-					//"pattern" => pattern=Some(new_pattern(value,plugs)),
-					"list" => match value
-					{
-						&ConfigurationValue::Array(ref a) => list=Some(a.iter().map(|v|new_traffic(TrafficBuilderArgument{cv:v,..arg})).collect()),
-						_ => panic!("bad value for list"),
-					}
-					_ => panic!("Nothing to do with field {} in TrafficSum",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Sum from a non-Object");
-		}
+		match_object_panic!(arg.cv,"TrafficSum",value,
+			"list" => list = Some(value.as_array().expect("bad value for list").iter()
+				.map(|v|new_traffic(TrafficBuilderArgument{cv:v,..arg})).collect()),
+		);
 		let list=list.expect("There were no list");
 		Sum{
 			list
@@ -575,30 +529,10 @@ impl Shifted
 	{
 		let mut shift=None;
 		let mut traffic=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="ShiftedTraffic"
-			{
-				panic!("A Shifted must be created from a `ShiftedTraffic` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match name.as_ref()
-				{
-					"traffic" => traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,..arg})),
-					"shift" => match value
-					{
-						&ConfigurationValue::Number(f) => shift=Some(f as usize),
-						_ => panic!("bad value for shift"),
-					}
-					_ => panic!("Nothing to do with field {} in ShiftedTraffic",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Shifted from a non-Object");
-		}
+		match_object_panic!(arg.cv,"ShiftedTraffic",value,
+			"traffic" => traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,..arg})),
+			"shift" => shift=Some(value.as_f64().expect("bad value for shift") as usize),
+		);
 		let shift=shift.expect("There were no shift");
 		let traffic=traffic.expect("There were no traffic");
 		Shifted{
@@ -682,31 +616,11 @@ impl ProductTraffic
 		let mut block_size=None;
 		let mut block_traffic=None;
 		let mut global_pattern=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="ProductTraffic"
-			{
-				panic!("A ProductTraffic must be created from a `ProductTraffic` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match name.as_ref()
-				{
-					"block_traffic" => block_traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,..arg})),
-					"global_pattern" => global_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
-					"block_size" => match value
-					{
-						&ConfigurationValue::Number(f) => block_size=Some(f as usize),
-						_ => panic!("bad value for block_size"),
-					}
-					_ => panic!("Nothing to do with field {} in ShiftedTraffic",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a ProductTraffic from a non-Object");
-		}
+		match_object_panic!(arg.cv,"ProductTraffic",value,
+			"block_traffic" => block_traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,..arg})),
+			"global_pattern" => global_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"block_size" => block_size=Some(value.as_f64().expect("bad value for block_size") as usize),
+		);
 		let block_size=block_size.expect("There were no block_size");
 		let block_traffic=block_traffic.expect("There were no block_traffic");
 		let mut global_pattern=global_pattern.expect("There were no global_pattern");
@@ -771,35 +685,11 @@ impl SubRangeTraffic
 		let mut start=None;
 		let mut end=None;
 		let mut traffic=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="SubRangeTraffic"
-			{
-				panic!("A SubRangeTraffic must be created from a `SubRangeTraffic` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match name.as_ref()
-				{
-					"traffic" => traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,..arg})),
-					"start" => match value
-					{
-						&ConfigurationValue::Number(f) => start=Some(f as usize),
-						_ => panic!("bad value for start"),
-					}
-					"end" => match value
-					{
-						&ConfigurationValue::Number(f) => end=Some(f as usize),
-						_ => panic!("bad value for end"),
-					}
-					_ => panic!("Nothing to do with field {} in SubRangeTraffic",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a SubRangeTraffic from a non-Object");
-		}
+		match_object_panic!(arg.cv,"SubRangeTraffic",value,
+			"traffic" => traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,..arg})),
+			"start" => start=Some(value.as_f64().expect("bad value for start") as usize),
+			"end" => end=Some(value.as_f64().expect("bad value for end") as usize),
+		);
 		let start=start.expect("There were no start");
 		let end=end.expect("There were no end");
 		let traffic=traffic.expect("There were no traffic");
@@ -906,40 +796,12 @@ impl Burst
 		let mut messages_per_server=None;
 		let mut pattern=None;
 		let mut message_size=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Burst"
-			{
-				panic!("A Burst must be created from a `Burst` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match name.as_ref()
-				{
-					"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
-					"servers" => match value
-					{
-						&ConfigurationValue::Number(f) => servers=Some(f as usize),
-						_ => panic!("bad value for servers"),
-					}
-					"messages_per_server" => match value
-					{
-						&ConfigurationValue::Number(f) => messages_per_server=Some(f as usize),
-						_ => panic!("bad value for messages_per_server ({:?})",value),
-					}
-					"message_size" => match value
-					{
-						&ConfigurationValue::Number(f) => message_size=Some(f as usize),
-						_ => panic!("bad value for message_size"),
-					}
-					_ => panic!("Nothing to do with field {} in Burst",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Burst from a non-Object");
-		}
+		match_object_panic!(arg.cv,"Burst",value,
+			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"servers" => servers=Some(value.as_f64().expect("bad value for servers") as usize),
+			"messages_per_server" => messages_per_server=Some(value.as_f64().expect("bad value for messages_per_server") as usize),
+			"message_size" => message_size=Some(value.as_f64().expect("bad value for message_size") as usize),
+		);
 		let servers=servers.expect("There were no servers");
 		let message_size=message_size.expect("There were no message_size");
 		let messages_per_server=messages_per_server.expect("There were no messages_per_server");
@@ -1068,26 +930,10 @@ impl Reactive
 	{
 		let mut action_traffic=None;
 		let mut reaction_traffic=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Reactive"
-			{
-				panic!("A Reactive must be created from a `Reactive` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match name.as_ref()
-				{
-					"action_traffic" => action_traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,..arg})),
-					"reaction_traffic" => reaction_traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,..arg})),
-					_ => panic!("Nothing to do with field {} in Reactive",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Reactive from a non-Object");
-		}
+		match_object_panic!(arg.cv,"Reactive",value,
+			"action_traffic" => action_traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,..arg})),
+			"reaction_traffic" => reaction_traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,..arg})),
+		);
 		let action_traffic=action_traffic.expect("There were no action_traffic");
 		let reaction_traffic=reaction_traffic.expect("There were no reaction_traffic");
 		Reactive{
@@ -1196,38 +1042,13 @@ impl TimeSequenced
 	{
 		let mut traffics=None;
 		let mut times=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="TimeSequenced"
-			{
-				panic!("A TimeSequenced must be created from a `TimeSequenced` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match name.as_ref()
-				{
-					//"pattern" => pattern=Some(new_pattern(value,plugs)),
-					"traffics" => match value
-					{
-						&ConfigurationValue::Array(ref a) => traffics=Some(a.iter().map(|v|new_traffic(TrafficBuilderArgument{cv:v,..arg})).collect()),
-						_ => panic!("bad value for traffics"),
-					}
- 					"times" => match value
- 					{
-						&ConfigurationValue::Array(ref l) => times=Some(l.iter().map(|v| match v{
-							ConfigurationValue::Number(f) => *f as usize,
-							_ => panic!("bad value for times"),
-						}).collect()),
- 						_ => panic!("bad value for times"),
- 					}
-					_ => panic!("Nothing to do with field {} in TimeSequenced",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a TimeSequenced from a non-Object");
-		}
+		match_object_panic!(arg.cv,"TimeSequenced",value,
+			"traffics" => traffics = Some(value.as_array().expect("bad value for traffics").iter()
+				.map(|v|new_traffic(TrafficBuilderArgument{cv:v,..arg})).collect()),
+			"times" => times = Some(value.as_array()
+				.expect("bad value for times").iter()
+				.map(|v|v.as_f64().expect("bad value in times") as usize).collect()),
+		);
 		let traffics=traffics.expect("There were no traffics");
 		let times=times.expect("There were no times");
 		TimeSequenced{
@@ -1322,36 +1143,10 @@ impl Sequence
 	{
 		let mut traffics_args=None;
 		let mut period_number=1usize;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Sequence"
-			{
-				panic!("A Sequence must be created from a `Sequence` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match name.as_ref()
-				{
-					//"pattern" => pattern=Some(new_pattern(value,plugs)),
-					"traffics" => match value
-					{
-						//&ConfigurationValue::Array(ref a) => traffics=Some(a.iter().map(|v|new_traffic(TrafficBuilderArgument{cv:v,..arg})).collect()),
-						&ConfigurationValue::Array(ref a) => traffics_args=Some(a),
-						_ => panic!("bad value for traffics"),
-					}
-					"period_number" => match value
-					{
-						&ConfigurationValue::Number(f) => period_number=f as usize,
-						_ => panic!("bad value for period_number"),
-					}
-					_ => panic!("Nothing to do with field {} in Sequence",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Sequence from a non-Object");
-		}
+		match_object_panic!(arg.cv,"Sequence",value,
+			"traffics" => traffics_args = Some(value.as_array().expect("bad value for traffics")),
+			"period_number" => period_number=value.as_f64().expect("bad value for period_number") as usize,
+		);
 		let traffics_args=traffics_args.expect("There were no traffics");
 		let traffics = (0..period_number).flat_map(|_ip| traffics_args.iter().map(|v|new_traffic(TrafficBuilderArgument{cv:v,..arg})).collect::<Vec<_>>() ).collect();
 		Sequence{
@@ -1486,71 +1281,31 @@ impl MultimodalBurst
 	{
 		let mut servers=None;
 		let mut provenance : Option<Vec<(_,_,_,_)>> = None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="MultimodalBurst"
+		match_object_panic!(arg.cv,"MultimodalBurst",value,
+			"servers" => servers=Some(value.as_f64().expect("bad value for servers") as usize),
+			"provenance" => match value
 			{
-				panic!("A MultimodalBurst must be created from a `MultimodalBurst` object not `{}`",cv_name);
+				&ConfigurationValue::Array(ref a) => provenance=Some(a.iter().map(|pcv|{
+					let mut messages_per_server=None;
+					let mut pattern=None;
+					let mut message_size=None;
+					let mut step_size=None;
+					match_object_panic!(pcv,"Provenance",pvalue,
+						"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:pvalue,plugs:arg.plugs})),
+						"messages_per_server" | "total_messages" =>
+							messages_per_server=Some(pvalue.as_f64().expect("bad value for messages_per_server") as usize),
+						"message_size" => message_size=Some(pvalue.as_f64().expect("bad value for message_size") as usize),
+						"step_size" => step_size=Some(pvalue.as_f64().expect("bad value for step_size") as usize),
+					);
+					let pattern=pattern.expect("There were no pattern");
+					let messages_per_server=messages_per_server.expect("There were no messages_per_server");
+					let message_size=message_size.expect("There were no message_size");
+					let step_size=step_size.expect("There were no step_size");
+					(pattern,messages_per_server,message_size,step_size)
+				}).collect()),
+				_ => panic!("bad value for provenance"),
 			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match name.as_ref()
-				{
-					"servers" => match value
-					{
-						&ConfigurationValue::Number(f) => servers=Some(f as usize),
-						_ => panic!("bad value for servers"),
-					}
-					"provenance" => match value
-					{
-						&ConfigurationValue::Array(ref a) => provenance=Some(a.iter().map(|pcv|match pcv{
-							&ConfigurationValue::Object(ref _pcv_name, ref pcv_pairs) =>
-							{
-								let mut messages_per_server=None;
-								let mut pattern=None;
-								let mut message_size=None;
-								let mut step_size=None;
-								for &(ref pname, ref pvalue) in pcv_pairs
-								{
-									match pname.as_ref()
-									{
-										"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:pvalue,plugs:arg.plugs})),
-										"messages_per_server" | "total_messages" => match pvalue
-										{
-											&ConfigurationValue::Number(f) => messages_per_server=Some(f as usize),
-											_ => panic!("bad value for messages_per_server ({:?})",pvalue),
-										}
-										"message_size" => match pvalue
-										{
-											&ConfigurationValue::Number(f) => message_size=Some(f as usize),
-											_ => panic!("bad value for message_size"),
-										}
-										"step_size" => match pvalue
-										{
-											&ConfigurationValue::Number(f) => step_size=Some(f as usize),
-											_ => panic!("bad value for step_size"),
-										}
-										_ => panic!("Nothing to do with field {} in provenance of MultimodalBurst",name),
-									}
-								}
-								let pattern=pattern.expect("There were no pattern");
-								let messages_per_server=messages_per_server.expect("There were no messages_per_server");
-								let message_size=message_size.expect("There were no message_size");
-								let step_size=step_size.expect("There were no step_size");
-								(pattern,messages_per_server,message_size,step_size)
-							}
-							_ => panic!("bad value for provenance"),
-						}).collect()),
-						_ => panic!("bad value for provenance"),
-					}
-					_ => panic!("Nothing to do with field {} in MultimodalBurst",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a MultimodalBurst from a non-Object");
-		}
+		);
 		let servers=servers.expect("There were no servers");
 		let mut provenance=provenance.expect("There were no provenance");
 		for (pattern,_total_messages,_message_size,_step_size) in provenance.iter_mut()
@@ -1666,45 +1421,13 @@ impl BoundedDifference
 		let mut pattern=None;
 		let mut message_size=None;
 		let mut bound=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="BoundedDifference"
-			{
-				panic!("A BoundedDifference must be created from a `BoundedDifference` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				match name.as_ref()
-				{
-					"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
-					"servers" => match value
-					{
-						&ConfigurationValue::Number(f) => servers=Some(f as usize),
-						_ => panic!("bad value for servers"),
-					}
-					"load" => match value
-					{
-						&ConfigurationValue::Number(f) => load=Some(f as f32),
-						_ => panic!("bad value for load ({:?})",value),
-					}
-					"message_size" => match value
-					{
-						&ConfigurationValue::Number(f) => message_size=Some(f as usize),
-						_ => panic!("bad value for message_size"),
-					}
-					"bound" => match value
-					{
-						&ConfigurationValue::Number(f) => bound=Some(f as usize),
-						_ => panic!("bad value for bound"),
-					}
-					_ => panic!("Nothing to do with field {} in BoundedDifference",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a BoundedDifference from a non-Object");
-		}
+		match_object_panic!(arg.cv,"BoundedDifference",value,
+			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"servers" => servers=Some(value.as_f64().expect("bad value for servers") as usize),
+			"load" => load=Some(value.as_f64().expect("bad value for load") as f32),
+			"message_size" => message_size=Some(value.as_f64().expect("bad value for message_size") as usize),
+			"bound" => bound=Some(value.as_f64().expect("bad value for bound") as usize),
+		);
 		let servers=servers.expect("There were no servers");
 		let message_size=message_size.expect("There were no message_size");
 		let bound=bound.expect("There were no bound");
