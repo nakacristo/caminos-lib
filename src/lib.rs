@@ -667,6 +667,9 @@ pub struct StatisticMeasurement
 	total_packet_hops: usize,
 	///Count of consumed packets indexed by the number of hops it made.
 	total_packet_per_hop_count: Vec<usize>,
+	///For each virtual channel `vc`, `virtual_channel_usage[vc]` counts the total number of times
+	///a phit has advanced by any link using that virtual channel.
+	virtual_channel_usage: Vec<usize>,
 }
 
 impl StatisticMeasurement
@@ -838,20 +841,16 @@ impl Statistics
 			}
 		}
 	}
+	/// Called each time a server consumes a phit.
 	fn track_consumed_phit(&mut self, cycle:usize)
 	{
 		self.current_measurement.consumed_phits+=1;
-		if self.temporal_step>0
+		if let Some(m) = self.current_temporal_measurement(cycle)
 		{
-			let index = cycle / self.temporal_step;
-			if self.temporal_statistics.len()<=index
-			{
-				self.temporal_statistics.resize_with(index+1,Default::default);
-				self.temporal_statistics[index].begin_cycle = index*self.temporal_step;
-			}
-			self.temporal_statistics[index].consumed_phits+=1;
+			m.consumed_phits+=1;
 		}
 	}
+	/// Called when a server consumes a tail phit.
 	fn track_consumed_packet(&mut self, cycle:usize, packet:&Packet)
 	{
 		self.current_measurement.consumed_packets+=1;
@@ -864,18 +863,11 @@ impl Statistics
 			self.current_measurement.total_packet_per_hop_count.resize( hops+1, 0 );
 		}
 		self.current_measurement.total_packet_per_hop_count[hops]+=1;
-		if self.temporal_step>0
+		if let Some(m) = self.current_temporal_measurement(cycle)
 		{
-			let index = cycle / self.temporal_step;
-			if self.temporal_statistics.len()<=index
-			{
-				self.temporal_statistics.resize_with(index+1,Default::default);
-				self.temporal_statistics[index].begin_cycle = index*self.temporal_step;
-			}
-			self.temporal_statistics[index].consumed_packets+=1;
-			self.temporal_statistics[index].total_packet_network_delay+=network_delay;
-			self.temporal_statistics[index].total_packet_hops+=hops;
-			//Is total_packet_per_hop_count too much here?
+			m.consumed_packets+=1;
+			m.total_packet_network_delay+=network_delay;
+			m.total_packet_hops+=hops;
 		}
 		if !self.packet_percentiles.is_empty()
 		{
@@ -928,46 +920,50 @@ impl Statistics
 			}
 		}
 	}
+	/// Called when a server consumes the last phit from a message.
 	fn track_consumed_message(&mut self, cycle:usize)
 	{
 		self.current_measurement.consumed_messages+=1;
-		if self.temporal_step>0
+		if let Some(m) = self.current_temporal_measurement(cycle)
 		{
-			let index = cycle / self.temporal_step;
-			if self.temporal_statistics.len()<=index
-			{
-				self.temporal_statistics.resize_with(index+1,Default::default);
-				self.temporal_statistics[index].begin_cycle = index*self.temporal_step;
-			}
-			self.temporal_statistics[index].consumed_messages+=1;
+			m.consumed_messages+=1;
 		}
 	}
+	/// Called each time a phit is created.
 	fn track_created_phit(&mut self, cycle:usize)
 	{
 		self.current_measurement.created_phits+=1;
-		if self.temporal_step>0
+		if let Some(m) = self.current_temporal_measurement(cycle)
 		{
-			let index = cycle / self.temporal_step;
-			if self.temporal_statistics.len()<=index
-			{
-				self.temporal_statistics.resize_with(index+1,Default::default);
-				self.temporal_statistics[index].begin_cycle = index*self.temporal_step;
-			}
-			self.temporal_statistics[index].created_phits+=1;
+			m.created_phits+=1;
 		}
 	}
+	/// Called when a server consumes the last phit from a message.
+	/// XXX: Perhaps this should be part of `track_consumed_message`.
 	fn track_message_delay(&mut self, delay:usize, cycle:usize)
 	{
 		self.current_measurement.total_message_delay+= delay;
-		if self.temporal_step>0
+		if let Some(m) = self.current_temporal_measurement(cycle)
 		{
-			let index = cycle / self.temporal_step;
-			if self.temporal_statistics.len()<=index
+			m.total_message_delay+=delay;
+		}
+	}
+	/// Called with a hop from router to router
+	fn track_phit_hop(&mut self, phit:&Phit, cycle:usize)
+	{
+		let vc:usize = phit.virtual_channel.borrow().unwrap();
+		if self.current_measurement.virtual_channel_usage.len() <= vc
+		{
+			self.current_measurement.virtual_channel_usage.resize(vc+1, 0);
+		}
+		self.current_measurement.virtual_channel_usage[vc]+=1;
+		if let Some(m) = self.current_temporal_measurement(cycle)
+		{
+			if m.virtual_channel_usage.len() <= vc
 			{
-				self.temporal_statistics.resize_with(index+1,Default::default);
-				self.temporal_statistics[index].begin_cycle = index*self.temporal_step;
+				m.virtual_channel_usage.resize(vc+1, 0);
 			}
-			self.temporal_statistics[index].total_message_delay+=delay;
+			m.virtual_channel_usage[vc]+=1;
 		}
 	}
 	//fn track_packet_hops(&mut self, hops:usize, cycle:usize)
@@ -990,6 +986,19 @@ impl Statistics
 	//		//Is total_packet_per_hop_count too much here?
 	//	}
 	//}
+	fn current_temporal_measurement(&mut self, cycle:usize) -> Option<&mut StatisticMeasurement>
+	{
+		if self.temporal_step>0
+		{
+			let index = cycle / self.temporal_step;
+			if self.temporal_statistics.len()<=index
+			{
+				self.temporal_statistics.resize_with(index+1,Default::default);
+				self.temporal_statistics[index].begin_cycle = index*self.temporal_step;
+			}
+			Some(&mut self.temporal_statistics[index])
+		} else { None }
+	}
 }
 
 ///The available statistical columns. Each column has a string for the header and a way to compute what to print each period.
@@ -1383,6 +1392,7 @@ impl<'a> Simulation<'a>
 								},
 								&Location::RouterPort{../*router_index,router_port*/} => if phit.is_begin()
 								{
+									self.statistics.track_phit_hop(phit,self.cycle);
 									phit.packet.routing_info.borrow_mut().hops+=1;
 									self.routing.update_routing_info(&phit.packet.routing_info, self.network.topology.as_ref(), router, port, phit.packet.message.destination,&self.rng);
 								},
@@ -1627,6 +1637,9 @@ impl<'a> Simulation<'a>
 		let server_average_cycle_last_consumed_message : f64 = (self.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).sum::<usize>() as f64)/(self.network.servers.len() as f64);
 		let server_average_missed_generations : f64 = (self.network.servers.iter().map(|s|s.statistics.missed_generations).sum::<usize>() as f64)/(self.network.servers.len() as f64);
 		let servers_with_missed_generations : usize = self.network.servers.iter().map(|s|if s.statistics.missed_generations > 0 {1} else {0}).sum::<usize>();
+		let virtual_channel_usage: Vec<_> =measurement.virtual_channel_usage.iter().map(|&count|
+			ConfigurationValue::Number(count as f64 / cycles as f64 / total_links as f64)
+		).collect();
 		let git_id=get_git_id();
 		let version_number = get_version_number();
 		let mut result_content = vec![
@@ -1645,6 +1658,7 @@ impl<'a> Simulation<'a>
 			(String::from("server_average_cycle_last_consumed_message"),ConfigurationValue::Number(server_average_cycle_last_consumed_message)),
 			(String::from("server_average_missed_generations"),ConfigurationValue::Number(server_average_missed_generations)),
 			(String::from("servers_with_missed_generations"),ConfigurationValue::Number(servers_with_missed_generations as f64)),
+			(String::from("virtual_channel_usage"),ConfigurationValue::Array(virtual_channel_usage)),
 			//(String::from("git_id"),ConfigurationValue::Literal(format!("\"{}\"",git_id))),
 			(String::from("git_id"),ConfigurationValue::Literal(format!("{}",git_id))),
 			(String::from("version_number"),ConfigurationValue::Literal(format!("{}",version_number))),
@@ -1681,6 +1695,7 @@ impl<'a> Simulation<'a>
 			let mut jscp_collect = Vec::with_capacity(samples);
 			let mut jsgp_collect = Vec::with_capacity(samples);
 			let mut average_packet_hops_collect = Vec::with_capacity(samples);
+			let mut virtual_channel_usage_collect = Vec::with_capacity(samples);
 			for measurement in self.statistics.temporal_statistics.iter()
 			{
 				let injected_load=measurement.created_phits as f64/step as f64/num_servers as f64;
@@ -1697,6 +1712,10 @@ impl<'a> Simulation<'a>
 				jsgp_collect.push(ConfigurationValue::Number(jsgp));
 				let average_packet_hops=measurement.total_packet_hops as f64 / measurement.consumed_packets as f64;
 				average_packet_hops_collect.push(ConfigurationValue::Number(average_packet_hops));
+				let virtual_channel_usage: Vec<_> =measurement.virtual_channel_usage.iter().map(|&count|
+					ConfigurationValue::Number(count as f64 / step as f64 / total_links as f64)
+				).collect();
+				virtual_channel_usage_collect.push(ConfigurationValue::Array(virtual_channel_usage));
 			};
 			let temporal_content = vec![
 				//(String::from("cycle"),ConfigurationValue::Number(self.cycle as f64)),
@@ -1707,6 +1726,7 @@ impl<'a> Simulation<'a>
 				(String::from("server_generation_jain_index"),ConfigurationValue::Array(jsgp_collect)),
 				(String::from("server_consumption_jain_index"),ConfigurationValue::Array(jscp_collect)),
 				(String::from("average_packet_hops"),ConfigurationValue::Array(average_packet_hops_collect)),
+				(String::from("virtual_channel_usage"),ConfigurationValue::Array(virtual_channel_usage_collect)),
 				//(String::from("total_packet_per_hop_count"),ConfigurationValue::Array(total_packet_per_hop_count)),
 				//(String::from("average_link_utilization"),ConfigurationValue::Number(average_link_utilization)),
 				//(String::from("maximum_link_utilization"),ConfigurationValue::Number(maximum_link_utilization)),

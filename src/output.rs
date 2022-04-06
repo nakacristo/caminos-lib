@@ -300,6 +300,8 @@ struct Plotkind<'a>
 	upper_box_limit: Option<&'a ConfigurationValue>,
 	bottom_box_limit: Option<&'a ConfigurationValue>,
 	box_middle: Option<&'a ConfigurationValue>,
+	/// Raw string for the backend. Use with care.
+	raw: Option<String>,
 }
 
 /**
@@ -384,6 +386,7 @@ impl<'a> Plotkind<'a>
 		let mut bottom_box_limit=None;
 		let mut box_middle=None;
 		let mut ordinate_post_expression=None;
+		let mut raw=None;
 		match_object_panic!(description,"Plotkind",value,
 			"parameter" => parameter=Some(value),
 			"abscissas" => abscissas=Some(value),
@@ -407,6 +410,7 @@ impl<'a> Plotkind<'a>
 			"upper_box_limit" => upper_box_limit=Some(value),
 			"bottom_box_limit" => bottom_box_limit=Some(value),
 			"box_middle" => box_middle=Some(value),
+			"raw" => raw=Some(value.as_str().expect("bad value for raw").to_string()),
 		);
 		//let parameter=parameter.expect("There were no parameter");
 		//let abscissas=abscissas.expect("There were no abscissas");
@@ -432,6 +436,7 @@ impl<'a> Plotkind<'a>
 			upper_box_limit,
 			bottom_box_limit,
 			box_middle,
+			raw,
 		}
 	}
 }
@@ -899,7 +904,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	\begin{{center}}
 	\tikzpicturedependsonfile{{externalized-plots/external-{folder_id}-{prefix}-selector{selectorname}-kind0.md5}}
 	\tikzsetnextfilename{{externalized-legends/legend-{folder_id}-{prefix}-{selectorname}}}
-	\ref{{legend-{folder_id}-{prefix}-{selectorname}}}\\"#,selectorname=selectorname,prefix=prefix,folder_id=folder_id));
+	\pgfplotslegendfromname{{legend-{folder_id}-{prefix}-{selectorname}}}\\"#,selectorname=selectorname,prefix=prefix,folder_id=folder_id));
 			}
 			wrote+=1;
 			let mut pre_plots=String::new();
@@ -1208,6 +1213,10 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 			if boxplot
 			{
 				extra += "width=500pt,area legend,boxplot={draw direction=y,box extend=0.08,every average/.style={/tikz/mark=*}},"
+			}
+			if let Some(ref raw_style) = kd.raw
+			{
+				extra = extra + raw_style + ",";
 			}
 			figure_tikz.push_str(&format!(r#"
 	\tikzsetnextfilename{{externalized-plots/external-{tikzname}}}
