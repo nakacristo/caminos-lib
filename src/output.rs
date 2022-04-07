@@ -14,6 +14,7 @@ use std::process::Command;
 use std::collections::{HashSet,BTreeMap};
 use std::rc::Rc;
 use std::fmt::Debug;
+use std::path::PathBuf;
 
 use crate::config_parser::{ConfigurationValue,Expr};
 use crate::config::{self,combine,evaluate,reevaluate,values_to_f32_with_count};
@@ -501,65 +502,66 @@ fn create_plots(description: &ConfigurationValue, results: &Vec<(usize, Configur
 				let selector_index = selector_map.insert( &selector );
 				let legend_index = legend_map.insert( &legend );
 				let abscissa_array = pk.abscissas.map(|cv|reevaluate(cv,&context,&outputs_path));
-				if let ConfigurationValue::Array(ref l)=histogram_values
+				match histogram_values
 				{
-					//let total:f64 = l.iter().map(|cv|match cv{
-					//	ConfigurationValue::Number(x) => x,
-					//	_ => panic!("adding an array of non-numbers for a histogram"),
-					//}).sum();
-					let factor:Option<f64> = if let Some(_)=pk.histogram
+					ConfigurationValue::Array(ref l)=>
 					{
-						let total:f64 = l.iter().map(|cv|match cv{
-							ConfigurationValue::Number(x) => x,
-							_ => panic!("adding an array of non-numbers for a histogram"),
-						}).sum();
-						Some(1f64 / total)
-					} else { None };
-					for (h_index,h_value) in l.iter().enumerate()
-					{
-						let ordinate=if let &ConfigurationValue::Number(amount)=h_value
+						//let total:f64 = l.iter().map(|cv|match cv{
+						//	ConfigurationValue::Number(x) => x,
+						//	_ => panic!("adding an array of non-numbers for a histogram"),
+						//}).sum();
+						let factor:Option<f64> = if let Some(_)=pk.histogram
 						{
-							if let Some(factor)=factor
+							let total:f64 = l.iter().map(|cv|match cv{
+								ConfigurationValue::Number(x) => x,
+								_ => panic!("adding an array of non-numbers for a histogram"),
+							}).sum();
+							Some(1f64 / total)
+						} else { None };
+						for (h_index,h_value) in l.iter().enumerate()
+						{
+							let ordinate=if let &ConfigurationValue::Number(amount)=h_value
 							{
-								ConfigurationValue::Number(amount * factor)
+								if let Some(factor)=factor
+								{
+									ConfigurationValue::Number(amount * factor)
+								}
+								else
+								{
+									ConfigurationValue::Number(amount)
+								}
 							}
 							else
 							{
-								ConfigurationValue::Number(amount)
-							}
+								panic!("A histogram count/array value should be a number (instead of {})",h_value);
+							};
+							let abscissa = match abscissa_array
+							{
+								None => ConfigurationValue::Number(h_index as f64),
+								Some(ConfigurationValue::Array(ref x)) => x[h_index].clone(),
+								_ => panic!("The abscissa is not an array when using array to build the ordinates"),
+							};
+							let record=RawRecord{
+								selector_index,
+								legend_index,
+								selector:selector.clone(),
+								legend:legend.clone(),
+								parameter: abscissa.clone(),
+								abscissa,
+								//ordinate: h_value.clone(),
+								ordinate,
+								upper_whisker:None,
+								bottom_whisker:None,
+								upper_box_limit:None,
+								bottom_box_limit:None,
+								box_middle:None,
+								git_id: git_id.clone(),
+							};
+							records.push(record);
 						}
-						else
-						{
-							panic!("A histogram count/array value should be a number (instead of {})",h_value);
-						};
-						let abscissa = match abscissa_array
-						{
-							None => ConfigurationValue::Number(h_index as f64),
-							Some(ConfigurationValue::Array(ref x)) => x[h_index].clone(),
-							_ => panic!("The abscissa is not an array when using array to build the ordinates"),
-						};
-						let record=RawRecord{
-							selector_index,
-							legend_index,
-							selector:selector.clone(),
-							legend:legend.clone(),
-							parameter: abscissa.clone(),
-							abscissa,
-							//ordinate: h_value.clone(),
-							ordinate,
-							upper_whisker:None,
-							bottom_whisker:None,
-							upper_box_limit:None,
-							bottom_box_limit:None,
-							box_middle:None,
-							git_id: git_id.clone(),
-						};
-						records.push(record);
 					}
-				}
-				else
-				{
-					panic!("histogram/array from non-Array");
+					ConfigurationValue::None => println!("WARNING: ignoring null histogram/array."),
+					_ => panic!("histogram/array from non-Array"),
 				}
 			}
 		}
@@ -861,6 +863,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	//let mut figure_index=0;
 	let mut all_git_ids: HashSet<String> = HashSet::new();
 	let mut offsets:Vec<usize>=(0..kind.len()).collect();//to keep track of the offset as progressing in selectors.
+	let tmp_path=root.join("tikz_tmp");
+	// latex_jobs=[(X,Y)], where Y should be regenerated if X changes.
+	let mut latex_jobs : Vec<(PathBuf,PathBuf,String)> = vec![];
 	//We try to make a figure for each selector. Then in each figure we make a tikzpicture for each PlotKind.
 	'figures: loop
 	{
@@ -905,6 +910,13 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	\tikzpicturedependsonfile{{externalized-plots/external-{folder_id}-{prefix}-selector{selectorname}-kind0.md5}}
 	\tikzsetnextfilename{{externalized-legends/legend-{folder_id}-{prefix}-{selectorname}}}
 	\pgfplotslegendfromname{{legend-{folder_id}-{prefix}-{selectorname}}}\\"#,selectorname=selectorname,prefix=prefix,folder_id=folder_id));
+				let dependency_str = format!("external-{folder_id}-{prefix}-selector{selectorname}-kind0.pdf");
+				//let target_str = format!("legend-{folder_id}-{prefix}-{selectorname}");
+				let target_str = format!("externalized-legends/legend-{folder_id}-{prefix}-{selectorname}");
+				let dependency = tmp_path.join("externalized-plots").join(dependency_str);
+				//let target = tmp_path.join("externalized-legends").join(target_str);
+				let target = tmp_path.join(&target_str);
+				latex_jobs.push( (dependency,target,target_str) );
 			}
 			wrote+=1;
 			let mut pre_plots=String::new();
@@ -1402,7 +1414,6 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 "#,shared_prelude=shared_prelude,local_prelude=local_prelude,data_string=tikz).unwrap();
 	let pdf_path=&outputs_path.join(&pdf_filename);
 	println!("Creating {:?}",pdf_path);
-	let tmp_path=root.join("tikz_tmp");
 	if !tmp_path.is_dir()
 	{
 		fs::create_dir(&tmp_path).expect("Something went wrong when creating the tikz tmp directory.");
@@ -1495,6 +1506,10 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	let whole_tex_path=tmp_path.join(&tmpname_tex);
 	let mut whole_tex_file=File::create(&whole_tex_path).expect("Could not create whole tex temporal file.");
 	writeln!(whole_tex_file,"{}",whole_tex).unwrap();
+	let mut latex_jobs: Vec<(PathBuf,PathBuf,String,Option<std::time::SystemTime>)> = latex_jobs.into_iter().map(|(dependency,target,target_str)|{
+		let timestamp = dependency.metadata().ok().and_then(|metadata|metadata.modified().ok());
+		(dependency,target,target_str,timestamp)
+	}).collect();
 	for _ in 0..3
 	{
 		//With `remember picture` we need at least two passes.
@@ -1504,6 +1519,26 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 			.arg("--shell-escape")
 			.arg(&tmpname_tex)
 			.output().map_err(|e|Error::command_not_found(source_location!(),"pdflatex".to_string(),e))?;
+		for (dependency,target,target_str,timestamp) in latex_jobs.iter_mut()
+		{
+			let new_timestamp = dependency.metadata().ok().and_then(|metadata|metadata.modified().ok());
+			let target_timestamp = target.metadata().ok().and_then(|metadata|metadata.modified().ok());
+			let regenerate = dependency.exists() && (!target.exists() || timestamp.is_none() || new_timestamp.is_none() || target_timestamp.is_none() || timestamp.unwrap()<new_timestamp.unwrap() || target_timestamp.unwrap()<new_timestamp.unwrap() );
+			if regenerate
+			{
+				//$ pdflatex -shell-escape -halt-on-error -interaction=batchmode -jobname "externalized-legends/legend-plzxaltxRIIRIIIRIIIxHammingRVIIIxRVIIIxRVIIIxtemporalxRVIVxdxaggregated-throughput-xdimensionxcomplementxreversex" "\def\tikzexternalrealjob{throughput-tmp}\input{throughput-tmp}"
+				let target_str = format!("\"{}\"",target_str);
+				let _pdflatex=Command::new("pdflatex")
+					.current_dir(&tmp_path)
+					.arg("--shell-escape")
+					.arg("-interaction=batchmode")
+					.arg("-jobname")
+					.arg(target_str)
+					.arg(format!(r"\def\tikzexternalrealjob{{{tmpname}}}\input{{{tmpname}}}"))
+					.output().map_err(|e|Error::command_not_found(source_location!(),"pdflatex".to_string(),e))?;
+			}
+			*timestamp = new_timestamp;
+		}
 	}
 	let filepath=tmp_path.join(tmpname_pdf);
 	//fs::copy(&filepath,&pdf_path).or_else(|err|Err(BackendError::CouldNotGenerateFile{filepath:filepath,io_error:Some(err)}))?;

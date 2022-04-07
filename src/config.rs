@@ -568,18 +568,14 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 				{
 					let mut container=None;
 					let mut position=None;
+					let mut else_value=ConfigurationValue::None;
 					for (key,val) in arguments
 					{
 						match key.as_ref()
 						{
-							"container" =>
-							{
-								container=Some(evaluate(val,context,path));
-							},
-							"position" =>
-							{
-								position=Some(evaluate(val,context,path));
-							},
+							"container" => container=Some(evaluate(val,context,path)),
+							"position" => position=Some(evaluate(val,context,path)),
+							"else" => else_value = evaluate(val,context,path),
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
 					}
@@ -595,7 +591,12 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						ConfigurationValue::Number(x) => x as usize,
 						_ => panic!("position argument of at evaluated to a non-number ({}:?)",position),
 					};
-					container[position].clone()
+					//container[position].clone()
+					if position < container.len() {
+						container[position].clone()
+					} else {
+						else_value
+					}
 				}
 				"AverageBins" =>
 				{
@@ -764,6 +765,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 					let container=match container
 					{
 						ConfigurationValue::Array(a) => a,
+						ConfigurationValue::None => return ConfigurationValue::None,
 						_ => panic!("first argument of at evaluated to a non-array ({}:?)",container),
 					};
 					let container = container.into_iter().map(|item|{

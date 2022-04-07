@@ -3,10 +3,21 @@
 ## next [0.4.4 or greater]
 
 
+### 2022-04-07
+Fix the tracking of the recently added `virtual_channel_usage`.
+Fixes to regenerate the legends in the tikz backend.
+Allow None in some config functions.
+Added new policy operation `Chain` to use inside meta-policies.
+git commit -m "Policy Chain and a variety of fixes."
+
 ### 2022-04-06
 Added `Statistics::current_temporal_measurement` to replace the shared code for temporal statistics in the several `track*` methods.
 Added tracking link usage by virtual channels. Exposed results by the name `virtual_channel_usage`.
 git commit -m "Added statistic virtual_channel_usage. Removed the weird legend-self-references generated from the tikz backend."
+Tikz do no calculate dependencies unless using `/tikz/external/mode=list and make`, but that requires calling a Makefile.
+Instead of all this shit now I call the legend subjobs directly.
+See the documentation of `\tikzpicturedependsonfile` saying
+> Limitations: this command is currently only supported for mode=list and make and the generated makefile.
 
 ### 2022-04-05
 Changed in tikz backed from using ref to using pgfplotslegendfromname.

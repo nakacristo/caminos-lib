@@ -300,6 +300,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"Either" => Box::new(Either::new(arg)),
 			"MapEntryVC" => Box::new(MapEntryVC::new(arg)),
 			"MapMessageSize" => Box::new(MapMessageSize::new(arg)),
+			"Chain" => Box::new(Chain::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -1523,7 +1524,7 @@ impl ArgumentVC
 	}
 }
 
-///Apply a different policy to each hop.
+///Accepts with any of the policies given.
 #[derive(Debug)]
 pub struct Either
 {
@@ -1727,4 +1728,63 @@ impl MapMessageSize
 	}
 }
 
+
+/// Accepts if the sequence of policies accept. Empty is a NOP. Just for meta-policies.
+#[derive(Debug)]
+pub struct Chain
+{
+	policies: Vec<Box<dyn VirtualChannelPolicy>>,
+}
+
+impl VirtualChannelPolicy for Chain
+{
+	fn filter(&self, mut candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy Chain");
+		if router.get_index().expect("we need routers with index") == info.target_router_index
+		{
+			//do nothing
+			candidates
+		}
+		else
+		{
+			for policy in self.policies.iter()
+			{
+				candidates = policy.as_ref().filter(candidates,router,info,topology,rng);
+			}
+			candidates
+		}
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+}
+
+impl Chain
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> Chain
+	{
+		let mut policies=None;
+		match_object_panic!(arg.cv,"Chain",value,
+			"policies" => policies=Some(value.as_array().expect("bad value for policies").iter()
+				.map(|v|new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg})).collect()),
+		);
+		let policies=policies.expect("There were no policies");
+		Chain{
+			policies,
+		}
+	}
+}
 

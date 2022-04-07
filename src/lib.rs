@@ -1390,11 +1390,14 @@ impl<'a> Simulation<'a>
 									*phit.packet.cycle_into_network.borrow_mut() = self.cycle;
 									self.routing.initialize_routing_info(&phit.packet.routing_info, self.network.topology.as_ref(), router, phit.packet.message.destination,&self.rng);
 								},
-								&Location::RouterPort{../*router_index,router_port*/} => if phit.is_begin()
+								&Location::RouterPort{../*router_index,router_port*/} =>
 								{
 									self.statistics.track_phit_hop(phit,self.cycle);
-									phit.packet.routing_info.borrow_mut().hops+=1;
-									self.routing.update_routing_info(&phit.packet.routing_info, self.network.topology.as_ref(), router, port, phit.packet.message.destination,&self.rng);
+									if phit.is_begin()
+									{
+										phit.packet.routing_info.borrow_mut().hops+=1;
+										self.routing.update_routing_info(&phit.packet.routing_info, self.network.topology.as_ref(), router, port, phit.packet.message.destination,&self.rng);
+									}
 								},
 								_ => (),
 							};
