@@ -3,6 +3,11 @@
 ## next [0.4.4 or greater]
 
 
+### 2022-04-08
+Mention `texlive-latexextra` in the documentation.
+Split file measures.rs from lib.rs.
+git commit -m "New file measures.rs, split from lib.rs."
+
 ### 2022-04-07
 Fix the tracking of the recently added `virtual_channel_usage`.
 Fixes to regenerate the legends in the tikz backend.

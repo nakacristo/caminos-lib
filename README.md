@@ -256,7 +256,7 @@ An example of output decription `main.od` is
 ]
 ```
 
-Fot the `tikz` backend to work it is necessary to have a working `LaTeX` installation that included the `pgfplots` package. It is part of the `texlive-pictures` package in some linux distributions.
+Fot the `tikz` backend to work it is necessary to have a working `LaTeX` installation that includes the `pgfplots` package. It is part of the `texlive-pictures` package in some linux distributions. It may also require the `texlive-latexextra` package.
 
 # Plugging
 
