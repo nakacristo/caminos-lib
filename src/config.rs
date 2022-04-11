@@ -1532,7 +1532,7 @@ macro_rules! match_object{
 		{
 			if cv_name!= $name
 			{
-				panic!("A Pow must be created from a `{}` object not `{}`",$name,cv_name);
+				panic!("A {} must be created from a `{}` object not `{}`",$name,$name,cv_name);
 			}
 			for &(ref name,ref $valueid) in cv_pairs
 			{
@@ -1565,7 +1565,7 @@ macro_rules! match_object_panic{
 		{
 			if cv_name!= $name
 			{
-				panic!("A Pow must be created from a `{}` object not `{}`",$name,cv_name);
+				panic!("A {} must be created from a `{}` object not `{}`",$name,$name,cv_name);
 			}
 			for &(ref name,ref $valueid) in cv_pairs
 			{

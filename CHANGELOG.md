@@ -3,6 +3,10 @@
 ## next [0.4.4 or greater]
 
 
+### 2022-04-11
+BUGFIX: The macros `match_object_*` had ahardcoded Pow.
+git commit -m "Fixed an error message from the match_object macros."
+
 ### 2022-04-08
 Mention `texlive-latexextra` in the documentation.
 Split file measures.rs from lib.rs.
