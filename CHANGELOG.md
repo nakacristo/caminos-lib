@@ -3,8 +3,12 @@
 ## next [0.4.4 or greater]
 
 
+### 2022-04-13
+Use correct English for field `router::Basic::output_prioritize_lowest_label`. The old config name `output_priorize_lowest_label` is deprecated but accepted with a warning.
+git commit -m "Use correct english for output_prioritize_lowest_label, warn when misused."
+
 ### 2022-04-11
-BUGFIX: The macros `match_object_*` had ahardcoded Pow.
+BUGFIX: The macros `match_object_*` had a hard-coded Pow.
 git commit -m "Fixed an error message from the match_object macros."
 
 ### 2022-04-08

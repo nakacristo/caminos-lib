@@ -50,7 +50,7 @@ pub struct Basic<TM:TransmissionMechanism>
 	///It may appear that should obviously be put to `true`, but in practice that just reduces performance.
 	allow_request_busy_port: bool,
 	///Use the labels provided by the routing to sort the petitions in the output arbiter.
-	output_priorize_lowest_label: bool,
+	output_prioritize_lowest_label: bool,
 	///transmission_port_status[port] = status
 	transmission_port_status: Vec<Box<dyn StatusAtEmissor>>,
 	///reception_port_space[port] = space
@@ -405,7 +405,7 @@ impl Basic<SimpleVirtualChannels>
 		let mut flit_size=None;
 		let mut intransit_priority=None;
 		let mut allow_request_busy_port=None;
-		let mut output_priorize_lowest_label=None;
+		let mut output_prioritize_lowest_label=None;
 		let mut output_buffer_size=None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
 		{
@@ -468,11 +468,21 @@ impl Basic<SimpleVirtualChannels>
 						&ConfigurationValue::False => allow_request_busy_port=Some(false),
 						_ => panic!("bad value for allow_request_busy_port"),
 					},
-					"output_priorize_lowest_label" => match value
+					"output_priorize_lowest_label" =>
 					{
-						&ConfigurationValue::True => output_priorize_lowest_label=Some(true),
-						&ConfigurationValue::False => output_priorize_lowest_label=Some(false),
-						_ => panic!("bad value for output_priorize_lowest_label"),
+						eprintln!("WARNING: the name output_priorize_lowest_label is deprecated. Now the correct name is output_prioritize_lowest_label");
+						match value
+						{
+							&ConfigurationValue::True => output_prioritize_lowest_label=Some(true),
+							&ConfigurationValue::False => output_prioritize_lowest_label=Some(false),
+							_ => panic!("bad value for output_prioritize_lowest_label"),
+						}
+					},
+					"output_prioritize_lowest_label" => match value
+					{
+						&ConfigurationValue::True => output_prioritize_lowest_label=Some(true),
+						&ConfigurationValue::False => output_prioritize_lowest_label=Some(false),
+						_ => panic!("bad value for output_prioritize_lowest_label"),
 					},
 					_ => panic!("Nothing to do with field {} in Basic",name),
 				}
@@ -492,7 +502,7 @@ impl Basic<SimpleVirtualChannels>
 		let flit_size=flit_size.expect("There were no flit_size");
 		let intransit_priority=intransit_priority.expect("There were no intransit_priority");
 		let allow_request_busy_port=allow_request_busy_port.expect("There were no allow_request_busy_port");
-		let output_priorize_lowest_label=output_priorize_lowest_label.expect("There were no output_priorize_lowest_label");
+		let output_prioritize_lowest_label=output_prioritize_lowest_label.expect("There were no output_prioritize_lowest_label");
 		let input_ports=topology.ports(router_index);
 		let selected_input=(0..input_ports).map(|_|
 			(0..virtual_channels).map(|_|None).collect()
@@ -544,7 +554,7 @@ impl Basic<SimpleVirtualChannels>
 			flit_size,
 			intransit_priority,
 			allow_request_busy_port,
-			output_priorize_lowest_label,
+			output_prioritize_lowest_label,
 			buffer_size,
 			transmission_port_status,
 			reception_port_space,
@@ -965,7 +975,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 			None=>0,
 		};
 		//Split que sequence in subsequences, where any items in a subsequence has more priority than any element in a later subsequence.
-		let request_sequence:Vec<Vec<PortRequest>>=if self.output_priorize_lowest_label
+		let request_sequence:Vec<Vec<PortRequest>>=if self.output_prioritize_lowest_label
 		{
 			//(min_label..max_label+1).map(|label|request.iter().filter(|r|r.label==label).map(|&t|t).collect()).collect()
 			//(min_label..max_label+1).map(move |label|request.into_iter().filter(|r|r.label==label).collect()).collect()
