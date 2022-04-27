@@ -755,7 +755,7 @@ impl CartesianTransform
 {
 	fn new(arg:PatternBuilderArgument) -> CartesianTransform
 	{
-		let mut sides=None;
+		let mut sides:Option<Vec<_>>=None;
 		let mut shift=None;
 		let mut permute=None;
 		let mut complement=None;
@@ -917,7 +917,7 @@ impl CartesianFactor
 {
 	fn new(arg:PatternBuilderArgument) -> CartesianFactor
 	{
-		let mut sides=None;
+		let mut sides: Option<Vec<_>>=None;
 		let mut factors=None;
 		match_object_panic!(arg.cv,"CartesianFactor",value,
 			"sides" => sides=Some(value.as_array().expect("bad value for sides").iter()

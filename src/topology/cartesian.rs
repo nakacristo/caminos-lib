@@ -17,10 +17,10 @@ pub struct CartesianData
 
 impl CartesianData
 {
-	pub fn new(sides:&Vec<usize>) -> CartesianData
+	pub fn new(sides:&[usize]) -> CartesianData
 	{
 		CartesianData{
-			sides:sides.clone(),
+			sides:sides.to_vec(),
 			size: sides.iter().product(),
 		}
 	}
@@ -200,7 +200,7 @@ impl Mesh
 {
 	pub fn new(cv:&ConfigurationValue) -> Mesh
 	{
-		let mut sides=None;
+		let mut sides:Option<Vec<_>>=None;
 		let mut servers_per_router=None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
 		{
@@ -401,7 +401,7 @@ impl Torus
 {
 	pub fn new(cv:&ConfigurationValue) -> Torus
 	{
-		let mut sides=None;
+		let mut sides:Option<Vec<_>>=None;
 		let mut servers_per_router=None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
 		{
@@ -585,7 +585,7 @@ impl Hamming
 {
 	pub fn new(cv:&ConfigurationValue) -> Hamming
 	{
-		let mut sides=None;
+		let mut sides:Option<Vec<_>>=None;
 		let mut servers_per_router=None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
 		{

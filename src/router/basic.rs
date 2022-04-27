@@ -992,11 +992,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 				//	}
 				//});
 				let (mut request_transit, mut request_injection) : (Vec<PortRequest>,Vec<PortRequest>) = rx.into_iter().partition(|req|{
-					match simulation.network.topology.neighbour(captured_router_index,req.entry_port)
-					{
-						( Location::RouterPort{..} ,_) => true,
-						_ => false,
-					}
+					matches!(simulation.network.topology.neighbour(captured_router_index,req.entry_port), ( Location::RouterPort{..} ,_))
 				});
 				//shuffle has changed notably from rand-0.4 to rand-0.8
 				//simulation.rng.borrow_mut().shuffle(&mut request_transit);

@@ -10,6 +10,8 @@ BREAKING CHANGE: Using `&dyn Topology` instead of `&Box<dyn Topology>` in all in
 git commit -m "Removed references to boxes in interfaces."
 BREAKING CHANGE: `Topology::coordinated_routing_record` now receives slices.
 git commit -m "coordinated_routing_record now receives slices."
+BREAKING CHANGE: `CartesianData::new` now receives an slice.
+git commit -m "CartesianData::new now receives an slice."
 
 ### 2022-04-26
 Taken some advices from clippy.
