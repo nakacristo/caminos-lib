@@ -221,7 +221,7 @@ impl<G:Geometry + Debug + Quantifiable> FlatGeometry for G
 	}
 	fn is_incident(&self, line:usize, point:usize) -> Result<bool,Error>
 	{
-		Ok(Geometry::is_incident(self,&self.line_by_index(line).ok_or(error!(undetermined))?,&self.point_by_index(point).ok_or(error!(undetermined))?))
+		Ok(Geometry::is_incident(self,&self.line_by_index(line).ok_or_else(||error!(undetermined))?,&self.point_by_index(point).ok_or_else(||error!(undetermined))?))
 	}
 }
 

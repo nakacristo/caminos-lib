@@ -1349,7 +1349,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	let git_id=get_git_id();
 	let title=format!("{}/{} ({})",folder,pdf_filename,amount_string);
 	let header=format!("\\tiny {}:{} ({})\\\\pdflatex on \\today\\\\git\\_id={}",latex_protect_text(&folder),latex_protect_text(&pdf_filename),amount_string,latex_protect_text(git_id));
-	let shared_prelude=r#"
+	let shared_prelude=format!(r#"
 %% -- common pgfplots prelude --
 \newenvironment{{experimentfigure}}{{\begin{{figure}}[H]\tikzexternalenable}}{{\tikzexternaldisable\end{{figure}}}}
 %\newenvironment{{experimentfigure}}{{\begin{{figure*}}}}{{\end{{figure*}}}}
@@ -1415,7 +1415,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 		%}},
 	}},
 	%/pgf/images/aux in dpth=true,
-}}"#;
+}}"#);
 	let mut local_prelude=format!(r#"
 %% -- experiment-local prelude
 \newcommand\captionprologue{{X: }}

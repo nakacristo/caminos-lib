@@ -15,6 +15,8 @@ git commit -m "CartesianData::new now receives an slice."
 Upgraded the Result types in projective.rs and multistage.rs to use our Error type.
 BREAKING CHANGE: SpaceAtReceptor and Stage now use the Error type in its Result types.
 git commit -m "SpaceAtReceptor and Stage now use the Error type in its Result types."
+Update default main.cfg to use the correct name `output_prioritize_lowest_label`.
+git commit -m "Trying removing the single request per input buffer requirement."
 
 ### 2022-04-26
 Taken some advices from clippy.

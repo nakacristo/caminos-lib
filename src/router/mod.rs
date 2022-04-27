@@ -113,7 +113,7 @@ impl Buffer
 	}
 	pub fn front(&self) -> Option<Rc<Phit>>
 	{
-		self.phits.front().map(|rphit|rphit.clone())
+		self.phits.front().cloned()
 	}
 	///How many phits are currently in the buffer.
 	pub fn len(&self) -> usize
@@ -168,7 +168,7 @@ impl<ExtraInfo> AugmentedBuffer<ExtraInfo>
 	}
 	fn front(&self) -> Option<(Rc<Phit>,ExtraInfo)> where ExtraInfo:Clone
 	{
-		self.phits.front().map(|rphit| rphit.clone())
+		self.phits.front().cloned()
 	}
 	///How many phits are currently in the buffer.
 	fn len(&self) -> usize

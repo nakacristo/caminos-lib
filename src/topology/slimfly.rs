@@ -20,7 +20,8 @@ use crate::{
 trait FlatRing : Debug + Quantifiable
 {
 	fn size(&self) -> usize;
-	fn from_i32(&self, integer: i32) -> usize;
+	// Given an `integer` find the element in the ring corresponding to `integer` times the multiplicative unit of the ring.
+	fn index_from_i32(&self, integer: i32) -> usize;
 	fn add(&self, a:usize, b:usize) -> usize;
 	fn sub(&self, a:usize, b:usize) -> usize;
 	fn mul(&self, a:usize, b:usize) -> usize;
@@ -93,7 +94,7 @@ impl FlatRing for IntegerIdealRing
 	{
 		self.modulo
 	}
-	fn from_i32(&self, integer: i32) -> usize
+	fn index_from_i32(&self, integer: i32) -> usize
 	{
 		let mut ret:i32 = integer;
 		let m :i32 = self.modulo as i32;
@@ -101,7 +102,7 @@ impl FlatRing for IntegerIdealRing
 		{
 			ret += m;
 		}
-		ret = ret % m;
+		ret %= m;
 		ret as usize
 	}
 	fn add(&self, a:usize, b:usize) -> usize

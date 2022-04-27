@@ -271,34 +271,40 @@ Both entries `directory_main` and `file_main` receive a `&Plugs` argument that m
 
 // --- crate attributes ---
 // At clippy::correctness no problem should appear
-// $(cargo clippy -- -A clippy::all -W clippy::correctness)
+	// $(cargo clippy -- -A clippy::all -W clippy::correctness)
 // At clippy::suspicious
-#![allow(clippy::suspicious_else_formatting)]
+	#![allow(clippy::suspicious_else_formatting)]
 // At clippy::style
-// These should be partially addressed, but of very little importance.
-#![allow(clippy::needless_return)]
-#![allow(clippy::new_without_default)]
-#![allow(clippy::comparison_chain)]//is this really clearer???
-#![allow(clippy::single_match)]
-#![allow(clippy::let_and_return)]
-#![allow(clippy::len_without_is_empty)]
-// Ignore these lints
-#![allow(clippy::match_ref_pats)]
-#![allow(clippy::tabs_in_doc_comments)]
+	// These should be partially addressed, but of very little importance.
+	#![allow(clippy::needless_return)]
+	#![allow(clippy::new_without_default)]
+	#![allow(clippy::comparison_chain)]//is this really clearer???
+	#![allow(clippy::single_match)]
+	#![allow(clippy::let_and_return)]
+	#![allow(clippy::len_without_is_empty)]
+	// What is the more appropiate way to iterate a couple arrays of same size, while also using the index itself?
+	#![allow(clippy::needless_range_loop)]
+	// I have several cases that seem cleaner without collapsing.
+	#![allow(clippy::collapsible_else_if)]
+	// Ignore these lints
+	#![allow(clippy::match_ref_pats)]
+	#![allow(clippy::tabs_in_doc_comments)]
 // At clippy::complexity
-#![allow(clippy::type_complexity)]
-//I only use this in some cases that would become extremely verbose.
-#![allow(clippy::option_map_unit_fn)]
+	#![allow(clippy::type_complexity)]
+	//I only use this in some cases that would become extremely verbose.
+	#![allow(clippy::option_map_unit_fn)]
 // At clippy::perf all should be addressed.
 // clippy::{pedantic,nursery} seem better to be allowed, as it is the default
 // At clippy::cargo
-#![warn(clippy::cargo)]
-//missing repository and categories.
-#![allow(clippy::cargo_common_metadata)]
+	#![warn(clippy::cargo)]
+	//missing repository and categories.
+	#![allow(clippy::cargo_common_metadata)]
 
 pub use quantifiable_derive::Quantifiable;//the derive macro
 
+//config_parser contains automatically generated code. No sense in being too strict.
 #[allow(clippy::manual_map)]
+#[allow(clippy::match_single_binding)]
 pub mod config_parser;
 pub mod topology;
 pub mod traffic;
