@@ -4,9 +4,11 @@ use ::rand::{rngs::StdRng};
 use std::fmt::Debug;
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::{
+	error,source_location,
 	quantify::Quantifiable,
 	topology::{Topology,Location,CartesianData,TopologyBuilderArgument},
 	config_parser::ConfigurationValue,
+	error::{Error,SourceLocation},
 };
 
 //struct<F:FiniteField> ProjectivePlanePoint<F>
@@ -85,7 +87,7 @@ pub trait FlatGeometry : Debug + Quantifiable
 {
 	fn amount_points(&self) -> usize;
 	fn amount_lines(&self) -> usize;
-	fn is_incident(&self, line:usize, point:usize) -> Result<bool,()>;
+	fn is_incident(&self, line:usize, point:usize) -> Result<bool,Error>;
 }
 
 ///A projective plane for integer modulo prime p implemented with integers 0..p.
@@ -217,9 +219,9 @@ impl<G:Geometry + Debug + Quantifiable> FlatGeometry for G
 	{
 		Geometry::amount_lines(self)
 	}
-	fn is_incident(&self, line:usize, point:usize) -> Result<bool,()>
+	fn is_incident(&self, line:usize, point:usize) -> Result<bool,Error>
 	{
-		Ok(Geometry::is_incident(self,&self.line_by_index(line).ok_or(())?,&self.point_by_index(point).ok_or(())?))
+		Ok(Geometry::is_incident(self,&self.line_by_index(line).ok_or(error!(undetermined))?,&self.point_by_index(point).ok_or(error!(undetermined))?))
 	}
 }
 
@@ -236,13 +238,13 @@ pub struct FlatGeometryCache
 
 impl FlatGeometryCache
 {
-	pub fn new_prime(prime:usize) -> Result<FlatGeometryCache,()>
+	pub fn new_prime(prime:usize) -> Result<FlatGeometryCache,Error>
 	{
 		for divisor in 2..prime
 		{
 			if prime % divisor ==0
 			{
-				return Err(());
+				return Err(error!(undetermined));
 			}
 			if divisor*divisor>=prime
 			{
@@ -275,20 +277,20 @@ impl FlatGeometryCache
 			points_by_line,
 		})
 	}
-	fn incident_points(&self, line:usize) -> Result<&Vec<(usize,usize)>,()>
+	fn incident_points(&self, line:usize) -> Result<&Vec<(usize,usize)>,Error>
 	{
 		if line>=self.points_by_line.len()
 		{
-			Err(())
+			Err(error!(undetermined))
 		} else {
 			Ok(&self.points_by_line[line])
 		}
 	}
-	fn incident_lines(&self, point:usize) -> Result<&Vec<(usize,usize)>,()>
+	fn incident_lines(&self, point:usize) -> Result<&Vec<(usize,usize)>,Error>
 	{
 		if point>=self.lines_by_point.len()
 		{
-			Err(())
+			Err(error!(undetermined))
 		} else {
 			Ok(&self.lines_by_point[point])
 		}

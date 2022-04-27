@@ -106,6 +106,9 @@ macro_rules! error{
 	($kind:ident,$($args:tt)*) => {{
 		Error::$kind( source_location!(), $($args)* )
 	}};
+	($kind:ident) => {{
+		Error::$kind( source_location!() )
+	}};
 }
 
 use ErrorKind::*;

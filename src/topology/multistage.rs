@@ -10,7 +10,11 @@ use super::{Topology,Location,TopologyBuilderArgument,
 	projective::FlatGeometryCache,
 };
 
-use crate::{config_parser::ConfigurationValue,matrix::Matrix,Plugs};
+use crate::{
+	Plugs,error,source_location,
+	config_parser::ConfigurationValue,matrix::Matrix,
+	error::{Error,SourceLocation},
+	};
 use crate::quantify::Quantifiable;
 
 ///Requirements on each level. They are combined by the multiple stages of a MultiStage topology aiming to get values compatible with all of them.
@@ -47,7 +51,7 @@ pub trait Stage : Quantifiable + std::fmt::Debug
 	fn compose_requirements_upward(&self,requirements:LevelRequirements,bottom_level:usize,height:usize) -> LevelRequirements;
 	///Compute the size of the bottom level given the top one.
 	///Return error if there is not a legal one.
-	fn downward_size(&self,top_size:usize,bottom_group_size:usize,bottom_level:usize,height:usize) -> Result<usize,()>;
+	fn downward_size(&self,top_size:usize,bottom_group_size:usize,bottom_level:usize,height:usize) -> Result<usize,Error>;
 	///Number of top routers that are neighbour to a given bottom.
 	fn amount_to_above(&self,below_router:usize,group_size:usize, bottom_size:usize) -> usize;
 	///Number of bottom routers that are neighbour to a given top.
@@ -91,7 +95,7 @@ impl Stage for FatStage
 			current_level_minimum_size: requirements.current_level_minimum_size*self.top_factor,
 		}
 	}
-	fn downward_size(&self,top_size:usize,_bottom_group_size:usize,_bottom_level:usize,_heigh:usize) -> Result<usize,()>
+	fn downward_size(&self,top_size:usize,_bottom_group_size:usize,_bottom_level:usize,_heigh:usize) -> Result<usize,Error>
 	{
 		let partial = top_size * self.bottom_factor;
 		if partial % self.top_factor == 0
@@ -100,7 +104,7 @@ impl Stage for FatStage
 		}
 		else
 		{
-			Err(())
+			Err(error!(undetermined))
 		}
 	}
 	fn amount_to_above(&self,_below_router:usize,_group_size:usize, _bottom_size:usize) -> usize
@@ -213,7 +217,7 @@ impl Stage for ProjectiveStage
 			current_level_minimum_size: requirements.current_level_minimum_size*top_factor,
 		}
 	}
-	fn downward_size(&self,top_size:usize,_bottom_group_size:usize,_bottom_level:usize,_height:usize) -> Result<usize,()>
+	fn downward_size(&self,top_size:usize,_bottom_group_size:usize,_bottom_level:usize,_height:usize) -> Result<usize,Error>
 	{
 		let partial = top_size * self.plane.geometry.amount_points();
 		let top_factor = self.plane.geometry.amount_lines();
@@ -228,7 +232,7 @@ impl Stage for ProjectiveStage
 		}
 		else
 		{
-			Err(())
+			Err(error!(undetermined))
 		}
 	}
 	fn amount_to_above(&self,below_router:usize, group_size: usize, _bottom_size:usize) -> usize
@@ -350,7 +354,7 @@ impl Stage for ExplicitStage
 			current_level_minimum_size: self.top_size,
 		}
 	}
-	fn downward_size(&self,top_size:usize,_bottom_group_size:usize,_bottom_level:usize,_height:usize) -> Result<usize,()>
+	fn downward_size(&self,top_size:usize,_bottom_group_size:usize,_bottom_level:usize,_height:usize) -> Result<usize,Error>
 	{
 		if top_size==self.top_size
 		{
@@ -358,7 +362,7 @@ impl Stage for ExplicitStage
 		}
 		else
 		{
-			Err(())
+			Err(error!(undetermined))
 		}
 	}
 	fn amount_to_above(&self,below_router:usize,_group_size:usize, _bottom_size:usize) -> usize
@@ -593,7 +597,7 @@ impl Stage for WidenedStage
 	{
 		self.base.compose_requirements_upward(requirements,bottom_level,height)
 	}
-	fn downward_size(&self,top_size:usize,bottom_group_size:usize,bottom_level:usize,height:usize) -> Result<usize,()>
+	fn downward_size(&self,top_size:usize,bottom_group_size:usize,bottom_level:usize,height:usize) -> Result<usize,Error>
 	{
 		let base_downward_size = self.base.downward_size(top_size,bottom_group_size,bottom_level,height)?;
 		Ok(base_downward_size * self.multiplier)

@@ -29,6 +29,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * Using `&dyn Topology` instead of `&Box<dyn Topology>` in all interfaces.
 * `Topology::coordinated_routing_record` now receives slices.
 * `CartesianData::new` now receives an slice.
+* SpaceAtReceptor and Stage now uses the Error type in its Result types.
 
 ## [0.3.0] to [0.4.0]
 

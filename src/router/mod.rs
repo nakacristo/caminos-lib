@@ -7,14 +7,16 @@ use std::collections::VecDeque;
 use std::mem::{size_of};
 use std::collections::{BTreeMap};
 use ::rand::{Rng,rngs::StdRng};
+
 use quantifiable_derive::Quantifiable;//the derive macro
+
+use crate::{Phit,Packet,Plugs,error,source_location};
 use self::basic::Basic;
 use crate::config_parser::ConfigurationValue;
 use crate::topology::{Topology};
-use crate::{Phit,Packet};
 use crate::event::{Eventful};
 use crate::quantify::Quantifiable;
-use crate::Plugs;
+use crate::error::{Error,SourceLocation};
 
 ///The interface that a router type must follow.
 pub trait Router: Eventful + Quantifiable
@@ -222,13 +224,13 @@ pub trait StatusAtEmissor
 pub trait SpaceAtReceptor
 {
 	///inserts a phit in the buffer space. I may return an error if the phit cannot be inserted.
-	fn insert(&mut self, phit:Rc<Phit>, rng: &RefCell<StdRng>) -> Result<(),()>;
+	fn insert(&mut self, phit:Rc<Phit>, rng: &RefCell<StdRng>) -> Result<(),Error>;
 	///Iterate over the phits that can be processed by other structures, such as a crossbar.
 	fn front_iter(&self) -> Box<dyn Iterator<Item=Rc<Phit>>>;
 	///Consult if there is a processable phit in a given virtual channel.
 	fn front_virtual_channel(&self,virtual_channel:usize) -> Option<Rc<Phit>>;
 	///Extract a phit in a given virtual channel and returns it.
-	fn extract(&mut self, virtual_channel:usize) -> Result<(Rc<Phit>,Option<AcknowledgeMessage>),()>;
+	fn extract(&mut self, virtual_channel:usize) -> Result<(Rc<Phit>,Option<AcknowledgeMessage>),Error>;
 	///Iterates over all the stored phits. Do not assume any ordering.
 	fn iter_phits(&self) -> Box<dyn Iterator<Item=Rc<Phit>>>;
 	///Consult currently available space in phits dedicated to a virtual channel.
@@ -365,7 +367,7 @@ pub struct ParallelBuffers
 
 impl SpaceAtReceptor for ParallelBuffers
 {
-	fn insert(&mut self, phit:Rc<Phit>, rng: &RefCell<StdRng>) -> Result<(),()>
+	fn insert(&mut self, phit:Rc<Phit>, rng: &RefCell<StdRng>) -> Result<(),Error>
 	{
 		let current_vc=*phit.virtual_channel.borrow();
 		let vc=match current_vc
@@ -422,7 +424,7 @@ impl SpaceAtReceptor for ParallelBuffers
 		self.buffers[virtual_channel].front()
 	}
 	
-	fn extract(&mut self, virtual_channel:usize) -> Result<(Rc<Phit>,Option<AcknowledgeMessage>),()>
+	fn extract(&mut self, virtual_channel:usize) -> Result<(Rc<Phit>,Option<AcknowledgeMessage>),Error>
 	{
 		//self.buffers[virtual_channel].pop().ok_or(())
 		match self.buffers[virtual_channel].pop()
@@ -432,7 +434,7 @@ impl SpaceAtReceptor for ParallelBuffers
 				let message=AcknowledgeMessage::ack_phit_clear_from_virtual_channel(virtual_channel);
 				Ok((phit,Some(message)))
 			},
-			_ => Err(()),
+			_ => Err(error!(undetermined)),
 		}
 	}
 	
@@ -547,7 +549,7 @@ impl StatusAtEmissor for EmptyStatus
 
 impl SpaceAtReceptor for NoSpace
 {
-	fn insert(&mut self, _phit:Rc<Phit>, _rng: &RefCell<StdRng>) -> Result<(),()>
+	fn insert(&mut self, _phit:Rc<Phit>, _rng: &RefCell<StdRng>) -> Result<(),Error>
 	{
 		unimplemented!()
 	}
@@ -562,7 +564,7 @@ impl SpaceAtReceptor for NoSpace
 		unimplemented!()
 	}
 
-	fn extract(&mut self, _virtual_channel:usize) -> Result<(Rc<Phit>,Option<AcknowledgeMessage>),()>
+	fn extract(&mut self, _virtual_channel:usize) -> Result<(Rc<Phit>,Option<AcknowledgeMessage>),Error>
 	{
 		unimplemented!()
 	}
@@ -709,7 +711,7 @@ pub struct AgnosticParallelBuffers
 
 impl SpaceAtReceptor for AgnosticParallelBuffers
 {
-	fn insert(&mut self, phit:Rc<Phit>, rng: &RefCell<StdRng>) -> Result<(),()>
+	fn insert(&mut self, phit:Rc<Phit>, rng: &RefCell<StdRng>) -> Result<(),Error>
 	{
 		if phit.is_begin()
 		{
@@ -751,7 +753,7 @@ impl SpaceAtReceptor for AgnosticParallelBuffers
 		self.buffers[virtual_channel].front()
 	}
 	
-	fn extract(&mut self, virtual_channel:usize) -> Result<(Rc<Phit>,Option<AcknowledgeMessage>),()>
+	fn extract(&mut self, virtual_channel:usize) -> Result<(Rc<Phit>,Option<AcknowledgeMessage>),Error>
 	{
 		//self.buffers[virtual_channel].pop().ok_or(())
 		match self.buffers[virtual_channel].pop()
@@ -773,7 +775,7 @@ impl SpaceAtReceptor for AgnosticParallelBuffers
 				let message=AcknowledgeMessage::ack_fix_available_size(available_size);
 				Ok((phit,Some(message)))
 			},
-			_ => Err(()),
+			_ => Err(error!(undetermined)),
 		}
 	}
 	

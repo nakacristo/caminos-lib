@@ -12,6 +12,9 @@ BREAKING CHANGE: `Topology::coordinated_routing_record` now receives slices.
 git commit -m "coordinated_routing_record now receives slices."
 BREAKING CHANGE: `CartesianData::new` now receives an slice.
 git commit -m "CartesianData::new now receives an slice."
+Upgraded the Result types in projective.rs and multistage.rs to use our Error type.
+BREAKING CHANGE: SpaceAtReceptor and Stage now use the Error type in its Result types.
+git commit -m "SpaceAtReceptor and Stage now use the Error type in its Result types."
 
 ### 2022-04-26
 Taken some advices from clippy.
