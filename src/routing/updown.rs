@@ -76,7 +76,7 @@ impl Routing for UpDown
 	fn update_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _current_port:usize, _target_server:usize, _rng: &RefCell<StdRng>)
 	{
 	}
-	fn initialize(&mut self, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, _topology:&dyn Topology, _rng: &RefCell<StdRng>)
 	{
 	}
 	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
@@ -166,7 +166,7 @@ impl Routing for ExplicitUpDown
 	fn update_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _current_port:usize, _target_server:usize, _rng: &RefCell<StdRng>)
 	{
 	}
-	fn initialize(&mut self, topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, _rng: &RefCell<StdRng>)
 	{
 		let n = topology.num_routers();
 		if let Some(root) = self.root

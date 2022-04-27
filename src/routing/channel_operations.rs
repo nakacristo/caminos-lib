@@ -49,7 +49,7 @@ impl Routing for ChannelsPerHop
 	{
 		self.routing.update_routing_info(routing_info,topology,current_router,current_port,target_server,rng);
 	}
-	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
 		self.routing.initialize(topology,rng);
 	}
@@ -146,7 +146,7 @@ impl Routing for ChannelsPerHopPerLinkClass
 		subinfo.borrow_mut().hops+=1;
 		self.routing.update_routing_info(subinfo,topology,current_router,current_port,target_server,rng);
 	}
-	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
 		self.routing.initialize(topology,rng);
 	}
@@ -250,7 +250,7 @@ impl Routing for AscendantChannelsWithLinkClass
 		subinfo.borrow_mut().hops+=1;
 		self.routing.update_routing_info(subinfo,topology,current_router,current_port,target_server,rng);
 	}
-	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
 		self.routing.initialize(topology,rng);
 	}
@@ -327,7 +327,7 @@ impl Routing for ChannelMap
 	{
 		self.routing.update_routing_info(routing_info,topology,current_router,current_port,target_server,rng);
 	}
-	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
 		self.routing.initialize(topology,rng);
 	}

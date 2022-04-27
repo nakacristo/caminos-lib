@@ -165,7 +165,7 @@ pub trait Routing : Debug
 	///Updates the routing info of the packet. Called when the first phit of the packet leaves a router and enters another router. Values are of the router being entered into.
 	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize,rng: &RefCell<StdRng>);
 	///Prepares the routing to be utilized. Perhaps by precomputing routing tables.
-	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>);
+	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>);
 	///To be called by the router when one of the candidates is requested.
 	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng:&RefCell<StdRng>);
 	///To optionally write routing statistics into the simulation output.
@@ -387,7 +387,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 ///They will all be released when the dependency is formally published.
 pub trait SourceRouting
 {
-	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>);
+	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>);
 	fn get_paths(&self, source:usize, target:usize) -> &Vec<Vec<usize>>;
 }
 
@@ -472,7 +472,7 @@ impl<R:SourceRouting+Debug> Routing for R
 	{
 		//Nothing to do on update
 	}
-	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
 		self.initialize(topology,rng);
 	}
@@ -621,7 +621,7 @@ impl Routing for SourceAdaptiveRouting
 			}
 		}
 	}
-	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
 		self.routing.initialize(topology,rng);
 	}

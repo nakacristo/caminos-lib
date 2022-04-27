@@ -26,6 +26,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * Added a server argument to `Traffic::try_consume`.
 * Added phit to `RequestInfo`.
 * Upgrade from rand-0.4 to rand-0.8.
+* Using `&dyn Topology` instead of `&Box<dyn Topology>` in all interfaces.
 
 ## [0.3.0] to [0.4.0]
 
@@ -368,7 +369,7 @@ pub struct Server
 impl Server
 {
 	///Consumes a phit
-	fn consume(&mut self, phit:Rc<Phit>, traffic:&mut dyn Traffic, statistics:&mut Statistics, cycle:usize, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	fn consume(&mut self, phit:Rc<Phit>, traffic:&mut dyn Traffic, statistics:&mut Statistics, cycle:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
 		self.statistics.consumed_phits+=1;
 		//statistics.consumed_phits+=1;
@@ -747,7 +748,7 @@ impl<'a> Simulation<'a>
 			rng:&rng,
 		});
 		topology.check_adjacency_consistency(Some(link_classes.len()));
-		routing.initialize(&topology,&rng);
+		routing.initialize(topology.as_ref(),&rng);
 		let num_routers=topology.num_routers();
 		let num_servers=topology.num_servers();
 		//let routers: Vec<Rc<RefCell<dyn Router>>>=(0..num_routers).map(|index|new_router(index,router_cfg,plugs,topology.as_ref(),maximum_packet_size)).collect();
@@ -792,7 +793,7 @@ impl<'a> Simulation<'a>
 		let traffic=new_traffic(TrafficBuilderArgument{
 			cv:traffic,
 			plugs,
-			topology:&topology,
+			topology:topology.as_ref(),
 			rng:&rng,
 		});
 		let statistics=Statistics::new(statistics_temporal_step,statistics_server_percentiles,statistics_packet_percentiles,statistics_packet_definitions,topology.as_ref());
@@ -921,7 +922,7 @@ impl<'a> Simulation<'a>
 							{
 								panic!("Packet reached wrong server, {} instead of {}!\n",server,phit.packet.message.destination);
 							}
-							self.network.servers[server].consume(phit.clone(),self.traffic.deref_mut(),&mut self.statistics,self.cycle,&self.network.topology,&self.rng);
+							self.network.servers[server].consume(phit.clone(),self.traffic.deref_mut(),&mut self.statistics,self.cycle,self.network.topology.as_ref(),&self.rng);
 						}
 						&Location::None => panic!("Phit went nowhere previous={:?}",previous),
 					};
@@ -1008,7 +1009,7 @@ impl<'a> Simulation<'a>
 				if self.traffic.should_generate(iserver,self.cycle,&self.rng)
 				{
 					if server.stored_messages.len()<self.server_queue_size {
-						match self.traffic.generate_message(iserver,self.cycle,&self.network.topology,&self.rng)
+						match self.traffic.generate_message(iserver,self.cycle,self.network.topology.as_ref(),&self.rng)
 						{
 							Ok(message) =>
 							{
@@ -1373,14 +1374,10 @@ impl<'a> Quantifiable for Simulation<'a>
 #[derive(Default)]
 pub struct Plugs
 {
-	//routers: BTreeMap<String, fn(usize,&ConfigurationValue,&Plugs, &dyn Topology, usize) -> Rc<RefCell<dyn Router>>  >,
 	routers: BTreeMap<String, fn(RouterBuilderArgument) -> Rc<RefCell<dyn Router>>  >,
-	//topologies: BTreeMap<String, fn(&ConfigurationValue, &Plugs, &RefCell<StdRng>) -> Box<dyn Topology> >,
 	topologies: BTreeMap<String, fn(TopologyBuilderArgument) -> Box<dyn Topology> >,
 	stages: BTreeMap<String, fn(StageBuilderArgument) -> Box<dyn Stage> >,
-	//routings: BTreeMap<String,fn(&ConfigurationValue, &Plugs) -> Box<dyn Routing>>,
 	routings: BTreeMap<String,fn(RoutingBuilderArgument) -> Box<dyn Routing>>,
-	//traffics: BTreeMap<String,fn(&ConfigurationValue, &Plugs, &Box<dyn Topology>, &RefCell<StdRng>) -> Box<dyn Traffic> >,
 	traffics: BTreeMap<String,fn(TrafficBuilderArgument) -> Box<dyn Traffic> >,
 	patterns: BTreeMap<String, fn(PatternBuilderArgument) -> Box<dyn Pattern> >,
 	policies: BTreeMap<String, fn(VCPolicyBuilderArgument) -> Box<dyn VirtualChannelPolicy> >,
@@ -1388,7 +1385,6 @@ pub struct Plugs
 
 impl Plugs
 {
-	//pub fn add_router(&mut self, key:String, builder:fn(usize,&ConfigurationValue,&Plugs, &dyn Topology, usize) -> Rc<RefCell<dyn Router>>)
 	pub fn add_router(&mut self, key:String, builder:fn(RouterBuilderArgument) -> Rc<RefCell<dyn Router>>)
 	{
 		self.routers.insert(key,builder);

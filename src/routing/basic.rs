@@ -81,7 +81,7 @@ impl Routing for Shortest
 	fn update_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _current_port:usize, _target_server:usize, _rng: &RefCell<StdRng>)
 	{
 	}
-	fn initialize(&mut self, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, _topology:&dyn Topology, _rng: &RefCell<StdRng>)
 	{
 	}
 	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
@@ -292,7 +292,7 @@ impl Routing for Valiant
 			}
 		};
 	}
-	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
 		self.first.initialize(topology,rng);
 		self.second.initialize(topology,rng);
@@ -402,7 +402,7 @@ impl Routing for Mindless
 	fn update_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _current_port:usize, _target_server:usize, _rng: &RefCell<StdRng>)
 	{
 	}
-	fn initialize(&mut self, _topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, _topology:&dyn Topology, _rng: &RefCell<StdRng>)
 	{
 	}
 	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
@@ -501,7 +501,7 @@ impl Routing for WeighedShortest
 	fn update_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _current_port:usize, _target_server:usize, _rng: &RefCell<StdRng>)
 	{
 	}
-	fn initialize(&mut self, topology:&Box<dyn Topology>, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, _rng: &RefCell<StdRng>)
 	{
 		self.distance_matrix=topology.compute_distance_matrix(Some(&self.class_weight));
 	}

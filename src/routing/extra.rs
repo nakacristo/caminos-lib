@@ -222,7 +222,7 @@ impl Routing for SumRouting
 		}
 		bri.selections=Some(cs);
 	}
-	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
 		//self.first_routing.initialize(topology,rng);
 		//self.second_routing.initialize(topology,rng);
@@ -368,7 +368,7 @@ impl Routing for Stubborn
 		bri.selections=None;
 		self.routing.update_routing_info(&bri.meta.as_mut().unwrap()[0],topology,current_router,current_port,target_server,rng);
 	}
-	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
 		self.routing.initialize(topology,rng);
 	}
@@ -547,7 +547,7 @@ impl Routing for EachLengthSourceAdaptiveRouting
 			}
 		}
 	}
-	fn initialize(&mut self, topology:&Box<dyn Topology>, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
 		self.routing.initialize(topology,rng);
 	}
