@@ -171,15 +171,13 @@ impl NeighboursLists
 			offset+=size;
 		}
 		let mut routers_by_server=Vec::with_capacity(offset);
-		let mut router_index=0;
-		for &size in servers.iter()
+		for (router_index,&size) in servers.iter().enumerate()
 		{
 			let degree=list[router_index].len();
 			for i in 0..size
 			{
 				routers_by_server.push((router_index,degree+i));
 			}
-			router_index+=1;
 		}
 		//println!("offset={} routers_by_server.len()={}",offset,routers_by_server.len());
 		let mut topo=NeighboursLists{

@@ -26,7 +26,7 @@ impl<T:Quantifiable> Quantifiable for Vec<T>
 {
 	fn total_memory(&self) -> usize
 	{
-		return size_of::<Vec<T>>() + self.iter().map(|e|e.total_memory()).sum::<usize>() + (self.capacity()-self.len())*size_of::<T>();
+		size_of::<Vec<T>>() + self.iter().map(|e|e.total_memory()).sum::<usize>() + (self.capacity()-self.len())*size_of::<T>()
 	}
 	fn print_memory_breakdown(&self)
 	{
@@ -42,7 +42,7 @@ impl<A:Quantifiable, B:Quantifiable> Quantifiable for (A,B)
 {
 	fn total_memory(&self) -> usize
 	{
-		return self.0.total_memory()+self.1.total_memory();
+		self.0.total_memory()+self.1.total_memory()
 	}
 	fn print_memory_breakdown(&self)
 	{
@@ -58,7 +58,7 @@ impl<A:Quantifiable, B:Quantifiable, C:Quantifiable> Quantifiable for (A,B,C)
 {
 	fn total_memory(&self) -> usize
 	{
-		return self.0.total_memory()+self.1.total_memory()+self.2.total_memory();
+		self.0.total_memory()+self.1.total_memory()+self.2.total_memory()
 	}
 	fn print_memory_breakdown(&self)
 	{
@@ -74,7 +74,7 @@ impl<A:Quantifiable, B:Quantifiable, C:Quantifiable, D:Quantifiable> Quantifiabl
 {
 	fn total_memory(&self) -> usize
 	{
-		return self.0.total_memory()+self.1.total_memory()+self.2.total_memory()+self.3.total_memory();
+		self.0.total_memory()+self.1.total_memory()+self.2.total_memory()+self.3.total_memory()
 	}
 	fn print_memory_breakdown(&self)
 	{
@@ -90,7 +90,7 @@ impl<T:Quantifiable> Quantifiable for [T;2]
 {
 	fn total_memory(&self) -> usize
 	{
-		return self[0].total_memory()+self[1].total_memory();
+		self[0].total_memory()+self[1].total_memory()
 	}
 	fn print_memory_breakdown(&self)
 	{
@@ -110,7 +110,7 @@ macro_rules! quantifiable_simple
 		{
 			fn total_memory(&self) -> usize
 			{
-				return size_of::<$t>();
+				size_of::<$t>()
 			}
 			fn print_memory_breakdown(&self)
 			{
@@ -118,7 +118,7 @@ macro_rules! quantifiable_simple
 			}
 			fn forecast_total_memory(&self) -> usize
 			{
-				return size_of::<$t>();
+				size_of::<$t>()
 			}
 		}
 	}
@@ -166,7 +166,7 @@ impl<T> Quantifiable for *const T
 {
 	fn total_memory(&self) -> usize
 	{
-		return size_of::<Self>();
+		size_of::<Self>()
 	}
 	fn print_memory_breakdown(&self)
 	{
@@ -183,7 +183,7 @@ impl<T:Quantifiable> Quantifiable for VecDeque<T>
 	fn total_memory(&self) -> usize
 	{
 		//return size_of::<VecDeque<T>>() + self.capacity()*size_of::<T>();
-		return size_of::<VecDeque<T>>() + self.iter().map(|e|e.total_memory()).sum::<usize>() + (self.capacity()-self.len())*size_of::<T>();
+		size_of::<VecDeque<T>>() + self.iter().map(|e|e.total_memory()).sum::<usize>() + (self.capacity()-self.len())*size_of::<T>()
 	}
 	fn print_memory_breakdown(&self)
 	{
@@ -199,7 +199,7 @@ impl<A:Quantifiable, B:Quantifiable> Quantifiable for BTreeMap<A,B>
 {
 	fn total_memory(&self) -> usize
 	{
-		return size_of::<Self>() + self.len()*(size_of::<A>()+size_of::<B>());
+		size_of::<Self>() + self.len()*(size_of::<A>()+size_of::<B>())
 	}
 	fn print_memory_breakdown(&self)
 	{
@@ -215,7 +215,7 @@ impl<A:Quantifiable> Quantifiable for BTreeSet<A>
 {
 	fn total_memory(&self) -> usize
 	{
-		return size_of::<Self>() + self.len()*size_of::<A>();
+		size_of::<Self>() + self.len()*size_of::<A>()
 	}
 	fn print_memory_breakdown(&self)
 	{
@@ -231,7 +231,7 @@ impl<T:?Sized> Quantifiable for Rc<T>
 {
 	fn total_memory(&self) -> usize
 	{
-		return size_of::<Rc<T>>();
+		size_of::<Rc<T>>()
 	}
 	fn print_memory_breakdown(&self)
 	{
@@ -247,7 +247,7 @@ impl<T:Quantifiable+?Sized> Quantifiable for Box<T>
 {
 	fn total_memory(&self) -> usize
 	{
-		return size_of::<Box<T>>() + T::total_memory(self);
+		size_of::<Box<T>>() + T::total_memory(self)
 	}
 	fn print_memory_breakdown(&self)
 	{

@@ -9,6 +9,8 @@ keywords = ["simulator"]
 documentation = "https://docs.rs/caminos-lib"
 readme = "README.md"
 license = "MIT/Apache-2.0"
+#repositry = ""
+#categories = ["", ""]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

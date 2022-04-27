@@ -184,7 +184,7 @@ impl Routing for ExplicitUpDown
 					let alternate_distance = current_distance + 1;
 					for NeighbourRouterIteratorItem{neighbour_router:neighbour,..} in topology.neighbour_router_iter(current)
 					{
-						if let None = distance_to_root[neighbour]
+						if distance_to_root[neighbour].is_none()
 						{
 							distance_to_root[neighbour]=Some(alternate_distance);
 						}

@@ -265,8 +265,37 @@ Both entries `directory_main` and `file_main` receive a `&Plugs` argument that m
 
 */
 
+// --- crate attributes ---
+// At clippy::correctness no problem should appear
+// $(cargo clippy -- -A clippy::all -W clippy::correctness)
+// At clippy::suspicious
+#![allow(clippy::suspicious_else_formatting)]
+// At clippy::style
+// These should be partially addressed, but of very little importance.
+#![allow(clippy::len_zero)]
+#![allow(clippy::needless_return)]
+#![allow(clippy::new_without_default)]
+#![allow(clippy::comparison_chain)]//is this really clearer???
+#![allow(clippy::single_match)]
+#![allow(clippy::let_and_return)]
+#![allow(clippy::len_without_is_empty)]
+// Ignore these lints
+#![allow(clippy::match_ref_pats)]
+#![allow(clippy::tabs_in_doc_comments)]
+// At clippy::complexity
+#![allow(clippy::type_complexity)]
+//I only use this in some cases that would become extremely verbose.
+#![allow(clippy::option_map_unit_fn)]
+// At clippy::perf all should be addressed.
+// clippy::{pedantic,nursery} seem better to be allowed, as it is the default
+// At clippy::cargo
+#![warn(clippy::cargo)]
+//missing repository and categories.
+#![allow(clippy::cargo_common_metadata)]
+
 pub use quantifiable_derive::Quantifiable;//the derive macro
 
+#[allow(clippy::manual_map)]
 pub mod config_parser;
 pub mod topology;
 pub mod traffic;
@@ -656,10 +685,10 @@ impl<'a> Simulation<'a>
 			"traffic" => traffic=Some(value),
 			"maximum_packet_size" => maximum_packet_size=Some(value.as_f64().expect("bad value for maximum_packet_size") as usize),
 			"server_queue_size" => server_queue_size=Some(value.as_f64().expect("bad value for server_queue_size") as usize),
-			"router" => router_cfg=Some(&value),
+			"router" => router_cfg=Some(value),
 			"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,plugs})),
 			"link_classes" => link_classes = Some(value.as_array().expect("bad value for link_classes").iter()
-				.map(|v|LinkClass::new(v)).collect()),
+				.map(LinkClass::new).collect()),
 			"statistics_temporal_step" => statistics_temporal_step=value.as_f64().expect("bad value for statistics_temporal_step") as usize,
 			"launch_configurations" => launch_configurations = value.as_array().expect("bad value for launch_configurations").clone(),
 			"statistics_server_percentiles" => statistics_server_percentiles = value
@@ -848,7 +877,7 @@ impl<'a> Simulation<'a>
 							if phit.is_begin() && !self.statistics.packet_defined_statistics_definitions.is_empty()
 							{
 								let mut be = phit.packet.extra.borrow_mut();
-								if let None = *be
+								if be.is_none()
 								{
 									*be=Some(PacketExtraInfo::default());
 								}
@@ -1056,7 +1085,7 @@ impl<'a> Simulation<'a>
 				{
 					//Do not extract the phit until we know whether we can transmit it.
 					let phit=server.stored_phits.front().expect("There are not phits");
-					if server.router_status.can_transmit(&phit,0)
+					if server.router_status.can_transmit(phit,0)
 					{
 						let phit=server.stored_phits.pop_front().expect("There are not phits");
 						let event=Event::PhitToLocation{
@@ -1147,8 +1176,8 @@ impl<'a> Simulation<'a>
 			(String::from("servers_with_missed_generations"),ConfigurationValue::Number(servers_with_missed_generations as f64)),
 			(String::from("virtual_channel_usage"),ConfigurationValue::Array(virtual_channel_usage)),
 			//(String::from("git_id"),ConfigurationValue::Literal(format!("\"{}\"",git_id))),
-			(String::from("git_id"),ConfigurationValue::Literal(format!("{}",git_id))),
-			(String::from("version_number"),ConfigurationValue::Literal(format!("{}",version_number))),
+			(String::from("git_id"),ConfigurationValue::Literal(git_id.to_string())),
+			(String::from("version_number"),ConfigurationValue::Literal(version_number.to_string())),
 		];
 		if let Some(content)=self.routing.statistics(self.cycle)
 		{
@@ -1233,9 +1262,9 @@ impl<'a> Simulation<'a>
 			servers_injected_load.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
 			servers_accepted_load.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
 			servers_average_message_delay.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
-			servers_cycle_last_created_phit.sort();
-			servers_cycle_last_consumed_message.sort();
-			servers_missed_generations.sort();
+			servers_cycle_last_created_phit.sort_unstable();
+			servers_cycle_last_consumed_message.sort_unstable();
+			servers_missed_generations.sort_unstable();
 			for &percentile in self.statistics.server_percentiles.iter()
 			{
 				let mut index:usize = num_servers * usize::from(percentile) /100;
@@ -1261,9 +1290,9 @@ impl<'a> Simulation<'a>
 			let mut packets_delay : Vec<usize> = self.statistics.packet_statistics.iter().map(|ps|ps.delay).collect();
 			let mut packets_hops : Vec<usize> = self.statistics.packet_statistics.iter().map(|ps|ps.hops).collect();
 			let mut packets_consumed_cycle: Vec<usize> = self.statistics.packet_statistics.iter().map(|ps|ps.consumed_cycle).collect();
-			packets_delay.sort();
-			packets_hops.sort();
-			packets_consumed_cycle.sort();
+			packets_delay.sort_unstable();
+			packets_hops.sort_unstable();
+			packets_consumed_cycle.sort_unstable();
 			let num_packets = packets_delay.len();
 			for &percentile in self.statistics.packet_percentiles.iter()
 			{
@@ -1465,7 +1494,7 @@ pub fn file_main(file:&mut File, plugs:&Plugs, mut results_file:Option<File>,fre
 						for (i,experiment) in experiments.iter().enumerate()
 						{
 							println!("experiment {} of {} is {:?}",i,experiments.len(),experiment);
-							let mut simulation=Simulation::new(&experiment,plugs);
+							let mut simulation=Simulation::new(experiment,plugs);
 							simulation.run();
 							match results_file
 							{

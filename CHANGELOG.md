@@ -3,9 +3,21 @@
 ## next [0.4.4 or greater]
 
 
+### 2022-04-27
+Many more advices taken from clippy.
+git commit -m "New abstraction OutputEnvironment. New file clippy.toml. Implemented changes from clippy."
+
+### 2022-04-26
+Taken some advices from clippy.
+Added a clippy.toml to keep configuration of the clippy assistant.
+Added some crate attributes to control messages of clippy.
+
 ### 2022-04-13
 Use correct English for field `router::Basic::output_prioritize_lowest_label`. The old config name `output_priorize_lowest_label` is deprecated but accepted with a warning.
 git commit -m "Use correct english for output_prioritize_lowest_label, warn when misused."
+Created a new wrapper `output::OutputEnvironment` to separate a bit the output generation from the experiment actions.
+The output handlers now work with iterators of contexes, instead of creating them.
+Implemented Debug for ExperimentFiles.
 
 ### 2022-04-11
 BUGFIX: The macros `match_object_*` had a hard-coded Pow.

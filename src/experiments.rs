@@ -4,7 +4,7 @@ This module implements [Action]s to execute on a [Experiment] folder. It can man
 
 */
 
-use std::fmt;
+use std::fmt::{self,Debug,Formatter};
 use std::fs::{self,File,OpenOptions};
 use std::str::FromStr;
 use std::io::prelude::*;
@@ -19,7 +19,7 @@ use indicatif::{ProgressBar,ProgressStyle};
 
 use crate::config_parser::{self,ConfigurationValue};
 use crate::{Simulation,Plugs,source_location,error,match_object_panic};
-use crate::output::{create_output};
+use crate::output::{create_output,OutputEnvironment};
 use crate::config::{self,evaluate,flatten_configuration_value};
 use crate::error::{Error,ErrorKind,SourceLocation};
 
@@ -147,7 +147,7 @@ impl Default for SlurmOptions
 
 impl SlurmOptions
 {
-	pub fn new(launch_configurations:&Vec<ConfigurationValue>) -> Result<SlurmOptions,Error>
+	pub fn new(launch_configurations:&[ConfigurationValue]) -> Result<SlurmOptions,Error>
 	{
 		let mut maximum_jobs=None;
 		let mut time:Option<&str> =None;
@@ -377,7 +377,7 @@ impl Job
 		let launch_script=jobs_path.join(&launch_name);
 		let mut launch_script_file=File::create(&launch_script).expect("Could not create launch file");
 		self.write_slurm_script(&mut launch_script_file,&launch_name,slurm_options,&job_lines);
-		let slurm_job_id=self.launch_slurm_script(&jobs_path,&launch_name)?;
+		let slurm_job_id=self.launch_slurm_script(jobs_path,&launch_name)?;
 		//FIXME: we also need the execution ids inside that job.
 		//let execution_id_string=self.execution_id_vec.join(",");
 		//let execution_id_string=self.execution_id_vec.iter().map(|id|format!("{}",id)).zip(repeat(",")).collect::<String>();
@@ -435,7 +435,6 @@ pub struct Experiment<'a>
 /// * launch in the future, instead of being inside main.cfg
 /// * runs/{run#,job#}
 /// * binary.results
-/// This does not implement Debug because Session does not...
 pub struct ExperimentFiles
 {
 	///The host with the path of these files.
@@ -471,7 +470,7 @@ impl ExperimentFiles
 	/// Reads and stores the contents of main.cfg.
 	pub fn build_cfg_contents(&mut self) -> Result<(),Error>
 	{
-		if let None = self.cfg_contents
+		if self.cfg_contents.is_none()
 		{
 			let cfg=self.root.as_ref().unwrap().join("main.cfg");
 			if let Some(session) = &self.ssh2_session {
@@ -513,7 +512,7 @@ impl ExperimentFiles
 	}
 	pub fn build_parsed_cfg(&mut self) -> Result<(),Error>
 	{
-		if let None = self.parsed_cfg
+		if self.parsed_cfg.is_none()
 		{
 			self.build_cfg_contents()?;
 			let parsed_cfg=config_parser::parse(self.cfg_contents_ref()).map_err(|x|{
@@ -527,7 +526,7 @@ impl ExperimentFiles
 	}
 	pub fn build_runs_path(&mut self) -> Result<(),Error>
 	{
-		if let None = self.runs_path
+		if self.runs_path.is_none()
 		{
 			let mut is_old=false;
 			//for experiment_index in 0..experiments.len()
@@ -615,7 +614,7 @@ impl ExperimentFiles
 						"launch_configurations" => match value
 						{
 							&ConfigurationValue::Array(ref l) => self.launch_configurations = l.clone(),
-							_ => return Err( Error::ill_formed_configuration(source_location!(),value.clone()).with_message(format!("bad value for launch_configurations")) ),
+							_ => return Err( Error::ill_formed_configuration(source_location!(),value.clone()).with_message("bad value for launch_configurations".to_string() ) ),
 						}
 						_ => (),
 					}
@@ -623,7 +622,7 @@ impl ExperimentFiles
 			}
 			else
 			{
-				return Err( Error::ill_formed_configuration(source_location!(),value.clone()).with_message(format!("Those are not experiments.")) );
+				return Err( Error::ill_formed_configuration(source_location!(),value.clone()).with_message("Those are not experiments.".to_string() ) );
 			}
 		}
 		Ok(())
@@ -758,7 +757,7 @@ impl ExperimentFiles
 			}
 			fs::create_dir(&path).expect("Something went wrong when creating the outputs folder.");
 		}
-		path.to_path_buf()
+		path
 	}
 	pub fn example_cfg() -> &'static str
 	{
@@ -774,6 +773,35 @@ impl ExperimentFiles
 	}
 }
 
+/// We have to implement Debug explicitly because Session does not implement Debug.
+impl Debug for ExperimentFiles
+{
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::result::Result<(), std::fmt::Error>
+	{
+		write!(formatter,"ExperimentFiles{{")?;
+		write!(formatter,"host={:?},",self.host)?;
+		write!(formatter,"username={:?},",self.username)?;
+		write!(formatter,"ssh2_session={:?},",
+			if self.ssh2_session.is_some() {
+				"Some session"
+			} else {
+				"None"
+			}
+		)?;
+		//write!(formatter,"ssh2_session={:?},",self.ssh2_session)?;
+		write!(formatter,"binary={:?},",self.binary)?;
+		write!(formatter,"root={:?},",self.root)?;
+		write!(formatter,"cfg_contents={:?},",self.cfg_contents)?;
+		write!(formatter,"parsed_cfg={:?},",self.parsed_cfg)?;
+		write!(formatter,"runs_path={:?},",self.runs_path)?;
+		write!(formatter,"experiments={:?},",self.experiments)?;
+		write!(formatter,"launch_configurations={:?},",self.launch_configurations)?;
+		write!(formatter,"packed_results={:?},",self.packed_results)?;
+		write!(formatter,"}}")?;
+		Ok(())
+	}
+}
+
 impl<'a> Experiment<'a>
 {
 	///Creates a new experiment object.
@@ -781,7 +809,7 @@ impl<'a> Experiment<'a>
 	pub fn new(binary:&Path,root:&Path,plugs:&'a Plugs,options:ExperimentOptions)->Experiment<'a>
 	{
 		println!("Preparing experiment with {:?} as path",root);
-		let visible_slurm_jobs:Vec<usize> = gather_slurm_jobs().unwrap_or(vec![]);
+		let visible_slurm_jobs:Vec<usize> = gather_slurm_jobs().unwrap_or_default();
 		let journal=root.join("journal");
 		let journal_file=OpenOptions::new().read(true).write(true).create(true).open(&journal).expect("Something went wrong reading or creating the journal file");
 		//let journal_len=journal_file.stream_len();
@@ -798,7 +826,7 @@ impl<'a> Experiment<'a>
 			if ! line.is_empty()
 			{
 				//let prefix=line.split(":").next().expect("Not found the expected journal index");
-				let mut s = line.split(":");
+				let mut s = line.split(':');
 				let prefix=s.next().expect("Not found the expected journal index");
 				journal_index= 1usize+prefix.parse::<usize>().unwrap_or_else(|_|panic!("The journal index must be a non-negative integer (received {})",prefix));
 				let entry = s.next().expect("No content found on the journal line");
@@ -806,7 +834,7 @@ impl<'a> Experiment<'a>
 				{
 					//e.g:
 					//	0: Launched jobs 457688=5[0,1,2,3,4,5], 457689=11[6,7,8,9,10,11], 457690=17[12,13,14,15,16,17], 457691=23[18,19,20,21,22,23],
-					let mut slurm_items=entry.split(" ");
+					let mut slurm_items=entry.split(' ');
 					slurm_items.next();//first empty space
 					slurm_items.next();//Launched
 					slurm_items.next();//jobs
@@ -816,12 +844,12 @@ impl<'a> Experiment<'a>
 						{
 							continue;
 						}
-						let mut slurm_pair = slurm_item.split("=");
+						let mut slurm_pair = slurm_item.split('=');
 						let slurm_job_id = slurm_pair.next().unwrap().parse::<usize>().unwrap_or_else(|_|panic!("left term on '{}' should be an integer",slurm_item));
 						let slurm_job_content = slurm_pair.next().unwrap();
-						let left_bracket_index = slurm_job_content.find("[").unwrap();
-						let right_bracket_index = slurm_job_content.find("]").unwrap();
-						let experiments:Vec<usize> =slurm_job_content[left_bracket_index+1 .. right_bracket_index].split(",").map(|item|item.parse::<usize>().unwrap_or_else(|_|panic!("failed with content={} for item {}",slurm_job_content,slurm_item))).collect();
+						let left_bracket_index = slurm_job_content.find('[').unwrap();
+						let right_bracket_index = slurm_job_content.find(']').unwrap();
+						let experiments:Vec<usize> =slurm_job_content[left_bracket_index+1 .. right_bracket_index].split(',').map(|item|item.parse::<usize>().unwrap_or_else(|_|panic!("failed with content={} for item {}",slurm_job_content,slurm_item))).collect();
 						let batch = slurm_job_content[..left_bracket_index].parse::<usize>().unwrap_or_else(|_|panic!("failed to get batch for item {}",slurm_item));
 						let track = Some( (journal_index-1, batch, slurm_job_id) );
 						for &experiment_index in experiments.iter()
@@ -886,7 +914,7 @@ impl<'a> Experiment<'a>
 	pub fn execute_action(&mut self,action:Action) -> Result<(),Error>
 	{
 		let now = chrono::Utc::now();
-		self.write_journal_entry(&format!("Executing action {} on {}.", action, now.format("%Y %m(%b) %0d(%a), %T (UTC%:z)").to_string()));
+		self.write_journal_entry(&format!("Executing action {} on {}.", action, now.format("%Y %m(%b) %0d(%a), %T (UTC%:z)")));
 		let cfg=self.files.root.as_ref().unwrap().join("main.cfg");
 		//TODO cfg checkum
 		//let mut cfg_contents = String::new();
@@ -949,7 +977,7 @@ impl<'a> Experiment<'a>
 		let mut results;
 		self.files.build_experiments()?;
 
-		let external_files = if let (Some(ref path),true) = (self.options.external_source.as_ref(), action!=Action::Shell  ) {
+		let external_files = if let (Some(path),true) = (self.options.external_source.as_ref(), action!=Action::Shell  ) {
 			let mut ef = ExperimentFiles{
 				host: None,
 				username: None,
@@ -1061,7 +1089,7 @@ impl<'a> Experiment<'a>
 			Action::Slurm =>
 			{
 				uses_jobs=true;
-				if let Ok(_)=self.files.build_launch_configurations()
+				if self.files.build_launch_configurations().is_ok()
 				{
 					let n = self.files.experiments.len();
 					if let Ok(got) = SlurmOptions::new(&self.files.launch_configurations)
@@ -1109,7 +1137,7 @@ impl<'a> Experiment<'a>
 			{
 				self.initialize_remote()?;
 				self.remote_files.as_mut().unwrap().build_cfg_contents()?;
-				self.files.compare_cfg(&self.remote_files.as_ref().unwrap())?;
+				self.files.compare_cfg(self.remote_files.as_ref().unwrap())?;
 			},
 			Action::RemoteCheck =>
 			{
@@ -1155,7 +1183,7 @@ impl<'a> Experiment<'a>
 				//check remote config
 				self.remote_files.as_mut().unwrap().build_cfg_contents().ok();
 				if self.remote_files.as_ref().unwrap().cfg_enough_content() {
-					self.files.compare_cfg(&self.remote_files.as_ref().unwrap())?;
+					self.files.compare_cfg(self.remote_files.as_ref().unwrap())?;
 				} else {
 					let remote_cfg_path = remote_root.join("main.cfg");
 					let mut remote_cfg = sftp.create(&remote_cfg_path).expect("Could not create remote main.cfg");
@@ -1218,7 +1246,7 @@ impl<'a> Experiment<'a>
 			progress.inc(1);
 			if let Some(ref expr) = self.options.where_clause
 			{
-				match evaluate(&expr,experiment,&self.files.root.as_ref().unwrap())
+				match evaluate(expr,experiment,self.files.root.as_ref().unwrap())
 				{
 					ConfigurationValue::True => (),//good
 					ConfigurationValue::False => continue,//discard this index
@@ -1238,11 +1266,7 @@ impl<'a> Experiment<'a>
 				}
 			}
 			let is_packed = if let ConfigurationValue::Experiments(ref a) = self.files.packed_results {
-				match a[experiment_index]
-				{
-					ConfigurationValue::None => false,
-					_ => true,
-				}
+				! matches!(a[experiment_index],ConfigurationValue::None)
 			} else {false};
 			let result_path=experiment_path.join("local.result");
 			//FIXME: check if the run is expected to be currently inside some slurm job.
@@ -1305,7 +1329,7 @@ impl<'a> Experiment<'a>
 									{
 										if let Some(ref contents) = ext_result_contents
 										{
-											match config_parser::parse(&contents)
+											match config_parser::parse(contents)
 											{
 												Ok(cv) =>
 												{
@@ -1411,7 +1435,7 @@ impl<'a> Experiment<'a>
 					Action::Local | Action::LocalAndOutput =>
 					{
 						println!("experiment {} of {} is {:?}",experiment_index,self.files.experiments.len(),experiment);
-						let mut simulation=Simulation::new(&experiment,self.plugs);
+						let mut simulation=Simulation::new(experiment,self.plugs);
 						simulation.run();
 						simulation.write_result(&mut File::create(&result_path).expect("Could not create the result file."));
 					},
@@ -1426,7 +1450,7 @@ impl<'a> Experiment<'a>
 						//pending_jobs.push(job_line);
 						let slurm_options = slurm_options.as_ref().unwrap();
 						let binary = slurm_options.wrapper.as_ref().unwrap_or_else(||self.files.binary.as_ref().unwrap());
-						job.add_execution(experiment_index,binary,&experiment_path_string);
+						job.add_execution(experiment_index,binary,experiment_path_string);
 						if job.len()>=job_pack_size
 						{
 							delta_amount_slurm+=job.len();
@@ -1668,13 +1692,18 @@ impl<'a> Experiment<'a>
 					let mut od_file=File::open(&od).expect("main.od could not be opened");
 					let mut od_contents = String::new();
 					od_file.read_to_string(&mut od_contents).expect("something went wrong reading main.od");
+					let mut environment = OutputEnvironment::new(
+						results,
+						self.files.experiments.len(),
+						&self.files,
+					);
 					match config_parser::parse(&od_contents)
 					{
 						Err(x) => return Err(error!(could_not_parse_file,od).with_message(format!("error parsing output description file: {:?}",x))),
 						Ok(config_parser::Token::Value(ConfigurationValue::Array(ref descriptions))) => for description in descriptions.iter()
 						{
 							//println!("description={}",description);
-							match create_output(&description,&results,self.files.experiments.len(),&self.files)
+							match create_output(description,&mut environment)
 							{
 								Ok(_) => (),
 								Err(err) => eprintln!("ERROR: could not create output {:?}",err),
@@ -1717,7 +1746,7 @@ impl<'a> Experiment<'a>
 				}
 			}
 		}
-		let fin = format!("Finished action {} on {}.", action, now.format("%Y %m(%b) %0d(%a), %T (UTC%:z)").to_string());
+		let fin = format!("Finished action {} on {}.", action, now.format("%Y %m(%b) %0d(%a), %T (UTC%:z)"));
 		self.write_journal_entry(&fin);
 		println!("{}",fin);
 		Ok(())
@@ -1875,7 +1904,7 @@ impl ActionProgress
 			_ => bar.set_prefix("checking result files"),
 		};
 		ActionProgress{
-			bar: bar,
+			bar,
 			pulled: 0,
 			empty: 0,
 			missing: 0,

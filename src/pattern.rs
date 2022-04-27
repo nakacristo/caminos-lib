@@ -209,11 +209,10 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 {
 	if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv
 	{
-		match arg.plugs.patterns.get(cv_name)
+		if let Some(builder) = arg.plugs.patterns.get(cv_name)
 		{
-			Some(builder) => return builder(arg),
-			_ => (),
-		};
+			return builder(arg);
+		}
 		match cv_name.as_ref()
 		{
 			"Identity" => Box::new(Identity::new(arg)),
@@ -509,9 +508,8 @@ impl FileMap
 		let filename=filename.expect("There were no filename");
 		let file=File::open(&filename).expect("could not open pattern file.");
 		let reader = BufReader::new(&file);
-		let mut lines=reader.lines();
 		let mut permutation=Vec::new();
-		while let Some(rline)=lines.next()
+		for rline in reader.lines()
 		{
 			let line=rline.expect("Some problem when reading the traffic pattern.");
 			let mut words=line.split_whitespace();
@@ -982,7 +980,7 @@ impl Hotspots
 			"extra_random_destinations" => extra_random_destinations=Some(
 				value.as_f64().unwrap_or_else(|_|panic!("bad value for extra_random_destinations ({:?})",value)) as usize),
 		);
-		let destinations=destinations.unwrap_or_else(Vec::new);
+		let destinations=destinations.unwrap_or_default();
 		let extra_random_destinations=extra_random_destinations.unwrap_or(0);
 		Hotspots{
 			destinations,

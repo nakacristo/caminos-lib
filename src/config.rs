@@ -11,7 +11,7 @@ use crate::error::*;
 
 ///Given a list of vectors, `[A1,A2,A3,A4,...]`, `Ai` beging a `Vec<T>` and second vector `b:&Vec<T>=[b1,b2,b3,b4,...]`, each `bi:T`.
 ///It creates a list of vectors with each combination Ai+bj.
-fn vec_product<T:Clone>(a:&Vec<Vec<T>>,b:&Vec<T>) -> Vec<Vec<T>>
+fn vec_product<T:Clone>(a:&[Vec<T>],b:&[T]) -> Vec<Vec<T>>
 {
 	let mut r=vec![];
 	for ae in a.iter()
@@ -65,7 +65,7 @@ fn flatten_configuration_value_gather_names(value:&ConfigurationValue, names:&mu
 		&ConfigurationValue::Array(ref list) =>
 		{
 			let mut r=vec![ vec![] ];
-			for ref v in list
+			for v in list
 			{
 				let fv=flatten_configuration_value_gather_names(v,names);
 				if let ConfigurationValue::Experiments(vlist) = fv
@@ -92,7 +92,7 @@ fn flatten_configuration_value_gather_names(value:&ConfigurationValue, names:&mu
 				let flat=flatten_configuration_value_gather_names(experiment,names);
 				if let ConfigurationValue::Experiments(ref flist) = flat
 				{
-					r.extend(flist.iter().map(|x|x.clone()));
+					r.extend(flist.iter().cloned());
 				}
 				else
 				{
@@ -130,16 +130,7 @@ fn expand_named_experiments_range(experiments:ConfigurationValue, names:&BTreeMa
 	for name in names.keys()
 	{
 		let size=*names.get(name).unwrap();
-		//r=ConfigurationValue::Experiments((0..size).map(|index|{
-		//	let mut context = BTreeMap::new();
-		//	context.insert(key,index);
-		//	match particularize_named_experiments_selected(experiments,&context)
-		//	{
-		//		ConfigurationValue::Experiments(ref exps) => exps,
-		//		x => &vec![x],
-		//	}.iter()
-		//}).flatten().collect());
-		let collected : Vec<Vec<ConfigurationValue>>= (0..size).map(|index|{
+		let partials = (0..size).map(|index|{
 			let mut context : BTreeMap<String,usize> = BTreeMap::new();
 			context.insert(name.to_string(),index);
 			match particularize_named_experiments_selected(&r,&context)
@@ -147,8 +138,8 @@ fn expand_named_experiments_range(experiments:ConfigurationValue, names:&BTreeMa
 				ConfigurationValue::Experiments(exps) => exps,
 				x => vec![x],
 			}
-		}).collect();
-		r=ConfigurationValue::Experiments(collected.into_iter().map(|t|t.into_iter()).flatten().collect());
+		});
+		r=ConfigurationValue::Experiments(partials.flat_map(|t|t.into_iter()).collect());
 	}
 	r
 }
@@ -759,7 +750,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 					let binding=match binding
 					{
 						None => "x".to_string(),
-						Some(ConfigurationValue::Literal(s)) => s.to_string(),
+						Some(ConfigurationValue::Literal(s)) => s,
 						Some(other) => panic!("{:?} cannot be used as binding variable",other),
 					};
 					let container=match container
@@ -773,7 +764,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 							ConfigurationValue::Object(name, data) =>
 							{
 								let mut content = data.clone();
-								content.push( (String::from(binding.clone()), item ) );
+								content.push( (binding.clone(), item ) );
 								ConfigurationValue::Object(name.to_string(),content)
 							},
 							_ => panic!("wrong context"),
@@ -867,7 +858,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 							let binding=match binding
 							{
 								None => "x".to_string(),
-								Some(ConfigurationValue::Literal(s)) => s.to_string(),
+								Some(ConfigurationValue::Literal(s)) => s,
 								Some(other) => panic!("{:?} cannot be used as binding variable",other),
 							};
 							Box::new(move |a,b|{
@@ -876,7 +867,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 									ConfigurationValue::Object(name, data) =>
 									{
 										let mut content = data.clone();
-										content.push( (String::from(binding.clone()), a.clone() ) );
+										content.push( (binding.clone(), a.clone() ) );
 										ConfigurationValue::Object(name.to_string(),content)
 									},
 									_ => panic!("wrong context"),
@@ -886,9 +877,9 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 								{
 									ConfigurationValue::Object(name, data) =>
 									{
-										let mut content = data.clone();
-										content.push( (String::from(binding.clone()), b.clone() ) );
-										ConfigurationValue::Object(name.to_string(),content)
+										let mut content = data;
+										content.push( (binding.clone(), b.clone() ) );
+										ConfigurationValue::Object(name,content)
 									},
 									_ => panic!("wrong context"),
 								};
@@ -994,7 +985,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 							ConfigurationValue::Object(name, data) =>
 							{
 								let mut content = data.clone();
-								content.push( (String::from(binding.clone()), item.clone() ) );
+								content.push( (binding.clone(), item.clone() ) );
 								ConfigurationValue::Object(name.to_string(),content)
 							},
 							_ => panic!("wrong context"),
@@ -1035,7 +1026,7 @@ pub fn reevaluate(value:&ConfigurationValue, context:&ConfigurationValue, path:&
 }
 
 ///Get a vector of `f32` from a vector of `ConfigurationValue`s, skipping non-numeric values.
-pub fn values_to_f32(list:&Vec<ConfigurationValue>) -> Vec<f32>
+pub fn values_to_f32(list:&[ConfigurationValue]) -> Vec<f32>
 {
 	list.iter().filter_map(|v|match v{
 		&ConfigurationValue::Number(f) => Some(f as f32),
@@ -1255,7 +1246,7 @@ impl BinaryConfigWriter
 			},
 			&ConfigurationValue::None => self.vector.write_all(&10u32.to_le_bytes())?,
 		}
-		Ok(location.try_into().unwrap())
+		Ok(location)
 	}
 	///Get a location with the name given. Insert it in the map and vector if necessary.
 	fn locate(&mut self, name:&str) -> io::Result<u32>
@@ -1277,6 +1268,7 @@ impl BinaryConfigWriter
 }
 
 ///Read the value from the input at the given offset.
+#[allow(clippy::identity_op)]
 pub fn config_from_binary(data:&[u8], offset:usize) -> Result<ConfigurationValue,std::string::FromUtf8Error>
 {
 	let magic = u32::from_le_bytes(data[offset..offset+4].try_into().unwrap());
@@ -1367,7 +1359,7 @@ pub fn rewrite_eq(value:&mut ConfigurationValue, edition:&Expr, path:&Path) -> b
 	{
 		Expr::Equality(left,right) =>
 		{
-			let new_value = evaluate(right,&value,path);
+			let new_value = evaluate(right,value,path);
 			//rewrite_pair(value,left,new_value)
 			if let Some(ptr) = config_mut_into(value,left)
 			{
@@ -1386,7 +1378,7 @@ pub fn rewrite_eq(value:&mut ConfigurationValue, edition:&Expr, path:&Path) -> b
 ///returns `true` is something in `value` has been changed.
 pub fn rewrite_pair(value:&mut ConfigurationValue, path_expr:&Expr, new_value:&Expr, path:&Path) -> bool
 {
-	let new_value = evaluate(new_value,&value,path);
+	let new_value = evaluate(new_value,value,path);
 	if let Some(ptr) = config_mut_into(value,path_expr)
 	{
 		*ptr = new_value;
@@ -1543,14 +1535,14 @@ macro_rules! match_object{
 					$( $arm )*
 					"legend_name" => (),
 					//_ => panic!("Nothing to do with field {} in {}",name,$name),
-					_ => Err(error!(ill_formed_configuration,$cv.clone()).with_message(format!("Nothing to do with field {} in {}",name,$name)))?,
+					_ => return Err(error!(ill_formed_configuration,$cv.clone()).with_message(format!("Nothing to do with field {} in {}",name,$name))),
 				}
 			}
 		}
 		else
 		{
 			//panic!("Trying to create a {} from a non-Object",$name);
-			Err(error!(ill_formed_configuration,$cv.clone()).with_message(format!("Trying to create a {} from a non-Object",$name)))?
+			return Err(error!(ill_formed_configuration,$cv.clone()).with_message(format!("Trying to create a {} from a non-Object",$name)));
 		}
 	}};
 }

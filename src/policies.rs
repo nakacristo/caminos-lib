@@ -273,11 +273,10 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 {
 	if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv
 	{
-		match arg.plugs.policies.get(cv_name)
+		if let Some(builder) = arg.plugs.policies.get(cv_name)
 		{
-			Some(builder) => return builder(arg),
-			_ => (),
-		};
+			return builder(arg);
+		}
 		match cv_name.as_ref()
 		{
 			"Identity" => Box::new(Identity::new(arg)),
@@ -393,9 +392,9 @@ impl VirtualChannelPolicy for Shortest
 		let mut best=vec![];
 		let mut best_credits=0;
 		//for i in 1..vps.len()
-		for i in 0..candidates.len()
+		for candidate in candidates.into_iter()
 		{
-			let CandidateEgress{port:p,virtual_channel:vc,..}=candidates[i];
+			let CandidateEgress{port:p,virtual_channel:vc,..}=candidate;
 			//let next_credits=router.virtual_ports[p][vc].neighbour_credits;
 			//let next_credits=router.get_virtual_port(p,vc).expect("This router does not have virtual ports (and not credits therefore)").neighbour_credits;
 			let next_credits=router.get_status_at_emisor(p).expect("This router does not have transmission status").known_available_space_for_virtual_channel(vc).expect("remote available space is not known");
@@ -403,12 +402,12 @@ impl VirtualChannelPolicy for Shortest
 			{
 				best_credits=next_credits;
 				//best=vec![CandidateEgress{port:p,virtual_channel:vc,label,estimated_remaining_hops}];
-				best=vec![candidates[i].clone()];
+				best=vec![candidate];
 			}
 			else if next_credits==best_credits
 			{
 				//best.push(CandidateEgress{port:p,virtual_channel:vc,label,estimated_remaining_hops});
-				best.push(candidates[i].clone());
+				best.push(candidate);
 			}
 		}
 		best
@@ -1054,7 +1053,7 @@ impl VirtualChannelPolicy for OccupancyFunction
 		}
 		else
 		{
-			candidates.into_iter().filter_map(
+			candidates.into_iter().map(
 				//|CandidateEgress{port,virtual_channel,label,estimated_remaining_hops}|
 				|candidate|{
 				let CandidateEgress{port,virtual_channel,label,..} = candidate;
@@ -1089,7 +1088,7 @@ impl VirtualChannelPolicy for OccupancyFunction
 				}
 				else {0};
 				let new_label = self.label_coefficient*label + self.occupancy_coefficient*q + self.product_coefficient*label*q + self.constant_coefficient;
-				Some(CandidateEgress{label:new_label,..candidate})
+				CandidateEgress{label:new_label,..candidate}
 			}).collect::<Vec<_>>()
 		}
 	}
@@ -1159,9 +1158,9 @@ impl VirtualChannelPolicy for NegateLabel
 {
 	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
 	{
-		candidates.into_iter().filter_map(
+		candidates.into_iter().map(
 			//|CandidateEgress{port,virtual_channel,label,estimated_remaining_hops}|
-			|candidate|Some(CandidateEgress{label:-candidate.label,..candidate})
+			|candidate|CandidateEgress{label:-candidate.label,..candidate}
 		).collect::<Vec<_>>()
 	}
 
@@ -1214,7 +1213,7 @@ impl VirtualChannelPolicy for VecLabel
 		}
 		else
 		{
-			candidates.into_iter().filter_map(
+			candidates.into_iter().map(
 				//|CandidateEgress{port,virtual_channel,label,estimated_remaining_hops}|
 				|candidate|{
 				let label = candidate.label;
@@ -1223,7 +1222,7 @@ impl VirtualChannelPolicy for VecLabel
 					panic!("label={} is out of range 0..{}",label,self.label_vector.len());
 				}
 				let new_label = self.label_vector[label as usize];
-				Some(CandidateEgress{label:new_label,..candidate})
+				CandidateEgress{label:new_label,..candidate}
 			}).collect::<Vec<_>>()
 		}
 	}

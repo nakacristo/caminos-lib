@@ -201,11 +201,10 @@ pub fn new_traffic(arg:TrafficBuilderArgument) -> Box<dyn Traffic>
 {
 	if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv
 	{
-		match arg.plugs.traffics.get(cv_name)
+		if let Some(builder) = arg.plugs.traffics.get(cv_name)
 		{
-			Some(builder) => return builder(arg),
-			_ => (),
-		};
+			return builder(arg);
+		}
 		match cv_name.as_ref()
 		{
 			"HomogeneousTraffic" => Box::new(Homogeneous::new(arg)),
@@ -260,7 +259,7 @@ impl Traffic for Homogeneous
 			return Err(TrafficError::SelfMessage);
 		}
 		let message=Rc::new(Message{
-			origin: origin,
+			origin,
 			destination,
 			size:self.message_size,
 			creation_cycle: cycle,
@@ -736,7 +735,7 @@ impl Traffic for Burst
 			return Err(TrafficError::SelfMessage);
 		}
 		let message=Rc::new(Message{
-			origin: origin,
+			origin,
 			destination,
 			size:self.message_size,
 			creation_cycle: cycle,
@@ -859,12 +858,9 @@ impl Traffic for Reactive
 	}
 	fn probability_per_cycle(&self, server:usize) -> f32
 	{
-		if server<self.pending_messages.len()
+		if server<self.pending_messages.len() && self.pending_messages[server].len()>0
 		{
-			if self.pending_messages[server].len()>0
-			{
-				return 1.0;
-			}
+			return 1.0;
 		}
 		return self.action_traffic.probability_per_cycle(server);
 	}
@@ -1264,7 +1260,7 @@ impl Traffic for MultimodalBurst
 	}
 	fn server_state(&self, server:usize, _cycle:usize) -> ServerTrafficState
 	{
-		if self.pending[server].iter().find(|(total_remaining,_step_remaining)| *total_remaining > 0 ).is_some() {
+		if self.pending[server].iter().any(|(total_remaining,_step_remaining)| *total_remaining > 0 ) {
 			ServerTrafficState::Generating
 		} else {
 			//We do not know whether someone is sending us data.
@@ -1368,7 +1364,7 @@ impl Traffic for BoundedDifference
 		}
 		self.allowance[origin]-=1;
 		let message=Rc::new(Message{
-			origin: origin,
+			origin,
 			destination,
 			size:self.message_size,
 			creation_cycle: cycle,

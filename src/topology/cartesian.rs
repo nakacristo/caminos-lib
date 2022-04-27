@@ -38,7 +38,7 @@ impl CartesianData
 		}
 		r
 	}
-	pub fn pack(&self, coordinates:&Vec<usize>) -> usize
+	pub fn pack(&self, coordinates:&[usize]) -> usize
 	{
 		let mut r=0;
 		let mut stride=1;
@@ -384,10 +384,7 @@ impl Topology for Torus
 					a
 				}
 			}
-			else
-			{
-				if a<b { a } else { -b }
-			}
+			else if a<b { a } else { -b }
 		}).collect()
 	}
 	fn is_direction_change(&self, _router_index:usize, input_port: usize, output_port: usize) -> bool

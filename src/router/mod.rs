@@ -70,12 +70,10 @@ pub fn new_router(arg:RouterBuilderArgument) -> Rc<RefCell<dyn Router>>
 {
 	if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv
 	{
-		match arg.plugs.routers.get(cv_name)
+		if let Some(builder) = arg.plugs.routers.get(cv_name)
 		{
-			//Some(builder) => return builder(router_index,cv,plugs,topology,maximum_packet_size),
-			Some(builder) => return builder(arg),
-			_ => (),
-		};
+			return builder(arg);
+		}
 		match cv_name.as_ref()
 		{
 			//"Basic" => Basic::<SimpleVirtualChannels>::new(arg.router_index, arg.cv, arg.plugs, arg.topology, arg.maximum_packet_size),
@@ -113,11 +111,7 @@ impl Buffer
 	}
 	pub fn front(&self) -> Option<Rc<Phit>>
 	{
-		match self.phits.front()
-		{
-			None => None,
-			Some(rphit) => Some(rphit.clone()),
-		}
+		self.phits.front().map(|rphit|rphit.clone())
 	}
 	///How many phits are currently in the buffer.
 	pub fn len(&self) -> usize
@@ -126,7 +120,8 @@ impl Buffer
 	}
 	pub fn iter_phits(&self) -> Box<dyn Iterator<Item=Rc<Phit>>>
 	{
-		Box::new(self.phits.iter().map(|p|p.clone()).collect::<Vec<_>>().into_iter())
+		//Box::new(self.phits.iter().map(|p|p.clone()).collect::<Vec<_>>().into_iter())
+		Box::new(self.phits.iter().cloned().collect::<Vec<_>>().into_iter())
 	}
 }
 
@@ -171,11 +166,7 @@ impl<ExtraInfo> AugmentedBuffer<ExtraInfo>
 	}
 	fn front(&self) -> Option<(Rc<Phit>,ExtraInfo)> where ExtraInfo:Clone
 	{
-		match self.phits.front()
-		{
-			None => None,
-			Some(rphit) => Some(rphit.clone()),
-		}
+		self.phits.front().map(|rphit| rphit.clone())
 	}
 	///How many phits are currently in the buffer.
 	fn len(&self) -> usize

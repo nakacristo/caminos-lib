@@ -441,7 +441,7 @@ impl ExplicitStage
 	}
 	///Convert a pair of list of adjacencies into a pair of lists including the index to return.
 	///This is, return (f,g) with `g[f[x][i].0][f[x][i].1]=x` and `f[g[x][i].0][g[x][i].1]=x` for any `x` in range.
-	pub fn add_reverse_indices(to_above:&Vec<Vec<usize>>,to_below:&Vec<Vec<usize>>) -> (Vec<Vec<(usize,usize)>>,Vec<Vec<(usize,usize)>>)
+	pub fn add_reverse_indices(to_above:&[Vec<usize>],to_below:&[Vec<usize>]) -> (Vec<Vec<(usize,usize)>>,Vec<Vec<(usize,usize)>>)
 	{
 		let bottom_list=to_above.iter().enumerate().map(|(current,neighbours)|
 			neighbours.iter().map(|&neigh|(neigh,
@@ -894,7 +894,7 @@ impl MultiStage
 							let neighbour = self.pack(current_stage+1,neighbour_offset);
 							// If there is set any distance it must be the good one already.
 							// if udd[neighbour].map_or(true,|d|alternate_distance<d)
-							if let None = udd[neighbour]
+							if udd[neighbour].is_none()
 							{
 								udd[neighbour]=Some((alternate_distance,0));
 								//ud[neighbour]=Some(alternate_distance);
@@ -1254,11 +1254,10 @@ pub fn new_stage(arg:StageBuilderArgument) -> Box<dyn Stage>
 {
 	if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv
 	{
-		match arg.plugs.stages.get(cv_name)
+		if let Some(builder) = arg.plugs.stages.get(cv_name)
 		{
-			Some(builder) => return builder(arg),
-			_ => (),
-		};
+			return builder(arg);
+		}
 		match cv_name.as_ref()
 		{
 			"Fat" => Box::new(FatStage::new(arg)),

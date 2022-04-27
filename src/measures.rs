@@ -324,11 +324,6 @@ impl Statistics
 		}
 		if !self.packet_defined_statistics_definitions.is_empty()
 		{
-			let mut context_content = vec![];
-			context_content.push( (String::from("hops"), ConfigurationValue::Number(hops as f64)) );
-			context_content.push( (String::from("delay"), ConfigurationValue::Number(network_delay as f64)) );
-			context_content.push( (String::from("cycle_into_network"), ConfigurationValue::Number(*packet.cycle_into_network.borrow() as f64)) );
-			context_content.push( (String::from("size"), ConfigurationValue::Number(packet.size as f64)) );
 			let be = packet.extra.borrow();
 			let extra = be.as_ref().unwrap();
 			let link_classes = extra.link_classes.iter().map(|x|ConfigurationValue::Number(*x as f64)).collect();
@@ -337,9 +332,15 @@ impl Statistics
 				None => ConfigurationValue::None,
 			}).collect();
 			let cycle_per_hop = extra.cycle_per_hop.iter().map(|x|ConfigurationValue::Number(*x as f64)).collect();
-			context_content.push( (String::from("link_classes"), ConfigurationValue::Array(link_classes)) );
-			context_content.push( (String::from("entry_virtual_channels"), ConfigurationValue::Array(entry_virtual_channels)) );
-			context_content.push( (String::from("cycle_per_hop"), ConfigurationValue::Array(cycle_per_hop)) );
+			let context_content = vec![
+				(String::from("hops"), ConfigurationValue::Number(hops as f64)),
+				(String::from("delay"), ConfigurationValue::Number(network_delay as f64)),
+				(String::from("cycle_into_network"), ConfigurationValue::Number(*packet.cycle_into_network.borrow() as f64)),
+				(String::from("size"), ConfigurationValue::Number(packet.size as f64)),
+				(String::from("link_classes"), ConfigurationValue::Array(link_classes)),
+				(String::from("entry_virtual_channels"), ConfigurationValue::Array(entry_virtual_channels)),
+				(String::from("cycle_per_hop"), ConfigurationValue::Array(cycle_per_hop)),
+			];
 			let context = ConfigurationValue::Object( String::from("packet"), context_content );
 			let path = Path::new(".");
 			for (index,definition) in self.packet_defined_statistics_definitions.iter().enumerate()

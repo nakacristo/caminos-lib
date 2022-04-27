@@ -150,7 +150,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 		//let mut queue=vec![0;n];
 		let queue_len=match class_weight
 		{
-			Some(ref v)=> n*v.len(),
+			Some(v)=> n*v.len(),
 			None => n,
 		};
 		let mut queue=vec![0;queue_len];
@@ -206,7 +206,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 			//}
 			for NeighbourRouterIteratorItem{link_class,neighbour_router:router_index,..} in self.neighbour_router_iter(best)
 			{
-				let weight= if let Some(ref v)=class_weight
+				let weight= if let Some(v)=class_weight
 				{
 					if link_class>=v.len()
 					{
@@ -801,11 +801,10 @@ pub fn new_topology(arg:TopologyBuilderArgument) -> Box<dyn Topology>
 {
 	if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv
 	{
-		match arg.plugs.topologies.get(cv_name)
+		if let Some(builder) = arg.plugs.topologies.get(cv_name)
 		{
-			Some(builder) => return builder(arg),
-			_ => (),
-		};
+			return builder(arg);
+		}
 		match cv_name.as_ref()
 		{
 			"Mesh" => Box::new(Mesh::new(arg.cv)),

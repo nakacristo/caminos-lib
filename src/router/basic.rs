@@ -593,7 +593,7 @@ impl<TM:'static+TransmissionMechanism> Basic<TM>
 				//status.can_transmit_whole_packet(&phit,exit_vc)
 				if let Some(space)=status.known_available_space_for_virtual_channel(exit_vc)
 				{
-					status.can_transmit(&phit,exit_vc) && space>= phit.packet.size + self.maximum_packet_size
+					status.can_transmit(phit,exit_vc) && space>= phit.packet.size + self.maximum_packet_size
 				}
 				else
 				{
@@ -602,7 +602,7 @@ impl<TM:'static+TransmissionMechanism> Basic<TM>
 			}
 			else
 			{
-				self.transmission_port_status[exit_port].can_transmit(&phit,exit_vc)
+				self.transmission_port_status[exit_port].can_transmit(phit,exit_vc)
 			}
 		}
 		else
@@ -718,14 +718,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 		let server_ports : Option<Vec<usize>> = if self.virtual_channel_policies.iter().any(|policy|policy.need_server_ports())
 		{
 			Some((0..topology.ports(self.router_index)).filter(|&p|
-				if let (Location::ServerPort(_server),_link_class)=topology.neighbour(self.router_index,p)
-				{
-					true
-				}
-				else
-				{
-					false
-				}
+				matches!(topology.neighbour(self.router_index,p), (Location::ServerPort(_server),_link_class))
 			).collect())
 		}
 		else
@@ -733,7 +726,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 			None
 		};
 		// `busy_ports[port_index]` is true for output ports for which there is some assigned input buffer which can advance.
-		let busy_ports:Vec<bool> = self.transmission_port_status.iter().enumerate().map(|(port,ref _status)|{
+		let busy_ports:Vec<bool> = self.transmission_port_status.iter().enumerate().map(|(port, _status)|{
 			let mut is_busy = false;
 			for vc in 0..amount_virtual_channels
 			{
@@ -754,7 +747,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 		}).collect();
 		let port_last_transmission:Option<Vec<usize>> = if self.virtual_channel_policies.iter().any(|policy|policy.need_port_last_transmission())
 		{
-			Some(self.transmission_port_status.iter().map(|ref p|
+			Some(self.transmission_port_status.iter().map(|p|
 				//p.iter().map(|ref vp|vp.last_transmission).max().unwrap()
 				p.get_last_transmission()
 			).collect())
@@ -765,7 +758,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 		};
 		let port_average_neighbour_queue_length:Option<Vec<f32>> = if self.virtual_channel_policies.iter().any(|policy|policy.need_port_average_queue_length())
 		{
-			Some(self.transmission_port_status.iter().map(|ref p|{
+			Some(self.transmission_port_status.iter().map(|p|{
 				//let total=p.iter().map(|ref vp|self.buffer_size - vp.neighbour_credits).sum::<usize>();
 				//(total as f32) / (p.len() as f32)
 				let total=(0..amount_virtual_channels).map(|vc|{
@@ -964,16 +957,8 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 		//-- Arbitrate the requests.
 		let request_len = request.len();
 		//FIXME: allocator policies
-		let min_label=match request.iter().map(|r|r.label).min()
-		{
-			Some(x)=>x,
-			None=>0,
-		};
-		let max_label=match request.iter().map(|r|r.label).max()
-		{
-			Some(x)=>x,
-			None=>0,
-		};
+		let min_label= request.iter().map(|r|r.label).min().unwrap_or(0);
+		let max_label=request.iter().map(|r|r.label).max().unwrap_or(0);
 		//Split que sequence in subsequences, where any items in a subsequence has more priority than any element in a later subsequence.
 		let request_sequence:Vec<Vec<PortRequest>>=if self.output_prioritize_lowest_label
 		{

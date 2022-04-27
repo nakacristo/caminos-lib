@@ -55,7 +55,7 @@ impl<T:Quantifiable> Quantifiable for Matrix<T>
 {
 	fn total_memory(&self) -> usize
 	{
-		return size_of::<Matrix<T>>() + self.data.total_memory();
+		size_of::<Matrix<T>>() + self.data.total_memory()
 	}
 	fn print_memory_breakdown(&self)
 	{

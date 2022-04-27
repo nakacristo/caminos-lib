@@ -264,11 +264,7 @@ impl Routing for Valiant
 	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
 		let mut bri=routing_info.borrow_mut();
-		let middle=match bri.selections
-		{
-			None => None,
-			Some(ref s) => Some(s[0] as usize),
-		};
+		let middle = bri.selections.as_ref().map(|s| s[0] as usize);
 		match middle
 		{
 			None =>
