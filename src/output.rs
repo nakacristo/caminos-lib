@@ -1341,9 +1341,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 	}
 	let amount_string=
 	{
-		//let (done,total) = amount_experiments;
-		let done = environment.total_experiments();
-		let total = environment.available_results();
+		let done = environment.available_results();
+		let total = environment.total_experiments();
 		if done==total {format!("all {} done",done)} else {format!("{} of {}",done,total)}
 	};
 	let git_id=get_git_id();
