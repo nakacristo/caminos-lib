@@ -225,7 +225,7 @@ impl Routing for Valiant
 				}
 				false//there is not server in this router, hence it is excluded
 			}).collect();
-			if available.len()==0
+			if available.is_empty()
 			{
 				panic!("There are not legal middle routers to select in Valiant from router {} towards router {}",current_router,target_router);
 			}

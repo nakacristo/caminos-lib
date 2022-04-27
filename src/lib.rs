@@ -27,6 +27,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * Added phit to `RequestInfo`.
 * Upgrade from rand-0.4 to rand-0.8.
 * Using `&dyn Topology` instead of `&Box<dyn Topology>` in all interfaces.
+* `Topology::coordinated_routing_record` now receives slices.
 
 ## [0.3.0] to [0.4.0]
 
@@ -273,7 +274,6 @@ Both entries `directory_main` and `file_main` receive a `&Plugs` argument that m
 #![allow(clippy::suspicious_else_formatting)]
 // At clippy::style
 // These should be partially addressed, but of very little importance.
-#![allow(clippy::len_zero)]
 #![allow(clippy::needless_return)]
 #![allow(clippy::new_without_default)]
 #![allow(clippy::comparison_chain)]//is this really clearer???
@@ -1032,7 +1032,7 @@ impl<'a> Simulation<'a>
 						server.statistics.missed_generations += 1;
 					}
 				}
-				if server.stored_packets.len()==0 && server.stored_messages.len()>0
+				if server.stored_packets.is_empty() && !server.stored_messages.is_empty()
 				{
 					let message=server.stored_messages.pop_front().expect("There are not messages in queue");
 					let mut size=message.size;
@@ -1057,7 +1057,7 @@ impl<'a> Simulation<'a>
 						size-=ps;
 					}
 				}
-				if server.stored_phits.len()==0 && server.stored_packets.len()>0
+				if server.stored_phits.is_empty() && !server.stored_packets.is_empty()
 				{
 					let packet=server.stored_packets.pop_front().expect("There are not packets in queue");
 					for index in 0..packet.size
@@ -1082,7 +1082,7 @@ impl<'a> Simulation<'a>
 				//	self.event_queue.enqueue_begin(event,self.link_classes[link_class].delay);
 				//	server.credits-=1;
 				//}
-				if server.stored_phits.len()>0
+				if !server.stored_phits.is_empty()
 				{
 					//Do not extract the phit until we know whether we can transmit it.
 					let phit=server.stored_phits.front().expect("There are not phits");

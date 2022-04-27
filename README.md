@@ -26,6 +26,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * Added phit to `RequestInfo`.
 * Upgrade from rand-0.4 to rand-0.8.
 * Using `&dyn Topology` instead of `&Box<dyn Topology>` in all interfaces.
+* `Topology::coordinated_routing_record` now receives slices.
 
 ## [0.3.0] to [0.4.0]
 

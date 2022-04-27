@@ -726,7 +726,7 @@ impl SpaceAtReceptor for AgnosticParallelBuffers
 					None
 				}
 			}).collect();
-			if good.len()==0
+			if good.is_empty()
 			{
 				panic!("There is no space for the packet. packet.size={} available={:?}",phit.packet.size,self.buffers.iter().map(|buffer|self.buffer_size-buffer.len()).collect::<Vec<usize>>());
 			}

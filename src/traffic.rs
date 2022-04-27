@@ -761,7 +761,7 @@ impl Traffic for Burst
 	}
 	fn is_finished(&self) -> bool
 	{
-		if self.generated_messages.len()>0
+		if !self.generated_messages.is_empty()
 		{
 			return false;
 		}
@@ -858,7 +858,7 @@ impl Traffic for Reactive
 	}
 	fn probability_per_cycle(&self, server:usize) -> f32
 	{
-		if server<self.pending_messages.len() && self.pending_messages[server].len()>0
+		if server<self.pending_messages.len() && !self.pending_messages[server].is_empty()
 		{
 			return 1.0;
 		}
@@ -896,7 +896,7 @@ impl Traffic for Reactive
 		}
 		for pm in self.pending_messages.iter()
 		{
-			if pm.len()>0
+			if !pm.is_empty()
 			{
 				return false;
 			}
@@ -1242,7 +1242,7 @@ impl Traffic for MultimodalBurst
 	}
 	fn is_finished(&self) -> bool
 	{
-		if self.generated_messages.len()>0
+		if !self.generated_messages.is_empty()
 		{
 			return false;
 		}

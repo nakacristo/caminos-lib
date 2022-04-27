@@ -181,7 +181,7 @@ impl Topology for Mesh
 	{
 		Some(&self.cartesian_data)
 	}
-	fn coordinated_routing_record(&self, coordinates_a:&Vec<usize>, coordinates_b:&Vec<usize>, _rng: Option<&RefCell<StdRng>>)->Vec<i32>
+	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], _rng: Option<&RefCell<StdRng>>)->Vec<i32>
 	{
 		//In a Mesh the routing record is just the difference in coordinates.
 		(0..coordinates_a.len()).map(|i|coordinates_b[i] as i32-coordinates_a[i] as i32).collect()
@@ -363,7 +363,7 @@ impl Topology for Torus
 	{
 		Some(&self.cartesian_data)
 	}
-	fn coordinated_routing_record(&self, coordinates_a:&Vec<usize>, coordinates_b:&Vec<usize>, rng: Option<&RefCell<StdRng>>)->Vec<i32>
+	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], rng: Option<&RefCell<StdRng>>)->Vec<i32>
 	{
 		//In a Torus the routing record is for every difference of coordinates `d`, the minimum among `d` and `side-d` with the appropiate sign.
 		(0..coordinates_a.len()).map(|i|{
@@ -565,7 +565,7 @@ impl Topology for Hamming
 	{
 		Some(&self.cartesian_data)
 	}
-	fn coordinated_routing_record(&self, coordinates_a:&Vec<usize>, coordinates_b:&Vec<usize>, _rng: Option<&RefCell<StdRng>>)->Vec<i32>
+	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], _rng: Option<&RefCell<StdRng>>)->Vec<i32>
 	{
 		//In Hamming we put the difference as in the mesh, but any number can be advanced in a single hop.
 		(0..coordinates_a.len()).map(|i|coordinates_b[i] as i32-coordinates_a[i] as i32).collect()

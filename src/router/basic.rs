@@ -917,17 +917,18 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 						{
 							//good_ports=vcp.filter(good_ports,self,target_router,entry_port,entry_vc,performed_hops,&server_ports,&port_average_neighbour_queue_length,&port_last_transmission,&port_occupied_output_space,&port_available_output_space,simulation.cycle,topology,&simulation.rng);
 							good_ports=vcp.filter(good_ports,self,&request_info,topology,&simulation.rng);
-							if good_ports.len()==0
+							if good_ports.is_empty()
 							{
 								break;//No need to check other policies.
 							}
 						}
-						if good_ports.len()==0
+						if good_ports.is_empty()
 						{
 							continue;//There is no available port satisfying the policies. Hopefully there will in the future.
 						}
 						else if good_ports.len()>=2
 						{
+							//TODO: this will not be true when having true allocators.
 							panic!("You need a VirtualChannelPolicy able to select a single (port,vc).");
 						}
 						simulation.routing.performed_request(&good_ports[0],&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng);
@@ -1184,7 +1185,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 				}
 			}
 			//for selected_virtual_channel in 0..nvc
-			let selected_virtual_channel = if cand.len()>0
+			let selected_virtual_channel = if !cand.is_empty()
 			{
 				//Then select one of the vc candidates (either in input or output buffer) to actually use the physical port.
 				let selected_virtual_channel = match self.output_arbiter
@@ -1299,7 +1300,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 			}
 		}
 		//TODO: what to do with probabilistic requests???
-		if undecided_channels>0 || moved_phits>0 || events.len()>0 || request_len>0
+		if undecided_channels>0 || moved_phits>0 || !events.is_empty() || request_len>0
 		//if undecided_channels>0 || moved_phits>0 || events.len()>0
 		//if true
 		{

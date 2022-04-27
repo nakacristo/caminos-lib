@@ -705,7 +705,7 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 					git_set.insert(git_str.to_string());
 				}
 			}
-			let averaged_record = AveragedRecord{selector:selector_value.clone(),legend:legend_value.clone(),parameter:parameter_value.clone(),abscissa:standard_deviation(&current_abscissas),ordinate:standard_deviation(&current_ordinates),shared_abscissa:shared_element(&mut current_abscissas.iter()).map(|x|x.clone()),
+			let averaged_record = AveragedRecord{selector:selector_value.clone(),legend:legend_value.clone(),parameter:parameter_value.clone(),abscissa:standard_deviation(&current_abscissas),ordinate:standard_deviation(&current_ordinates),shared_abscissa:shared_element(&mut current_abscissas.iter()).cloned(),
 							upper_whisker:if boxplot {standard_deviation(&current_upper_whiskers).0} else {None},
 							bottom_whisker:if boxplot {standard_deviation(&current_bottom_whiskers).0} else {None},
 							upper_box_limit:if boxplot {standard_deviation(&current_upper_box_limits).0} else {None},

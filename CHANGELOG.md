@@ -8,6 +8,8 @@ Many more advices taken from clippy.
 git commit -m "New abstraction OutputEnvironment. New file clippy.toml. Implemented changes from clippy."
 BREAKING CHANGE: Using `&dyn Topology` instead of `&Box<dyn Topology>` in all interfaces.
 git commit -m "Removed references to boxes in interfaces."
+BREAKING CHANGE: `Topology::coordinated_routing_record` now receives slices.
+git commit -m "coordinated_routing_record now receives slices."
 
 ### 2022-04-26
 Taken some advices from clippy.

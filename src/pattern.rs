@@ -1010,7 +1010,7 @@ impl Pattern for RandomMix
 		{
 			panic!("Number of patterns must match number of weights for the RandomMix meta-pattern.");
 		}
-		if self.patterns.len()==0
+		if self.patterns.is_empty()
 		{
 			panic!("RandomMix requires at least one pattern (and 2 to be sensible).");
 		}

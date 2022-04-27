@@ -121,7 +121,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 	///Specific for some toologies, but must be checkable for anyone
 	fn cartesian_data(&self) -> Option<&CartesianData>;
 	///Specific for some toologies, but must be checkable for anyone
-	fn coordinated_routing_record(&self, coordinates_a:&Vec<usize>, coordinates_b:&Vec<usize>, rng:Option<&RefCell<StdRng>>)->Vec<i32>;
+	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], rng:Option<&RefCell<StdRng>>)->Vec<i32>;
 	///Specific for some toologies, but must be checkable for anyone
 	/// Indicates if going from input_port to output_port implies a direction change. Used for the bubble routing.
 	fn is_direction_change(&self, router_index:usize, input_port: usize, output_port: usize) -> bool;

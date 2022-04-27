@@ -508,7 +508,7 @@ impl Routing for EachLengthSourceAdaptiveRouting
 			let selected_indices : Vec<i32> = (min_length..=max_length).filter_map(|length|{
 				//get some random path with the given length
 				let candidates : Vec<usize> = (0..path_collection.len()).filter(|&index|path_collection[index].len()==length).collect();
-				if candidates.len()==0 {
+				if candidates.is_empty() {
 					None
 				} else {
 					let r = rng.borrow_mut().gen_range(0..candidates.len());
