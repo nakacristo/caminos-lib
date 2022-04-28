@@ -1033,7 +1033,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 				if self.selected_output[entry_port][entry_vc].is_none()
 				{
 					self.selected_input[requested_port][requested_vc]=Some((packet.clone(),entry_port,entry_vc));
-					self.selected_output[entry_port][entry_vc] = Some((packet,entry_port,entry_vc));
+					self.selected_output[entry_port][entry_vc] = Some((packet,requested_port,requested_vc));
 				}
 			};
 		}
