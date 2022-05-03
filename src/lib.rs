@@ -379,8 +379,7 @@ impl Server
 	///Consumes a phit
 	fn consume(&mut self, phit:Rc<Phit>, traffic:&mut dyn Traffic, statistics:&mut Statistics, cycle:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
-		self.statistics.consumed_phits+=1;
-		//statistics.consumed_phits+=1;
+		self.statistics.track_consumed_phit(cycle);
 		statistics.track_consumed_phit(cycle);
 		let message=phit.packet.message.clone();
 		let message_ptr=message.as_ref() as *const Message;
@@ -393,12 +392,9 @@ impl Server
 		if cp==message.size
 		{
 			//The whole message has been consumed
-			self.statistics.consumed_messages+=1;
-			//statistics.consumed_messages+=1;
+			self.statistics.track_consumed_message(cycle);
 			statistics.track_consumed_message(cycle);
-			self.statistics.total_message_delay+=cycle-message.creation_cycle;
-			self.statistics.cycle_last_consumed_message = cycle;
-			//statistics.total_message_delay+=cycle-message.creation_cycle;
+			self.statistics.track_message_delay(cycle-message.creation_cycle,cycle);
 			statistics.track_message_delay(cycle-message.creation_cycle,cycle);
 			self.consumed_phits.remove(&message_ptr);
 			if !traffic.try_consume(self.index,message,cycle,topology,rng)
@@ -422,16 +418,7 @@ impl Server
 		}
 		if phit.is_end()
 		{
-			//statistics.consumed_packets+=1;
 			statistics.track_consumed_packet(cycle,&phit.packet);
-			//let hops=phit.packet.routing_info.borrow().hops;
-			//statistics.total_packet_hops+=hops;
-			//statistics.track_packet_hops(hops,cycle);
-			//if statistics.total_packet_per_hop_count.len() <= hops
-			//{
-			//	statistics.total_packet_per_hop_count.resize( hops+1, 0 );
-			//}
-			//statistics.total_packet_per_hop_count[hops]+=1;
 			if cp < phit.packet.size
 			{
 				println!("phit tail has been consuming without haing consumed a whole packet.");
@@ -469,6 +456,7 @@ pub struct Network
 	///TThe collection of all the servers in the network.
 	pub servers: Vec<Server>,
 }
+
 
 impl Quantifiable for Network
 {
@@ -520,6 +508,38 @@ impl Quantifiable for Network
 	fn forecast_total_memory(&self) -> usize
 	{
 		unimplemented!();
+	}
+}
+
+impl Network
+{
+	fn jain_server_created_phits(&self) -> f64
+	{
+		measures::jain(self.servers.iter().map(|s|s.statistics.current_measurement.created_phits as f64))
+	}
+	fn jain_server_consumed_phits(&self) -> f64
+	{
+		measures::jain(self.servers.iter().map(|s|s.statistics.current_measurement.consumed_phits as f64))
+	}
+	fn temporal_jain_server_created_phits<'a>(&'a self) -> Vec<f64>
+	{
+		//measures::jain(self.servers.iter().map(|s|s.statistics.current_measurement.created_phits as f64))
+		let limit:usize = self.servers.iter().map(|s|s.statistics.temporal_statistics.len()).max().unwrap_or(0);
+		(0..limit).map(|index|{
+			measures::jain(self.servers.iter().map(|s|
+				s.statistics.temporal_statistics.get(index).map(|m|m.created_phits as f64).unwrap_or(0f64)
+			))
+		}).collect()
+	}
+	fn temporal_jain_server_consumed_phits<'a>(&'a self) -> Vec<f64>
+	{
+		//measures::jain(self.servers.iter().map(|s|s.statistics.current_measurement.consumed_phits as f64))
+		let limit:usize = self.servers.iter().map(|s|s.statistics.temporal_statistics.len()).max().unwrap_or(0);
+		(0..limit).map(|index|{
+			measures::jain(self.servers.iter().map(|s|
+				s.statistics.temporal_statistics.get(index).map(|m|m.created_phits as f64).unwrap_or(0f64)
+			))
+		}).collect()
 	}
 }
 
@@ -795,7 +815,7 @@ impl<'a> Simulation<'a>
 				stored_packets:VecDeque::new(),
 				stored_phits:VecDeque::new(),
 				consumed_phits: BTreeMap::new(),
-				statistics: ServerStatistics::new(),
+				statistics: ServerStatistics::new(statistics_temporal_step),
 			}
 		}).collect();
 		let traffic=new_traffic(TrafficBuilderArgument{
@@ -1037,7 +1057,7 @@ impl<'a> Simulation<'a>
 						};
 					} else {
 						//There is no space in the server queue of messages.
-						server.statistics.missed_generations += 1;
+						server.statistics.track_missed_generation(self.cycle);
 					}
 				}
 				if server.stored_packets.is_empty() && !server.stored_messages.is_empty()
@@ -1104,8 +1124,7 @@ impl<'a> Simulation<'a>
 						};
 						//self.statistics.created_phits+=1;
 						self.statistics.track_created_phit(self.cycle);
-						server.statistics.created_phits+=1;
-						server.statistics.cycle_last_created_phit = self.cycle;
+						server.statistics.track_created_phit(self.cycle);
 						self.event_queue.enqueue_begin(event,self.link_classes[link_class].delay);
 						server.router_status.notify_outcoming_phit(0,self.cycle);
 					}
@@ -1147,8 +1166,8 @@ impl<'a> Simulation<'a>
 		let accepted_load=measurement.consumed_phits as f64/cycles as f64/num_servers as f64;
 		let average_message_delay=measurement.total_message_delay as f64/measurement.consumed_messages as f64;
 		let average_packet_network_delay=measurement.total_packet_network_delay as f64/measurement.consumed_packets as f64;
-		let jscp=measurement.jain_server_consumed_phits(&self.network);
-		let jsgp=measurement.jain_server_created_phits(&self.network);
+		let jscp=self.network.jain_server_consumed_phits();
+		let jsgp=self.network.jain_server_created_phits();
 		let average_packet_hops=measurement.total_packet_hops as f64 / measurement.consumed_packets as f64;
 		let total_packet_per_hop_count=measurement.total_packet_per_hop_count.iter().map(|&count|ConfigurationValue::Number(count as f64)).collect();
 		//let total_arrivals:usize = self.statistics.link_statistics.iter().map(|rls|rls.iter().map(|ls|ls.phit_arrivals).sum::<usize>()).sum();
@@ -1160,8 +1179,8 @@ impl<'a> Simulation<'a>
 		let maximum_link_utilization = maximum_arrivals as f64 / cycles as f64;
 		let server_average_cycle_last_created_phit : f64 = (self.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).sum::<usize>() as f64)/(self.network.servers.len() as f64);
 		let server_average_cycle_last_consumed_message : f64 = (self.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).sum::<usize>() as f64)/(self.network.servers.len() as f64);
-		let server_average_missed_generations : f64 = (self.network.servers.iter().map(|s|s.statistics.missed_generations).sum::<usize>() as f64)/(self.network.servers.len() as f64);
-		let servers_with_missed_generations : usize = self.network.servers.iter().map(|s|if s.statistics.missed_generations > 0 {1} else {0}).sum::<usize>();
+		let server_average_missed_generations : f64 = (self.network.servers.iter().map(|s|s.statistics.current_measurement.missed_generations).sum::<usize>() as f64)/(self.network.servers.len() as f64);
+		let servers_with_missed_generations : usize = self.network.servers.iter().map(|s|if s.statistics.current_measurement.missed_generations > 0 {1} else {0}).sum::<usize>();
 		let virtual_channel_usage: Vec<_> =measurement.virtual_channel_usage.iter().map(|&count|
 			ConfigurationValue::Number(count as f64 / cycles as f64 / total_links as f64)
 		).collect();
@@ -1217,8 +1236,6 @@ impl<'a> Simulation<'a>
 			let mut accepted_load_collect = Vec::with_capacity(samples);
 			let mut average_message_delay_collect = Vec::with_capacity(samples);
 			let mut average_packet_network_delay_collect = Vec::with_capacity(samples);
-			let mut jscp_collect = Vec::with_capacity(samples);
-			let mut jsgp_collect = Vec::with_capacity(samples);
 			let mut average_packet_hops_collect = Vec::with_capacity(samples);
 			let mut virtual_channel_usage_collect = Vec::with_capacity(samples);
 			for measurement in self.statistics.temporal_statistics.iter()
@@ -1231,10 +1248,6 @@ impl<'a> Simulation<'a>
 				average_message_delay_collect.push(ConfigurationValue::Number(average_message_delay));
 				let average_packet_network_delay=measurement.total_message_delay as f64/measurement.consumed_messages as f64;
 				average_packet_network_delay_collect.push(ConfigurationValue::Number(average_packet_network_delay));
-				let jscp=measurement.jain_server_consumed_phits(&self.network);
-				jscp_collect.push(ConfigurationValue::Number(jscp));
-				let jsgp=measurement.jain_server_created_phits(&self.network);
-				jsgp_collect.push(ConfigurationValue::Number(jsgp));
 				let average_packet_hops=measurement.total_packet_hops as f64 / measurement.consumed_packets as f64;
 				average_packet_hops_collect.push(ConfigurationValue::Number(average_packet_hops));
 				let virtual_channel_usage: Vec<_> =measurement.virtual_channel_usage.iter().map(|&count|
@@ -1242,6 +1255,14 @@ impl<'a> Simulation<'a>
 				).collect();
 				virtual_channel_usage_collect.push(ConfigurationValue::Array(virtual_channel_usage));
 			};
+			let jscp_collect = self.network.temporal_jain_server_consumed_phits()
+				.into_iter()
+				.map(|x|ConfigurationValue::Number(x))
+				.collect();
+			let jsgp_collect = self.network.temporal_jain_server_created_phits()
+				.into_iter()
+				.map(|x|ConfigurationValue::Number(x))
+				.collect();
 			let temporal_content = vec![
 				//(String::from("cycle"),ConfigurationValue::Number(self.cycle as f64)),
 				(String::from("injected_load"),ConfigurationValue::Array(injected_load_collect)),
@@ -1261,12 +1282,12 @@ impl<'a> Simulation<'a>
 		}
 		if !self.statistics.server_percentiles.is_empty()
 		{
-			let mut servers_injected_load : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.created_phits as f64/cycles as f64).collect();
-			let mut servers_accepted_load : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.consumed_phits as f64/cycles as f64).collect();
-			let mut servers_average_message_delay : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.total_message_delay as f64/s.statistics.consumed_messages as f64).collect();
+			let mut servers_injected_load : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.current_measurement.created_phits as f64/cycles as f64).collect();
+			let mut servers_accepted_load : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.current_measurement.consumed_phits as f64/cycles as f64).collect();
+			let mut servers_average_message_delay : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.current_measurement.total_message_delay as f64/s.statistics.current_measurement.consumed_messages as f64).collect();
 			let mut servers_cycle_last_created_phit : Vec<usize> = self.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).collect();
 			let mut servers_cycle_last_consumed_message : Vec<usize> = self.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).collect();
-			let mut servers_missed_generations : Vec<usize> = self.network.servers.iter().map(|s|s.statistics.missed_generations).collect();
+			let mut servers_missed_generations : Vec<usize> = self.network.servers.iter().map(|s|s.statistics.current_measurement.missed_generations).collect();
 			//XXX There are more efficient ways to find percentiles than to sort them, but should not be notable in any case. See https://en.wikipedia.org/wiki/Selection_algorithm
 			servers_injected_load.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
 			servers_accepted_load.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));

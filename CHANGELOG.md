@@ -2,6 +2,17 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-05-03
+Added `ServerMeasurement` to manage the statatistics of servers in a similar way to the global ones.
+Methods `jain_server_consumed_phits` and `jain_server_created_phits` moved to `Network`.
+Added a `measures::jain` method.
+Added temporal statistics to the servers.
+git commit -m "Added temporal statistics to the servers and other improvements."
+
+### 2022-04-29
+New struct `output::PlotData` to better encapsulate processed data.
+Updated OutputEnvironment.
+Make sftp build also parent directories when they are missing.
 
 ### 2022-04-28
 git commit -m "Another fix on removing the single request requirement."

@@ -36,39 +36,107 @@ use crate::config;
 #[derive(Clone,Quantifiable)]
 pub struct ServerStatistics
 {
-	pub created_phits: usize,
-	pub consumed_phits: usize,
-	pub consumed_messages: usize,
-	pub total_message_delay: usize,
+	pub current_measurement: ServerMeasurement,
 	///The last cycle in which this server created a phit and sent it to a router. Or 0
 	pub cycle_last_created_phit: usize,
 	///The last cycle in that the last phit of a message has been consumed by this server. Or 0.
 	pub cycle_last_consumed_message: usize,
+	///If non-zero then creates statistics for intervals of the given number of cycles.
+	pub temporal_step: usize,
+	///The periodic measurements requested by non-zero statistics_temporal_step.
+	pub temporal_statistics: Vec<ServerMeasurement>,
+}
+
+#[derive(Clone,Default,Quantifiable)]
+pub struct ServerMeasurement
+{
+	///The number of the first cycle included in the statistics.
+	pub begin_cycle: usize,
+	pub created_phits: usize,
+	pub consumed_phits: usize,
+	pub consumed_messages: usize,
+	pub total_message_delay: usize,
 	///Number of times the traffic returned true from `should_generate`, but it could not be stored.
 	pub missed_generations: usize,
 }
 
 impl ServerStatistics
 {
-	pub fn new()->ServerStatistics
+	pub fn new(temporal_step:usize)->ServerStatistics
 	{
 		ServerStatistics{
-			created_phits:0,
-			consumed_phits:0,
-			consumed_messages:0,
-			total_message_delay:0,
+			current_measurement: ServerMeasurement::default(),
 			cycle_last_created_phit: 0,
 			cycle_last_consumed_message: 0,
-			missed_generations: 0,
+			temporal_step,
+			temporal_statistics: vec![],
 		}
 	}
-	fn reset(&mut self)
+	fn reset(&mut self, next_cycle:usize)
 	{
-		self.created_phits=0;
-		self.consumed_phits=0;
-		self.consumed_messages=0;
-		self.total_message_delay=0;
-		self.missed_generations=0;
+		self.current_measurement=ServerMeasurement::default();
+		self.current_measurement.begin_cycle=next_cycle;
+	}
+	/// Called each time a server consumes a phit.
+	pub fn track_consumed_phit(&mut self, cycle:usize)
+	{
+		self.current_measurement.consumed_phits+=1;
+		if let Some(m) = self.current_temporal_measurement(cycle)
+		{
+			m.consumed_phits+=1;
+		}
+	}
+	/// Called when a server consumes the last phit from a message.
+	pub fn track_consumed_message(&mut self, cycle:usize)
+	{
+		self.cycle_last_consumed_message = cycle;
+		self.current_measurement.consumed_messages+=1;
+		if let Some(m) = self.current_temporal_measurement(cycle)
+		{
+			m.consumed_messages+=1;
+		}
+	}
+	/// Called each time the server consumes a phit.
+	pub fn track_created_phit(&mut self, cycle:usize)
+	{
+		self.current_measurement.created_phits+=1;
+		self.cycle_last_created_phit = cycle;
+		if let Some(m) = self.current_temporal_measurement(cycle)
+		{
+			m.created_phits+=1;
+		}
+	}
+	/// Called when a server consumes the last phit from a message.
+	/// XXX: Perhaps this should be part of `track_consumed_message`.
+	pub fn track_message_delay(&mut self, delay:usize, cycle:usize)
+	{
+		self.current_measurement.total_message_delay+= delay;
+		if let Some(m) = self.current_temporal_measurement(cycle)
+		{
+			m.total_message_delay+=delay;
+		}
+	}
+	/// Called when the server should have generated a new message but it did not have space in queue.
+	pub fn track_missed_generation(&mut self, cycle:usize)
+	{
+		self.current_measurement.missed_generations+=1;
+		if let Some(m) = self.current_temporal_measurement(cycle)
+		{
+			m.missed_generations+=1;
+		}
+	}
+	pub fn current_temporal_measurement(&mut self, cycle:usize) -> Option<&mut ServerMeasurement>
+	{
+		if self.temporal_step>0
+		{
+			let index = cycle / self.temporal_step;
+			if self.temporal_statistics.len()<=index
+			{
+				self.temporal_statistics.resize_with(index+1,Default::default);
+				self.temporal_statistics[index].begin_cycle = index*self.temporal_step;
+			}
+			Some(&mut self.temporal_statistics[index])
+		} else { None }
 	}
 }
 
@@ -121,44 +189,63 @@ pub struct StatisticMeasurement
 	pub virtual_channel_usage: Vec<usize>,
 }
 
-impl StatisticMeasurement
+//impl StatisticMeasurement
+//{
+//	//TODO: this do not use `self`, and does not work with temporal statistics.
+//	pub fn jain_server_created_phits(&self, network:&Network) -> f64
+//	{
+//		//double rcvd_count_total=0.0;
+//		//double rcvd_count2_total=0.0;
+//		let mut count=0.0;
+//		let mut count2=0.0;
+//		for server in network.servers.iter()
+//		{
+//			//double x=(double)(network[i].rcvd_count_from);
+//			let x=server.statistics.current_measurement.created_phits as f64;
+//			count+=x;
+//			count2+=x*x;
+//		}
+//		//double Jain_fairness=rcvd_count_total*rcvd_count_total/rcvd_count2_total/(double)nprocs;
+//		//printf("OUT_Jain_fairness=%f%s",Jain_fairness,sep);
+//		count*count/count2/network.servers.len() as f64
+//	}
+//	pub fn jain_server_consumed_phits(&self, network:&Network) -> f64
+//	{
+//		//double rcvd_count_total=0.0;
+//		//double rcvd_count2_total=0.0;
+//		let mut count=0.0;
+//		let mut count2=0.0;
+//		for server in network.servers.iter()
+//		{
+//			//double x=(double)(network[i].rcvd_count_from);
+//			let x=server.statistics.current_measurement.consumed_phits as f64;
+//			count+=x;
+//			count2+=x*x;
+//		}
+//		//double Jain_fairness=rcvd_count_total*rcvd_count_total/rcvd_count2_total/(double)nprocs;
+//		//printf("OUT_Jain_fairness=%f%s",Jain_fairness,sep);
+//		count*count/count2/network.servers.len() as f64
+//	}
+//}
+
+pub fn jain<I:Iterator<Item=f64>>(iter:I) -> f64
 {
-	//TODO: this do not use `self`, and does not work with temporal statistics.
-	pub fn jain_server_created_phits(&self, network:&Network) -> f64
+	let mut n = 0;
+	let mut count=0.0;
+	let mut count2=0.0;
+	for x in iter
 	{
-		//double rcvd_count_total=0.0;
-		//double rcvd_count2_total=0.0;
-		let mut count=0.0;
-		let mut count2=0.0;
-		for server in network.servers.iter()
-		{
-			//double x=(double)(network[i].rcvd_count_from);
-			let x=server.statistics.created_phits as f64;
-			count+=x;
-			count2+=x*x;
-		}
-		//double Jain_fairness=rcvd_count_total*rcvd_count_total/rcvd_count2_total/(double)nprocs;
-		//printf("OUT_Jain_fairness=%f%s",Jain_fairness,sep);
-		count*count/count2/network.servers.len() as f64
+		n+=1;
+		//double x=(double)(network[i].rcvd_count_from);
+		//let x=server.statistics.current_measurement.consumed_phits as f64;
+		count+=x;
+		count2+=x*x;
 	}
-	pub fn jain_server_consumed_phits(&self, network:&Network) -> f64
-	{
-		//double rcvd_count_total=0.0;
-		//double rcvd_count2_total=0.0;
-		let mut count=0.0;
-		let mut count2=0.0;
-		for server in network.servers.iter()
-		{
-			//double x=(double)(network[i].rcvd_count_from);
-			let x=server.statistics.consumed_phits as f64;
-			count+=x;
-			count2+=x*x;
-		}
-		//double Jain_fairness=rcvd_count_total*rcvd_count_total/rcvd_count2_total/(double)nprocs;
-		//printf("OUT_Jain_fairness=%f%s",Jain_fairness,sep);
-		count*count/count2/network.servers.len() as f64
-	}
+	//double Jain_fairness=rcvd_count_total*rcvd_count_total/rcvd_count2_total/(double)nprocs;
+	//printf("OUT_Jain_fairness=%f%s",Jain_fairness,sep);
+	count*count/count2/n as f64
 }
+
 
 #[derive(Debug)]
 pub struct StatisticPacketMeasurement
@@ -276,7 +363,7 @@ impl Statistics
 		self.current_measurement.begin_cycle=next_cycle;
 		for server in network.servers.iter_mut()
 		{
-			server.statistics.reset();
+			server.statistics.reset(next_cycle);
 		}
 		for router in network.routers.iter()
 		{
@@ -519,8 +606,8 @@ impl ReportColumn
 			ReportColumnKind::BeginEndCycle => format!("{:>11}-{}",statistics.current_measurement.begin_cycle,next_cycle-1),
 			ReportColumnKind::InjectedLoad => format!{"{}",statistics.current_measurement.created_phits as f32/cycles as f32/network.servers.len() as f32},
 			ReportColumnKind::AcceptedLoad =>  format!{"{}",statistics.current_measurement.consumed_phits as f32/cycles as f32/network.servers.len() as f32},
-			ReportColumnKind::ServerGenerationJainIndex => format!{"{}",statistics.current_measurement.jain_server_created_phits(network)},
-			ReportColumnKind::ServerConsumptionJainIndex => format!{"{}",statistics.current_measurement.jain_server_consumed_phits(network)},
+			ReportColumnKind::ServerGenerationJainIndex => format!{"{}",network.jain_server_created_phits()},
+			ReportColumnKind::ServerConsumptionJainIndex => format!{"{}",network.jain_server_consumed_phits()},
 			ReportColumnKind::AverageMessageDelay => format!("{}",statistics.current_measurement.total_message_delay as f64/statistics.current_measurement.consumed_messages as f64),
 			ReportColumnKind::AveragePacketNetworkDelay => format!("{}",statistics.current_measurement.total_packet_network_delay as f64/statistics.current_measurement.consumed_packets as f64),
 			ReportColumnKind::AveragePacketHops => format!("{}",statistics.current_measurement.total_packet_hops as f64 / statistics.current_measurement.consumed_packets as f64),
@@ -552,4 +639,5 @@ impl From<ReportColumnKind> for ReportColumn
 		}
 	}
 }
+
 

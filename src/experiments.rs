@@ -524,6 +524,49 @@ impl ExperimentFiles
 		}
 		Ok(())
 	}
+	/// Builds the root directory and all parents.
+	pub fn build_root_path(&mut self) -> Result<(),Error>
+	{
+		let root=self.root.as_ref().unwrap();
+		if let Some(session) = &self.ssh2_session {
+			let sftp = session.sftp().map_err(|e|Error::could_not_start_sftp_session(source_location!(),e))?;
+			let mut to_create = vec![root.to_owned()];
+			while !to_create.is_empty()
+			{
+				let dir = to_create.last().unwrap();
+				match sftp.stat(dir)
+				{
+					Ok(remote_stat) =>
+					{
+						if !remote_stat.is_dir()
+						{
+							panic!("remote {:?} exists, but is not a directory",&remote_stat);
+						}
+					},
+					Err(_err) =>
+					{
+						eprintln!("Could not open remote '{:?}', creating it",root);
+						match sftp.mkdir(dir,0o755)
+						{
+							Ok(_) =>
+							{
+								to_create.pop();
+							}
+							Err(_) =>
+							{
+								let parent = dir.parent().ok_or_else(||error!(undetermined).with_message(format!("{:?} has no parent to create",dir)))?.to_owned();
+								eprintln!("Trying to create its parent directory {:?}",parent);
+								to_create.push(parent);
+							}
+						}
+					},
+				};
+			}
+		} else {
+			fs::create_dir_all(root).map_err(|e|error!(could_not_generate_file,root.to_path_buf(),e))?;
+		}
+		Ok(())
+	}
 	pub fn build_runs_path(&mut self) -> Result<(),Error>
 	{
 		if self.runs_path.is_none()
@@ -1177,7 +1220,8 @@ impl<'a> Experiment<'a>
 					Err(_err) =>
 					{
 						eprintln!("Could not open remote '{:?}', creating it",remote_root);
-						sftp.mkdir(&remote_root,0o755).expect("Could not create remote directory");
+						//sftp.mkdir(&remote_root,0o755).expect("Could not create remote directory");
+						self.remote_files.as_mut().unwrap().build_root_path()?;
 					},
 				};
 				//check remote config

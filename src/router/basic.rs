@@ -4,6 +4,7 @@ use std::rc::{Rc,Weak};
 use std::ops::{Deref,DerefMut};
 use std::mem::{size_of};
 use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom};
+
 use super::{Router,TransmissionMechanism,StatusAtEmissor,SpaceAtReceptor,TransmissionToServer,TransmissionFromServer,SimpleVirtualChannels,AugmentedBuffer,AcknowledgeMessage,RouterBuilderArgument};
 use crate::config_parser::ConfigurationValue;
 use crate::topology::{Location};

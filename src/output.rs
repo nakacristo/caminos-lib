@@ -172,6 +172,8 @@ pub struct OutputEnvironment<'a>
 	total_experiments: usize,
 	///The files associated to the experiment.
 	files: &'a ExperimentFiles,
+	selector_map: EnumeratedMap<ConfigurationValue>,
+	legend_map: EnumeratedMap<ConfigurationValue>,
 }
 
 impl<'a> OutputEnvironment<'a>
@@ -182,6 +184,8 @@ impl<'a> OutputEnvironment<'a>
 			results,
 			total_experiments,
 			files,
+			selector_map: EnumeratedMap::default(),
+			legend_map: EnumeratedMap::default(),
 		}
 	}
 	///Iterate over `ConfigurationValue`s with the context of each result.
@@ -202,6 +206,19 @@ impl<'a> OutputEnvironment<'a>
 	pub fn available_results(&self) -> usize
 	{
 		self.results.len()
+	}
+	/// Apply f(self,experiment_index,config) to each entry.
+	pub fn map<F>(&mut self,mut f:F)
+		where F: FnMut(&mut OutputEnvironment,usize,ConfigurationValue)
+	{
+		//for (index,(experiment_index,configuration,result)) in self.results.iter().enumerate()
+		for index in 0..self.results.len()
+		{
+			let (experiment_index,configuration,result) = &self.results[index];
+			let experiment_index = *experiment_index;
+			let context=combine(experiment_index,configuration,result);
+			f(self,experiment_index,context);
+		}
 	}
 }
 
@@ -375,6 +392,29 @@ struct Plotkind<'a>
 	raw: Option<String>,
 }
 
+struct PlotData
+{
+	data: Vec<AveragedRecord>,
+}
+
+impl PlotData
+{
+	pub fn with_capacity(capacity:usize) -> PlotData
+	{
+		PlotData{
+			data: Vec::with_capacity(capacity)
+		}
+	}
+	pub fn push(&mut self, record:AveragedRecord)
+	{
+		self.data.push(record);
+	}
+	pub fn len(&self) -> usize
+	{
+		self.data.len()
+	}
+}
+
 /**
 A description of a specific plot (axis and data).
 
@@ -535,19 +575,21 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 	let prefix=prefix.unwrap_or_else(||"noprefix".to_string());
 	let outputs_path = environment.files.get_outputs_path();
 	println!("Creating plots");
-	let mut avgs:Vec<Vec<AveragedRecord>>=Vec::with_capacity(kind.len());
+	let mut avgs:Vec<PlotData>=Vec::with_capacity(kind.len());
 	//let git_id_expr = Expr::Ident("git_id".to_string());
 	let git_id_expr = Expr::Member( Rc::new(Expr::Ident("result".to_string())) , "git_id".to_string() );
-	let mut selector_map = EnumeratedMap::default();
-	let mut legend_map = EnumeratedMap::default();
-	for context in environment.iter()
+	//let mut selector_map = EnumeratedMap::default();
+	//let mut legend_map = EnumeratedMap::default();
+	//let mut selector_map = environment.selector_map;
+	//for context in environment.iter()
+	environment.map(|environment,_index,context|
 	{
 		//A first pass to populate maps
 		let selector=reevaluate(selector,&context,&outputs_path);
 		let legend=reevaluate(legend,&context,&outputs_path);
-		selector_map.insert( &selector );
-		legend_map.insert( &legend );
-	}
+		environment.selector_map.insert( &selector );
+		environment.legend_map.insert( &legend );
+	});
 	for pk in kind.iter()
 	{
 		println!("averaging plot {:?}",pk);
@@ -560,14 +602,15 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 		//if let Some(histogram)=pk.histogram
 		if let Some(data)=array
 		{
-			for context in environment.iter()
+			//for context in environment.iter()
+			environment.map(|environment,_index,context|
 			{
 				let histogram_values=reevaluate(data,&context,&outputs_path);
 				let selector=reevaluate(selector,&context,&outputs_path);
 				let legend=reevaluate(legend,&context,&outputs_path);
 				let git_id = evaluate(&git_id_expr,&context,&outputs_path);
-				let selector_index = selector_map.insert( &selector );
-				let legend_index = legend_map.insert( &legend );
+				let selector_index = environment.selector_map.insert( &selector );
+				let legend_index = environment.legend_map.insert( &legend );
 				let abscissa_array = pk.abscissas.map(|cv|reevaluate(cv,&context,&outputs_path));
 				match histogram_values
 				{
@@ -630,16 +673,17 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 					ConfigurationValue::None => println!("WARNING: ignoring null histogram/array."),
 					_ => panic!("histogram/array from non-Array"),
 				}
-			}
+			});
 		}
 		else
 		{
-			for context in environment.iter()
+			//for context in environment.iter()
+			environment.map(|environment,_index,context|
 			{
 				let selector=reevaluate(selector,&context,&outputs_path);
 				let legend=reevaluate(legend,&context,&outputs_path);
-				let selector_index = selector_map.insert( &selector );
-				let legend_index = legend_map.insert( &legend );
+				let selector_index = environment.selector_map.insert( &selector );
+				let legend_index = environment.legend_map.insert( &legend );
 				let record=RawRecord{
 					selector_index,
 					legend_index,
@@ -657,7 +701,7 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 				};
 				//println!("{:?}",record);
 				records.push(record);
-			}
+			});
 		}
 		records.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Less));
 		//println!("ordered as");
@@ -665,7 +709,7 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 		//{
 		//	println!("{:?}",record);
 		//}
-		let mut averaged=Vec::with_capacity(records.len());
+		let mut averaged=PlotData::with_capacity(records.len());
 		let mut index=0;
 		while index<records.len()
 		{
@@ -735,7 +779,7 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 		{
 			//If a post expression is required make another pass.
 			let mut selection_map : BTreeMap<String,Vec<usize>> = BTreeMap::new();
-			for (index,record) in averaged.iter().enumerate()
+			for (index,record) in averaged.data.iter().enumerate()
 			{
 				let &AveragedRecord{selector:ref selector_value,parameter:ref parameter_value,..}=record;
 				//ConfigurationValue cannot implement Ord...
@@ -756,12 +800,12 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 			for (key,indices) in selection_map
 			{
 				//let collection : Vec<f64> = averaged[record_index..collection_end].iter().map(|r|r.ordinate.0.unwrap() as f64).collect();
-				let collection : Vec<f64> = indices.iter().map(|&index|averaged[index].ordinate.0.unwrap() as f64).collect();
+				let collection : Vec<f64> = indices.iter().map(|&index|averaged.data[index].ordinate.0.unwrap() as f64).collect();
 				println!("key is {} values are {:?}",key,&collection);
 				let collection_cv = ConfigurationValue::Array(collection.iter().map(|&x|ConfigurationValue::Number(x)).collect());
 				for index in indices
 				{
-					let record = &mut averaged[index];
+					let record = &mut averaged.data[index];
 					let ordinate = record.ordinate.0.unwrap();
 					let context=ConfigurationValue::Object(String::from("Context"),vec![
 						(String::from("average"),ConfigurationValue::Number(ordinate as f64)),
@@ -869,7 +913,7 @@ fn latex_make_command_name(text:&str) -> String
 ///`kind`: the congiguration of the plots
 ///`amount_experiments`: (experiments_with_results, total) of the experiments
 ///`files`: An ExperimentFiles struct with the information on where to generate each thing.
-fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>, kind:Vec<Plotkind>, environment:&mut OutputEnvironment, prefix:String)
+fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<Plotkind>, environment:&mut OutputEnvironment, prefix:String)
 	-> Result<(),Error>
 {
 	let mut tex_filename=None;
@@ -948,7 +992,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<Vec<AveragedRecord>>
 				//continue;
 				break 'figures;
 			}
-			let kaverages=&averages[kind_index];
+			let kaverages=&averages[kind_index].data;
 			let koffset=&mut offsets[kind_index];
 			let kd=&kind[kind_index];
 			let selector_value=&kaverages[*koffset].selector;
