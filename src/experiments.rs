@@ -1896,22 +1896,103 @@ impl<'a> Experiment<'a>
 		let tcp = TcpStream::connect(format!("{}:22",host)).unwrap();
 		let mut session = Session::new().unwrap();
 		session.set_tcp_stream(tcp);
-		session.handshake().unwrap();
+		session.handshake().map_err(|e|error!(authentication_failed,e))?;
 		//See portable-pty crate /src/ssh.rs for a good example on using ssh2.
 		//session.userauth_agent("cristobal").unwrap();//FIXME: this fails, as it does not get any password.
 		//session.userauth_password("cristobal","").unwrap();//This also fails, without asking
-		let prompt = KeyboardInteration;
+		let mut prompt = KeyboardInteration;
 		//session.userauth_keyboard_interactive("cristobal",&mut prompt).unwrap();
 		let username = self.remote_files.as_ref().unwrap().username.as_ref().expect("there is no username").to_owned();
 		let raw_methods = session.auth_methods(&username).unwrap();
 		let methods: HashSet<&str> = raw_methods.split(',').collect();
 		println!("{} available authentication methods ({})",methods.len(),raw_methods);
-		//if !session.authenticated() && methods.contains("publickey")
+		// Notable methods: publickey, keyboard-interactive, password, gssapi-keyex, gssapi-with-mic
+		let mut last_error = None;
+		if !session.authenticated() && methods.contains("publickey")
+		{
+			let home = dirs::home_dir().ok_or_else(||error!(undetermined).with_message(format!("could not get home path")))?;
+			//We get the identity from $(ssh -G hostname | grep identityfile)
+			//By default we would see the following:
+			//identityfile ~/.ssh/id_rsa
+			//identityfile ~/.ssh/id_ecdsa
+			//identityfile ~/.ssh/id_ecdsa_sk
+			//identityfile ~/.ssh/id_ed25519
+			//identityfile ~/.ssh/id_ed25519_sk
+			//identityfile ~/.ssh/id_xmss
+			//identityfile ~/.ssh/id_dsa
+			//If the user has changed .ssh/config he could see other things.
+			let mut private_key_paths : Vec<PathBuf> = {
+				let ssh_config=Command::new("ssh")
+					.arg("-G")
+					.arg(&host)
+					.output().map_err(|e|Error::command_not_found(source_location!(),"squeue".to_string(),e))?;
+				let ssh_config_output=String::from_utf8_lossy(&ssh_config.stdout);
+				ssh_config_output.lines().filter_map(|line|{
+					line.strip_prefix("identityfile ").map(|s|{
+						match s.strip_prefix("~/")
+						{
+							None => PathBuf::from(s),
+							Some(r) => home.join(r),
+						}
+					})
+				}).collect()
+			};
+			if private_key_paths.is_empty()
+			{
+				// try default ones.
+				let ssh_config_dir = home.join(".ssh/");
+				private_key_paths = ["id_rsa","id_ecdsa","id_ecdsa_sk","id_ed25519","id_ed25519_sk","id_xmss","id_dsa"]
+					.iter().map(|name|ssh_config_dir.join(name)).collect()
+			}
+			println!("Attempt to use private_key_paths={private_key_paths:?}");
+			for private_key in private_key_paths.into_iter()
+			{
+				//let private_key = PathBuf::from("/tmp/");
+				if private_key.is_file()
+				{
+					let pub_key = private_key.with_extension("pub");
+					let pub_key = if pub_key.is_file() { Some(pub_key.as_ref()) } else { None };
+					//let pub_key = None;
+					let passphrase = None;
+					//let passphrase = Some("");
+					println!("username={username} pub_key={pub_key:?} private_key={private_key:?}");
+					match session.userauth_pubkey_file(&username,pub_key,&private_key,passphrase)
+					{
+						Ok(_) => break,
+						Err(e) =>
+						{
+							let error = Error::authentication_failed(source_location!(),e);
+							eprintln!("SSH method publickey failed: {error:?}");
+							last_error = Some(error);
+						}
+					}
+				}
+			}
+		}
+		if !session.authenticated() && methods.contains("keyboard-interactive")
+		{
+			if let Err(e) = session.userauth_keyboard_interactive(&username,&mut prompt)
+			{
+				let error = Error::authentication_failed(source_location!(),e);
+				eprintln!("SSH method keyboard-interactive failed: {error:?}");
+				last_error = Some(error);
+			}
+		}
 		if !session.authenticated() && methods.contains("password")
 		{
 			let password=prompt.ask_password(&username,&host);
 			//session.userauth_password(&username,&password).expect("Password authentication failed.");
-			session.userauth_password(&username,&password).map_err(|e|Error::authentication_failed(source_location!(),e))?;
+			if let Err(e) = session.userauth_password(&username,&password)
+			{
+				let error = Error::authentication_failed(source_location!(),e);
+				eprintln!("SSH method password failed: {error:?}");
+				last_error = Some(error);
+			}
+		}
+		if !session.authenticated()
+		{
+			eprintln!("All SSH authentication methods failed.");
+			return Err(last_error.unwrap());
 		}
 		//if !session.authenticated() && methods.contains("publickey")
 		assert!(session.authenticated());

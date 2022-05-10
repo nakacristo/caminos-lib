@@ -47,5 +47,8 @@ procfs = "0.12"
 # Make diffs between files. To show inconsistencies of the configuration files in remote hosts.
 diff = "0.1.12"
 
+# Get the home directory. To find the ssh public key.
+dirs = "4.0"
+
 quantifiable-derive = "0.1.0"
 #quantifiable-derive = { path = "../quantifiable-derive" }

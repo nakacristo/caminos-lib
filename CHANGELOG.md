@@ -2,6 +2,11 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-05-10
+Added support for more authentication methods, `publickey` and `keyboard-interactive`, in addition to the already used `password` method.
+For the publickey method behave like ssh: By default try all private keys. If there is some user configuration then use those.
+git commit -m "Implemented SSH authentication methods publickey and keyboard-interactive."
+
 ### 2022-05-03
 Added `ServerMeasurement` to manage the statatistics of servers in a similar way to the global ones.
 Methods `jain_server_consumed_phits` and `jain_server_created_phits` moved to `Network`.
