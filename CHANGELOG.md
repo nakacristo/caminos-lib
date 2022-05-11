@@ -2,6 +2,11 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-05-11
+Added variant `EmbeddedMap` of `FileMap` with the data directly on the .cfg.
+Added new pattern CartesianTiling.
+git commit -m "New patterns EmbeddedMap and CartesianTiling."
+
 ### 2022-05-10
 Added support for more authentication methods, `publickey` and `keyboard-interactive`, in addition to the already used `password` method.
 For the publickey method behave like ssh: By default try all private keys. If there is some user configuration then use those.

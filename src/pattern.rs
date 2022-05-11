@@ -220,9 +220,11 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"RandomPermutation" => Box::new(RandomPermutation::new(arg)),
 			"RandomInvolution" => Box::new(RandomInvolution::new(arg)),
 			"FileMap" => Box::new(FileMap::new(arg)),
+			"EmbeddedMap" => Box::new(FileMap::embedded(arg)),
 			"Product" => Box::new(ProductPattern::new(arg)),
 			"Components" => Box::new(ComponentsPattern::new(arg)),
 			"CartesianTransform" => Box::new(CartesianTransform::new(arg)),
+			"CartesianTiling" => Box::new(CartesianTiling::new(arg)),
 			"Composition" => Box::new(Composition::new(arg)),
 			"Pow" => Box::new(Pow::new(arg)),
 			"CartesianFactor" => Box::new(CartesianFactor::new(arg)),
@@ -525,6 +527,19 @@ impl FileMap
 			permutation,
 		}
 	}
+	fn embedded(arg:PatternBuilderArgument) -> FileMap
+	{
+		let mut map = None;
+		match_object_panic!(arg.cv,"EmbeddedMap",value,
+			"map" => map = Some(value.as_array()
+				.expect("bad value for map").iter()
+				.map(|v|v.as_f64().expect("bad value for map") as usize).collect()),
+		);
+		let permutation = map.expect("There were no map");
+		FileMap{
+			permutation
+		}
+	}
 }
 
 ///A pattern given by blocks. The elements are divided by blocks of size `block_size`. The `global_pattern` is used to describe the communication among different blocks and the `block_pattern` to describe the communication inside a block.
@@ -786,6 +801,82 @@ impl CartesianTransform
 		}
 	}
 }
+
+
+/// Extend a pattern by giving it a Cartesian representation and a number of repetition periods per dimension.
+/// E.g., it may translate a permutation on a 4x4 mesh into a 16x16 mesh.
+/// Or it may translate a permutation of routers of a 4x2x2 mesh into a server permutation of 8x8x8x8 by using `[8,2,4,4]` as repetitions.
+#[derive(Quantifiable)]
+#[derive(Debug)]
+struct CartesianTiling
+{
+	/// The original pattern.
+	pattern: Box<dyn Pattern>,
+	/// The Cartesian interpretation of the original pattern.
+	base_cartesian_data: CartesianData,
+	/// How much to repeat at each dimension.
+	repetitions: Vec<usize>,
+	/// The final Cartesian representation.
+	final_cartesian_data: CartesianData,
+}
+
+impl Pattern for CartesianTiling
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
+	{
+		let factor: usize = self.repetitions.iter().product();
+		assert!(source_size % factor == 0);
+		assert!(target_size % factor == 0);
+		let base_source_size = source_size / factor;
+		let base_target_size = target_size / factor;
+		self.pattern.initialize(base_source_size,base_target_size,topology,rng);
+	}
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	{
+		let up_origin=self.final_cartesian_data.unpack(origin);
+		let n=up_origin.len();
+		let base_up_origin:Vec<usize> = (0..n).map(|index|up_origin[index]%self.base_cartesian_data.sides[index]).collect();
+		let base_origin = self.base_cartesian_data.pack(&base_up_origin);
+		let base_destination = self.pattern.get_destination(base_origin,topology,rng);
+		let base_up_destination = self.base_cartesian_data.unpack(base_destination);
+		let up_destination:Vec<usize> = (0..n).map(|index|{
+			let size = self.base_cartesian_data.sides[index];
+			let tile = up_origin[index]/size;
+			base_up_destination[index] + size*tile
+		}).collect();
+		self.final_cartesian_data.pack(&up_destination)
+	}
+}
+
+impl CartesianTiling
+{
+	pub fn new(arg:PatternBuilderArgument) -> CartesianTiling
+	{
+		let mut pattern = None;
+		let mut sides:Option<Vec<_>>=None;
+		let mut repetitions:Option<Vec<_>> = None;
+		match_object_panic!(arg.cv,"CartesianTiling",value,
+			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+			"sides" => sides = Some(value.as_array().expect("bad value for sides").iter()
+				.map(|v|v.as_f64().expect("bad value in sides") as usize).collect()),
+			"repetitions" => repetitions = Some(value.as_array().expect("bad value for repetitions").iter()
+				.map(|v|v.as_f64().expect("bad value in repetitions") as usize).collect()),
+		);
+		let pattern=pattern.expect("There were no pattern");
+		let sides=sides.expect("There were no sides");
+		let repetitions=repetitions.expect("There were no repetitions");
+		let n=sides.len();
+		assert!(n==repetitions.len());
+		let final_sides : Vec<_> = (0..n).map(|index|sides[index]*repetitions[index]).collect();
+		CartesianTiling{
+			pattern,
+			base_cartesian_data: CartesianData::new(&sides),
+			repetitions,
+			final_cartesian_data: CartesianData::new(&final_sides),
+		}
+	}
+}
+
 
 ///The pattern resulting of composing a list of patterns.
 ///`destination=patterns[len-1]( patterns[len-2] ( ... (patterns[1] ( patterns[0]( origin ) )) ) )`.

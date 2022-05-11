@@ -1043,7 +1043,7 @@ impl<'a> Simulation<'a>
 							{
 								if message.destination>=num_servers
 								{
-									panic!("Message sent to outside the network unexpectedly.");
+									panic!("Message sent to outside the network unexpectedly. destination={destination}",destination=message.destination);
 								}
 								if message.destination==iserver
 								{
