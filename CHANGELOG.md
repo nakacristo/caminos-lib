@@ -2,6 +2,11 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-05-16
+Avoid repeatedly cloning of contextes in the `map` and `filter` config functions.
+Tried Addind BorrowedConfigurationValue to ease up copy-free management of ConfigurationValues. But it has proved too tricky.
+git commit -m "Avoid multiples calls to clone on a context in map and filter config function. Added a commented-out code that could help with these situations, see BorrowedConfigurationValue. But it is tricky."
+
 ### 2022-05-11
 Added variant `EmbeddedMap` of `FileMap` with the data directly on the .cfg.
 Added new pattern CartesianTiling.

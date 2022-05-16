@@ -4,6 +4,7 @@ use std::collections::{BTreeMap};
 use std::convert::TryInto;
 use std::path::Path;
 use std::fs::File;
+//use std::rc::Rc;
 
 use crate::config_parser::{self,ConfigurationValue,Expr};
 use crate::{error,source_location};
@@ -232,7 +233,10 @@ Evaluates an `expression` including the file `filename` into the current context
 
 **/
 pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> ConfigurationValue
+//pub fn evaluate<'a,C:'a,V:Into<BorrowedConfigurationValue<'a,C>>>(expr:&Expr, context:V, path:&Path) -> ConfigurationValue
+//	where &'a C:Into<ConfigurationValue>, C:Clone
 {
+	//let context : BorrowedConfigurationValue<C> = context.into();
 	match expr
 	{
 		&Expr::Equality(ref a,ref b) =>
@@ -252,7 +256,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 		&Expr::Number(f) => ConfigurationValue::Number(f),
 		&Expr::Ident(ref s) => match context
 		{
-			&ConfigurationValue::Object(ref _name, ref attributes) =>
+			ConfigurationValue::Object(ref _name, ref attributes) =>
 			{
 				for &(ref attr_name,ref attr_value) in attributes.iter()
 				{
@@ -759,13 +763,32 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						ConfigurationValue::None => return ConfigurationValue::None,
 						_ => panic!("first argument of at evaluated to a non-array ({}:?)",container),
 					};
+					//let container = container.into_iter().map(|item|{
+					//	let context = match context{
+					//		ConfigurationValue::Object(name, data) =>
+					//		{
+					//			let mut content = data.clone();
+					//			content.push( (binding.clone(), item ) );
+					//			ConfigurationValue::Object(name.to_string(),content)
+					//		},
+					//		_ => panic!("wrong context"),
+					//	};
+					//	evaluate( expression, &context, path)
+					//}).collect();
+					let mut context = match context{
+						ConfigurationValue::Object(name, data) =>
+						{
+							let mut content = data.clone();
+							content.push( (binding.clone(), ConfigurationValue::None ) );
+							ConfigurationValue::Object(name.to_string(),content)
+						},
+						_ => panic!("wrong context"),
+					};
 					let container = container.into_iter().map(|item|{
-						let context = match context{
-							ConfigurationValue::Object(name, data) =>
+						match &mut context{
+							ConfigurationValue::Object(_name, data) =>
 							{
-								let mut content = data.clone();
-								content.push( (binding.clone(), item ) );
-								ConfigurationValue::Object(name.to_string(),content)
+								data.last_mut().unwrap().1 = item;
 							},
 							_ => panic!("wrong context"),
 						};
@@ -979,14 +1002,30 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						ConfigurationValue::Array(a) => a,
 						_ => panic!("first argument of at evaluated to a non-array ({:?})",container),
 					};
+					let mut context = match context{
+						ConfigurationValue::Object(name, data) =>
+						{
+							let mut content = data.clone();
+							content.push( (binding.clone(), ConfigurationValue::None ) );
+							ConfigurationValue::Object(name.to_string(),content)
+						},
+						_ => panic!("wrong context"),
+					};
 					let container = container.into_iter().filter(|item|
 					{
-						let context = match context{
-							ConfigurationValue::Object(name, data) =>
+						//let context = match context{
+						//	ConfigurationValue::Object(name, data) =>
+						//	{
+						//		let mut content = data.clone();
+						//		content.push( (binding.clone(), item.clone() ) );
+						//		ConfigurationValue::Object(name.to_string(),content)
+						//	},
+						//	_ => panic!("wrong context"),
+						//};
+						match &mut context{
+							ConfigurationValue::Object(_name, data) =>
 							{
-								let mut content = data.clone();
-								content.push( (binding.clone(), item.clone() ) );
-								ConfigurationValue::Object(name.to_string(),content)
+								data.last_mut().unwrap().1 = item.clone();
 							},
 							_ => panic!("wrong context"),
 						};
@@ -1611,11 +1650,127 @@ impl ConfigurationValue
 			_ => Err(error!(ill_formed_configuration, self.clone() )),
 		}
 	}
+	/// Build a generic IllFormedConfiguration error from this ConfigurationValue.
 	pub fn ill(&self,message:&str) -> Error
 	{
 		error!(ill_formed_configuration,self.clone()).with_message(message.to_string())
 	}
+	//pub fn borrow(&self) -> BorrowedConfigurationValue<ConfigurationValue>
+	//{
+	//	BorrowedConfigurationValue::from(self)
+	//}
 }
 
+//Perhaps the best would be to implement a trait
+// trait AsConfigurationValue
+// fn expand() -> ExpandedConfigurationValue<Self::Base>
+// impl AsConfigurationValue for ConfigurationValue
+// impl AsConfigurationValue for &ConfigurationValue
+// impl AsConfigurationValue for IndirectObject{name:String,content:Vec<&str,C>} where C:AsConfigurationValue
+
+//#[derive(Debug)]
+//enum BorrowedConfigurationValue<'a,C>
+//{
+//Literal(&'a str),
+//Number(f64),
+//Object(&'a str,&'a [(String,C)]),
+//Array(&'a [C]),
+//Experiments(&'a [C]),
+//NamedExperiments(&'a str,&'a [C]),
+//True,
+//False,
+//Where(Rc<C>,&'a Expr),
+//Expression(&'a Expr),
+//None,
+//}
+//
+//impl<'a> From<&'a ConfigurationValue> for BorrowedConfigurationValue<'a,ConfigurationValue>
+//{
+//	fn from(cv:&'a ConfigurationValue) -> BorrowedConfigurationValue<'a,ConfigurationValue>
+//	{
+//		match cv
+//		{
+//			ConfigurationValue::Literal(s) => BorrowedConfigurationValue::Literal(s),
+//			ConfigurationValue::Number(x) => BorrowedConfigurationValue::Number(*x),
+//			ConfigurationValue::Object(s,a) => BorrowedConfigurationValue::Object(s,a),
+//			ConfigurationValue::Array(a) => BorrowedConfigurationValue::Array(a),
+//			ConfigurationValue::Experiments(a) => BorrowedConfigurationValue::Experiments(a),
+//			ConfigurationValue::NamedExperiments(s,a) => BorrowedConfigurationValue::NamedExperiments(s,a),
+//			ConfigurationValue::True => BorrowedConfigurationValue::True,
+//			ConfigurationValue::False => BorrowedConfigurationValue::False,
+//			ConfigurationValue::Where(c,e) => BorrowedConfigurationValue::Where( Rc::clone(c),e),
+//			ConfigurationValue::Expression(e) => BorrowedConfigurationValue::Expression(e),
+//			ConfigurationValue::None => BorrowedConfigurationValue::None,
+//		}
+//	}
+//}
+//
+//impl<'a> From<&mut'a ConfigurationValue> for BorrowedConfigurationValue<'a,ConfigurationValue>
+//{
+//	fn from(cv:&mut'a ConfigurationValue) -> BorrowedConfigurationValue<'a,ConfigurationValue>
+//	{
+//		BorrowedConfigurationValue::from(&*cv)
+//	}
+//}
+//
+//impl<'a> From<&'a ConfigurationValue> for ConfigurationValue
+//{
+//	fn from(cv:&'a ConfigurationValue) -> ConfigurationValue
+//	{
+//		cv.clone()
+//	}
+//}
+//
+//impl<'a,C> From<BorrowedConfigurationValue<'a,C>> for ConfigurationValue
+//	where &'a C:Into<ConfigurationValue>
+//{
+//	fn from(cv:BorrowedConfigurationValue<'a,C>) -> ConfigurationValue
+//	{
+//		match cv
+//		{
+//			BorrowedConfigurationValue::Literal(s) => ConfigurationValue::Literal(s.to_string()),
+//			BorrowedConfigurationValue::Number(x) => ConfigurationValue::Number(x),
+//			BorrowedConfigurationValue::Object(s,a) => ConfigurationValue::Object(s.to_string(),a
+//				.iter().map(|(x,y)|(x.to_string(),y.into())).collect()),
+//			BorrowedConfigurationValue::Array(a) => ConfigurationValue::Array(a
+//				.iter().map(|x|x.into()).collect()),
+//			BorrowedConfigurationValue::Experiments(a) => ConfigurationValue::Experiments(a
+//				.iter().map(|x|x.into()).collect()),
+//			BorrowedConfigurationValue::NamedExperiments(s,a) => ConfigurationValue::NamedExperiments(s.to_string(),a
+//				.iter().map(|x|x.into()).collect()),
+//			BorrowedConfigurationValue::True => ConfigurationValue::True,
+//			BorrowedConfigurationValue::False => ConfigurationValue::False,
+//			BorrowedConfigurationValue::Where(c,e) => ConfigurationValue::Where( Rc::new((&*c).into()),e.clone()),
+//			BorrowedConfigurationValue::Expression(e) => ConfigurationValue::Expression(e.clone()),
+//			BorrowedConfigurationValue::None => ConfigurationValue::None,
+//		}
+//	}
+//}
+
+//impl<'a,S,C,VSC,VC> Borrow<BorrowedConfigurationValue<'a,S,C,VSC,VC>> for ConfigurationValue
+//	where String:Borrow<S>, ConfigurationValue:Borrow<C>,
+//		Vec<(String,ConfigurationValue)>:Borrow<VSC>, Vec<ConfigurationValue>:Borrow<VC>,
+//		Self:'a
+//{
+//	fn borrow(&self) -> &BorrowedConfigurationValue<'a,S,C,VSC,VC>
+//	{
+//		match self
+//		{
+//			&ConfigurationValue::Literal(s) => &BorrowedConfigurationValue::Literal(s.borrow()), 
+//			_=> &BorrowedConfigurationValue::None,
+//		}
+//	}
+//}
+//
+//impl<'a,S,C,VSC,VC> ToOwned for BorrowedConfigurationValue<'a,S,C,VSC,VC>
+//	where String:Borrow<S>, ConfigurationValue:Borrow<C>,
+//		Vec<(String,ConfigurationValue)>:Borrow<VSC>, Vec<ConfigurationValue>:Borrow<VC>,
+//{
+//	type Owned = ConfigurationValue;
+//	fn to_owned(&self) -> ConfigurationValue
+//	{
+//		todo!()
+//	}
+//}
 
 
