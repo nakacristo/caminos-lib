@@ -9,6 +9,7 @@ Added dependency on `rprompt` crate.
 Renamed KeyboardInteration [sic] into KeyboardInteraction.
 Ask for permission when deleting result files.
 git commit -m "New action Discard."
+git commit -m "Added option --interactive=bool to control whether to ask for confirmation."
 
 ### 2022-05-16
 Avoid repeatedly cloning of contextes in the `map` and `filter` config functions.

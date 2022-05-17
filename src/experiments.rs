@@ -1491,6 +1491,7 @@ impl<'a> Experiment<'a>
 				//progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
 				if let Action::Discard = action
 				{
+					let silent = ! self.options.interactive.unwrap_or(true);
 					if is_merged
 					{
 						panic!("What are you doing merging and discardig simultaneously!?");
@@ -1498,7 +1499,7 @@ impl<'a> Experiment<'a>
 					let keyboard = KeyboardInteraction{};
 					if is_packed
 					{
-						if keyboard.ask_confirmation(&format!("remove experiment {experiment_index} from packed results."))?
+						if silent || keyboard.ask_confirmation(&format!("remove experiment {experiment_index} from packed results."))?
 						{
 							if let ConfigurationValue::Experiments(ref mut a) = self.files.packed_results {
 								a[experiment_index] = ConfigurationValue::None;
@@ -1508,7 +1509,7 @@ impl<'a> Experiment<'a>
 					}
 					if has_content
 					{
-						if keyboard.ask_confirmation(&format!("remove file {result_path:?} for experiment {experiment_index}."))?
+						if silent || keyboard.ask_confirmation(&format!("remove file {result_path:?} for experiment {experiment_index}."))?
 						{
 							std::fs::remove_file(&result_path).map_err(|e|error!(undetermined).with_message(format!("could not delete file {result_path:?} because {e:?}")))?;
 						}
