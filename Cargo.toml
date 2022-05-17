@@ -35,6 +35,9 @@ ssh2 = "0.9"
 #Ask password by terminal.
 rpassword = "6.0"
 
+#Asking other queries to the terminal's user.
+rprompt = "1.0"
+
 #For the progress bar.
 indicatif = "0.16"
 

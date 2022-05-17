@@ -49,12 +49,14 @@ pub enum Action
 	Shell,
 	///Builds up a `binary.results` if it does not exists and erase all `runs/run*/`.
 	Pack,
+	///Removes results. Intended to use with `--where` clauses to select the copromised experiments.
+	Discard,
 }
 
 impl FromStr for Action
 {
-	type Err = ();
-	fn from_str(s:&str) -> Result<Action,()>
+	type Err = Error;
+	fn from_str(s:&str) -> Result<Action,Error>
 	{
 		match s
 		{
@@ -70,7 +72,8 @@ impl FromStr for Action
 			"slurm_cancel" => Ok(Action::SlurmCancel),
 			"shell" => Ok(Action::Shell),
 			"pack" => Ok(Action::Pack),
-			_ => Err(()),
+			"discard" => Ok(Action::Discard),
+			_ => Err(error!(bad_argument).with_message(format!("String {s} cannot be parsed as an Action."))),
 		}
 	}
 }
@@ -88,9 +91,9 @@ impl fmt::Display for Action
 	}
 }
 
-struct KeyboardInteration;
+struct KeyboardInteraction;
 
-impl KeyboardInteration
+impl KeyboardInteraction
 {
 	fn ask_password(&self, username: &str, hostname: &str) -> String
 	{
@@ -104,9 +107,24 @@ impl KeyboardInteration
 		//rpassword::read_password_from_tty(Some("Password: ")).unwrap()//rpassword-5.0
 		rpassword::prompt_password("Password: ").unwrap()//rpassword-6.0
 	}
+	fn ask_confirmation(&self, action:&str) -> Result<bool,Error>
+	{
+		loop{
+			let prompt = format!("Asking confirmation for \"{action}\" [Yes/No/Panic]: ");
+			let reply = rprompt::prompt_reply_stdout( &prompt ).map_err(|e|error!(undetermined).with_message(format!("could not read from prompt: {e}")))?;
+			match reply.as_ref()
+			{
+				"Yes" | "yes" | "YES" | "Y" | "y" => return Ok(true),
+				"No" | "no" | "NO" | "N" | "n" => return Ok(false),
+				"Panic" => panic!("panic requested."),
+				_ => (),
+			}
+			println!("\nReply was not understood\n");
+		}
+	}
 }
 
-impl ssh2::KeyboardInteractivePrompt for KeyboardInteration
+impl ssh2::KeyboardInteractivePrompt for KeyboardInteraction
 {
 	fn prompt<'a>(&mut self, username:&str, instructions: &str, prompts: &[ssh2::Prompt<'a>]) -> Vec<String>
 	{
@@ -401,6 +419,8 @@ pub struct ExperimentOptions
 	pub where_clause: Option<config_parser::Expr>,
 	///A message to be written into the log.
 	pub message: Option<String>,
+	/// Whether to ask confimation for some actions. E.g., each result with the Discard action.
+	pub interactive: Option<bool>,
 }
 
 ///An `Experiment` object encapsulates the operations that are performed over a folder containing an experiment.
@@ -1106,6 +1126,7 @@ impl<'a> Experiment<'a>
 
 		self.files.build_packed_results();
 		let mut added_packed_results = 0usize;
+		let mut removed_packed_results = 0usize;
 
 		let mut must_draw=false;
 		let mut job_pack_size=1;//how many binary runs per job.
@@ -1251,6 +1272,7 @@ impl<'a> Experiment<'a>
 			},
 			Action::Shell => (),
 			Action::Pack => (),
+			Action::Discard => (),
 		};
 
 		//Remove mutabiity to prevent mistakes.
@@ -1467,6 +1489,32 @@ impl<'a> Experiment<'a>
 			{
 				progress.before_amount_completed+=1;
 				//progress_bar.set_message(&format!("{} pulled, {} empty, {} missing, {} already, {} merged {} errors",pulled,empty,missing,before_amount_completed,merged,errors));
+				if let Action::Discard = action
+				{
+					if is_merged
+					{
+						panic!("What are you doing merging and discardig simultaneously!?");
+					}
+					let keyboard = KeyboardInteraction{};
+					if is_packed
+					{
+						if keyboard.ask_confirmation(&format!("remove experiment {experiment_index} from packed results."))?
+						{
+							if let ConfigurationValue::Experiments(ref mut a) = self.files.packed_results {
+								a[experiment_index] = ConfigurationValue::None;
+								removed_packed_results+=1;
+							} else { panic!("but it was packed.") };
+						}
+					}
+					if has_content
+					{
+						if keyboard.ask_confirmation(&format!("remove file {result_path:?} for experiment {experiment_index}."))?
+						{
+							std::fs::remove_file(&result_path).map_err(|e|error!(undetermined).with_message(format!("could not delete file {result_path:?} because {e:?}")))?;
+						}
+					}
+					progress.discarded+=1;
+				}
 			}
 			else
 			{
@@ -1631,7 +1679,7 @@ impl<'a> Experiment<'a>
 							}
 						}
 					}
-					Action::Output | Action::RemoteCheck | Action::Push | Action::SlurmCancel | Action::Shell | Action::Pack =>
+					Action::Output | Action::RemoteCheck | Action::Push | Action::SlurmCancel | Action::Shell | Action::Pack | Action::Discard =>
 					{
 					},
 				};
@@ -1758,13 +1806,17 @@ impl<'a> Experiment<'a>
 				}
 			}
 		}
-		if added_packed_results>=1
+		if added_packed_results>=1 || removed_packed_results>=1
 		{
 			let packed_results_path = self.files.root.as_ref().unwrap().join("binary.results");
 			let mut binary_results_file=File::create(&packed_results_path).expect("Could not create binary results file.");
 			let binary_results = config::config_to_binary(&self.files.packed_results).expect("error while serializing into binary");
 			binary_results_file.write_all(&binary_results).expect("error happened when creating binary file");
 			println!("Added {} results to binary.results.",added_packed_results);
+			if removed_packed_results>=1
+			{
+				println!("Removed {} results from binary.results.",removed_packed_results);
+			}
 		}
 		if let (Action::Pack,ConfigurationValue::Experiments(ref a)) = (action,&self.files.packed_results)
 		{
@@ -1900,7 +1952,7 @@ impl<'a> Experiment<'a>
 		//See portable-pty crate /src/ssh.rs for a good example on using ssh2.
 		//session.userauth_agent("cristobal").unwrap();//FIXME: this fails, as it does not get any password.
 		//session.userauth_password("cristobal","").unwrap();//This also fails, without asking
-		let mut prompt = KeyboardInteration;
+		let mut prompt = KeyboardInteraction;
 		//session.userauth_keyboard_interactive("cristobal",&mut prompt).unwrap();
 		let username = self.remote_files.as_ref().unwrap().username.as_ref().expect("there is no username").to_owned();
 		let raw_methods = session.auth_methods(&username).unwrap();
@@ -2011,6 +2063,7 @@ pub struct ActionProgress
 	empty: usize,
 	missing: usize,
 	merged: usize,
+	discarded: usize,
 	errors: usize,
 	before_amount_completed: usize,
 }
@@ -2034,6 +2087,7 @@ impl ActionProgress
 			empty: 0,
 			missing: 0,
 			merged: 0,
+			discarded: 0,
 			errors: 0,
 			before_amount_completed: 0,
 		}
@@ -2050,7 +2104,7 @@ impl ActionProgress
 	}
 	pub fn update(&self)
 	{
-		let values = vec![ (self.pulled,"pulled"), (self.empty,"empty"), (self.missing,"missing"), (self.before_amount_completed,"already"), (self.merged,"merged"), (self.errors,"errors")  ];
+		let values = vec![ (self.pulled,"pulled"), (self.empty,"empty"), (self.missing,"missing"), (self.before_amount_completed,"already"), (self.merged,"merged"), (self.discarded,"discarded"), (self.errors,"errors")  ];
 		let message : String = values.iter().filter_map(|(x,s)|{
 			if *x>0 { Some(format!("{} {}",x,s)) } else { None }
 		}).collect::<Vec<_>>().join(", ");

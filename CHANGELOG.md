@@ -2,6 +2,14 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-05-17
+Method `Action::from_str` now returns a better error.
+New action `Discard`.
+Added dependency on `rprompt` crate.
+Renamed KeyboardInteration [sic] into KeyboardInteraction.
+Ask for permission when deleting result files.
+git commit -m "New action Discard."
+
 ### 2022-05-16
 Avoid repeatedly cloning of contextes in the `map` and `filter` config functions.
 Tried Addind BorrowedConfigurationValue to ease up copy-free management of ConfigurationValues. But it has proved too tricky.

@@ -86,6 +86,8 @@ pub enum ErrorKind
 		filepath: PathBuf,
 		error: std::io::Error,
 	},
+	/// Some method received a bad argument. There should be an attached message with further explanation.
+	BadArgument,
 	/// Any other error. Better to add new types than to use this thing.
 	Undetermined,
 }
@@ -232,6 +234,14 @@ impl Error
 			message:None,
 		}
 	}
+	pub fn bad_argument(source_location:SourceLocation)->Error
+	{
+		Error{
+			source_location,
+			kind: BadArgument,
+			message:None,
+		}
+	}
 	pub fn undetermined(source_location:SourceLocation)->Error
 	{
 		Error{
@@ -303,6 +313,10 @@ impl Display for ErrorKind
 			CouldNotGenerateFile{filepath,error} =>
 			{
 				writeln!(formatter,"CouldNotGenerateFile error: The file {:?} could not be created.\nerror: {}",filepath,error)?;
+			},
+			BadArgument =>
+			{
+				writeln!(formatter,"BadArgument: Bad arguments given to a function.")?;
 			},
 			Undetermined =>
 			{
