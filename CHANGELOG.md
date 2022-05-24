@@ -2,6 +2,9 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-05-24
+git commit -m "Be able to generate boxplots without average marks."
+
 ### 2022-05-17
 Method `Action::from_str` now returns a better error.
 New action `Discard`.

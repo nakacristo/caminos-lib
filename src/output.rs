@@ -691,7 +691,7 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 					legend,
 					parameter:reevaluate(pk.parameter.unwrap(),&context,&outputs_path),
 					abscissa:reevaluate(pk.abscissas.unwrap(),&context,&outputs_path),
-					ordinate:reevaluate(pk.ordinates.unwrap(),&context,&outputs_path),
+					ordinate: pk.ordinates.map(|v|reevaluate(v,&context,&outputs_path)).unwrap_or_default(),
 					upper_whisker: pk.upper_whisker.map(|v|reevaluate(v,&context,&outputs_path)),
 					bottom_whisker: pk.bottom_whisker.map(|v|reevaluate(v,&context,&outputs_path)),
 					upper_box_limit: pk.upper_box_limit.map(|v|reevaluate(v,&context,&outputs_path)),
