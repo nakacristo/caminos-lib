@@ -5,6 +5,9 @@
 ### 2022-05-30
 Add some `ignore` in the documentation to avoid `cargo test` errors.
 git commit -m "Ignore all doc errors."
+Made `terminal_default_options` and `terminal_main_normal_opts` from code previously on the binary crate.
+Moved `special_export` from the binary crate.
+git commit -m "Moved some code from the binary into the library."
 
 ### 2022-05-24
 git commit -m "Be able to generate boxplots without average marks."

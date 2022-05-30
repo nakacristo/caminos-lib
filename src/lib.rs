@@ -351,6 +351,7 @@ use policies::{VirtualChannelPolicy,VCPolicyBuilderArgument};
 use pattern::{Pattern,PatternBuilderArgument};
 use config::flatten_configuration_value;
 use measures::{Statistics,ServerStatistics};
+use error::Error;
 
 ///The objects that create and consume traffic to/from the network.
 #[derive(Clone,Quantifiable)]
@@ -1464,7 +1465,7 @@ impl Debug for Plugs
 /// `plugs` constains the plugged builder functions.
 /// `result_file` indicates where to write the results.
 /// `free_args` are free arguments. Those of the form `path=value` are used to override configurations.
-pub fn file_main(file:&mut File, plugs:&Plugs, mut results_file:Option<File>,free_args:&[String])
+pub fn file_main(file:&mut File, plugs:&Plugs, mut results_file:Option<File>,free_args:&[String]) -> Result<(),Error>
 {
 	let mut contents = String::new();
 	file.read_to_string(&mut contents).expect("something went wrong reading the file");
@@ -1537,6 +1538,7 @@ pub fn file_main(file:&mut File, plugs:&Plugs, mut results_file:Option<File>,fre
 			};
 		},
 	};
+	Ok(())
 }
 
 
@@ -1546,7 +1548,7 @@ pub fn file_main(file:&mut File, plugs:&Plugs, mut results_file:Option<File>,fre
 /// `action` is the action to be performed in the experiment. For example running the simulations or drawing graphics.
 /// `options` encapsulate other parameters such as restricting the performed action to a range of simulations.
 //pub fn directory_main(path:&Path, binary:&str, plugs:&Plugs, option_matches:&Matches)
-pub fn directory_main(path:&Path, binary:&str, plugs:&Plugs, action:Action, options: ExperimentOptions)
+pub fn directory_main(path:&Path, binary:&str, plugs:&Plugs, action:Action, options: ExperimentOptions) -> Result<(),Error>
 {
 	if !path.exists()
 	{
@@ -1556,23 +1558,15 @@ pub fn directory_main(path:&Path, binary:&str, plugs:&Plugs, action:Action, opti
 	let binary_path=Path::new(binary);
 	//let mut experiment=Experiment::new(binary_path,path,plugs,option_matches);
 	let mut experiment=Experiment::new(binary_path,path,plugs,options);
-	//let action=if option_matches.opt_present("action")
+	experiment.execute_action(action).map_err(|error|error.with_message(format!("Eecution of the action {action} failed")))
+	//match experiment.execute_action(action)
 	//{
-	//	Action::from_str(&option_matches.opt_str("action").unwrap()).expect("Illegal action")
+	//	Ok(()) => (),
+	//	Err(error) =>
+	//	{
+	//		eprintln!("Execution the action {} failed with errors:\n{}",action,error);
+	//	}
 	//}
-	//else
-	//{
-	//	Action::LocalAndOutput
-	//};
-	match experiment.execute_action(action)
-	{
-		Ok(()) => (),
-		Err(error) =>
-		{
-			eprintln!("Execution the action {} failed with errors:\n{}",action,error);
-		}
-	}
-	//println!("{:?} is a path",path);
 }
 
 /// Get an identifier of the git commit. It is of little use to someone using a forzen public version.
@@ -1594,6 +1588,195 @@ pub fn get_version_number() -> &'static str
 	}
 }
 
+
+/// The default options to be used in a terminal application.
+/// You could build the `ExperimentOptions` directly instead.
+pub fn terminal_default_options() -> getopts::Options
+{
+	let mut opts = getopts::Options::new();
+	opts.optopt("a","action","selected action to execute (for directory experiment)","METHOD");
+	opts.optopt("r","results","file in which to write the simulation results (for file experiment)","FILE");
+	opts.optopt("s","start_index","experiment index in which to start processing","INDEX");
+	opts.optopt("e","end_index","experiment index in which to end processing","INDEX");
+	opts.optopt("x","special","some special execution","SPECIAL_VALUE");
+	opts.optopt("","special_args","arguments for special execution","SPECIAL_VALUE");
+	opts.optopt("f","source","copy matching results from another path experiment","PATH");
+	opts.optopt("w","where","select the subset of indices for which the configuration expression evaluates to true","EXPRESION");
+	opts.optopt("m","message","write a message into the journal file","TEXT");
+	opts.optopt("i","interactive","whether to ask for confirmation","BOOLEAN");
+	opts.optflag("h","help","show this help");
+	opts
+}
+
+/// The final part of the standard main. For when the command line arguments have been processed and no special case is to be run.
+pub fn terminal_main_normal_opts(args:&[String], plugs:&Plugs, option_matches:getopts::Matches) -> Result<(),Error>
+{
+	let action=if option_matches.opt_present("action")
+	{
+		use std::str::FromStr;
+		Action::from_str(&option_matches.opt_str("action").unwrap())?
+		//match Action::from_str(&option_matches.opt_str("action").unwrap())
+		//{
+		//	Ok(action) => action,
+		//	Err(e) =>
+		//	{
+		//		eprintln!("Could not parse the action.\n{e:?}");
+		//		std::process::exit(-1);
+		//	}
+		//}
+	}
+	else
+	{
+		Action::LocalAndOutput
+	};
+	let path=Path::new(&option_matches.free[0]);
+	if path.is_dir() || (!path.exists() && match action {Action::Shell=>true,_=>false} )
+	{
+		if option_matches.free.len()>1
+		{
+			println!("WARNING: there are {} excess free arguments. This first fre argument is the path the rest is ignored.",option_matches.free.len());
+			println!("non-ignored arg {} is {}",0,option_matches.free[0]);
+			for (i,free_arg) in option_matches.free.iter().enumerate().skip(1)
+			{
+				println!("ignored arg {} is {}",i,free_arg);
+			}
+		}
+
+		let mut options= ExperimentOptions::default();
+		if option_matches.opt_present("source")
+		{
+			options.external_source = Some(Path::new(&option_matches.opt_str("source").unwrap()).to_path_buf());
+		}
+		if option_matches.opt_present("start_index")
+		{
+			options.start_index = Some(option_matches.opt_str("start_index").unwrap().parse::<usize>().expect("non-usize received from --start_index"));
+		}
+		if option_matches.opt_present("end_index")
+		{
+			options.end_index = Some(option_matches.opt_str("end_index").unwrap().parse::<usize>().expect("non-usize received from --end_index"));
+		}
+		if option_matches.opt_present("where")
+		{
+			let expr = match config_parser::parse_expression(&option_matches.opt_str("where").unwrap()).expect("error parsing the where clause")
+			{
+				config_parser::Token::Expression(expr) => expr,
+				x =>
+				{
+					eprintln!("The where clause is not an expression ({:?}), which it should be.",x);
+					std::process::exit(-1);
+				}
+			};
+			options.where_clause = Some(expr);
+		}
+		if option_matches.opt_present("message")
+		{
+			options.message = Some(option_matches.opt_str("message").unwrap());
+		}
+		if option_matches.opt_present("interactive")
+		{
+			let s = option_matches.opt_str("interactive").unwrap();
+			options.interactive = match s.as_ref()
+			{
+				"" | "true" | "yes" | "y" => Some(true),
+				"false" | "no" | "n" => Some(false),
+				"none" => None,
+				_ =>
+				{
+					eprintln!("--interactive={s} is not a valid option.");
+					std::process::exit(-1);
+				}
+			};
+		}
+		return directory_main(&path,&args[0],&plugs,action,options);
+	}
+	else
+	{
+		//let mut f = File::open(&args[1]).expect("file cannot be opened");
+		let mut f = File::open(&path).expect("file cannot be opened");
+		let results_file= if option_matches.opt_present("results")
+		{
+			Some(File::create(option_matches.opt_str("results").unwrap()).expect("Could not create results file"))
+		}
+		else
+		{
+			None
+		};
+		//let free_args = option_matches.free.iter().skip(1).collect();
+		let free_args=&option_matches.free[1..];
+		return file_main(&mut f,&plugs,results_file,free_args);
+	}
+}
+
+pub fn special_export(args: &str, plugs:&Plugs)
+{
+	let topology_cfg = match config_parser::parse(args)
+	{
+		Ok(x) => match x
+		{
+			config_parser::Token::Value(value) => value,
+			_ => panic!("Not a value"),
+		},
+		Err(x) => panic!("Error parsing topology to export ({:?})",x),
+	};
+	let mut topology = None;
+	let mut seed = None;
+	let mut format = None;
+	let mut filename = None;
+	if let ConfigurationValue::Object(ref cv_name, ref cv_pairs)=topology_cfg
+	{
+		if cv_name!="Export"
+		{
+			panic!("A Export must be created from a `Export` object not `{}`",cv_name);
+		}
+		for &(ref name,ref value) in cv_pairs
+		{
+			//match name.as_ref()
+			match AsRef::<str>::as_ref(&name)
+			{
+				"topology" =>
+				{
+					topology=Some(value);
+				},
+				"seed" => match value
+				{
+					&ConfigurationValue::Number(f) => seed=Some(f as usize),
+					_ => panic!("bad value for seed"),
+				},
+				"format" => match value
+				{
+					&ConfigurationValue::Number(f) => format=Some(f as usize),
+					_ => panic!("bad value for format"),
+				},
+				"filename" => match value
+				{
+					&ConfigurationValue::Literal(ref s) => filename=Some(s.to_string()),
+					_ => panic!("bad value for filename"),
+				},
+				_ => panic!("Nothing to do with field {} in Export",name),
+			}
+		}
+	}
+	else
+	{
+		panic!("Trying to create a Export from a non-Object");
+	}
+	let seed=seed.unwrap_or(42);
+	let topology_cfg=topology.expect("There were no topology.");
+	let format=format.unwrap_or(0);
+	let filename=filename.expect("There were no filename.");
+	let rng=RefCell::new(StdRng::from_seed({
+		//changed from rand-0.4 to rand-0.8
+		let mut std_rng_seed = [0u8;32];
+		for (index,value) in seed.to_ne_bytes().iter().enumerate()
+		{
+			std_rng_seed[index]=*value;
+		}
+		std_rng_seed
+	}));
+	let topology = topology::new_topology(topology::TopologyBuilderArgument{cv:&topology_cfg,plugs,rng:&rng});
+	let mut topology_file=File::create(&filename).expect("Could not create topology file");
+	topology.write_adjacencies_to_file(&mut topology_file,format).expect("Failed writing topology to file");
+}
 
 #[cfg(test)]
 mod tests {
