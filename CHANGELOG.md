@@ -2,6 +2,10 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-05-30
+Add some `ignore` in the documentation to avoid `cargo test` errors.
+git commit -m "Ignore all doc errors."
+
 ### 2022-05-24
 git commit -m "Be able to generate boxplots without average marks."
 

@@ -99,7 +99,7 @@ Each element has a unique destination and a unique element from which it is a de
 
 ### RandomPermutation
 Have same chance to generate any permutation
-```
+```ignore
 RandomPermutation{
 	legend_name: "random server permutation",
 }
@@ -107,7 +107,7 @@ RandomPermutation{
 
 ### RandomInvolution
 Can only generate involutions. This is, if `p` is the permutation then for any element `x`, `p(p(x))=x`.
-```
+```ignore
 RandomInvolution{
 	legend_name: "random server involution",
 }
@@ -118,7 +118,7 @@ Each source has an independent unique destination. By the "birtday paradox" we c
 
 ### FileMap
 A map read from file. Each elment has a unique destination.
-```
+```ignore
 FileMap{
 	filename: "/path/to/pattern",
 	legend_name: "A pattern in my device",
@@ -127,7 +127,7 @@ FileMap{
 
 ### CartesianTransform
 Sees the elments as a n-dimensional orthohedra. Then it applies several transformations. When mapping directly servers it may be useful to use as `sides[0]` the number of servers per router.
-```
+```ignore
 CartesianTransform{
 	sides: [4,8,8],
 	shift: [0,4,0],//optional
@@ -142,7 +142,7 @@ CartesianTransform{
 A pool of hotspots is build from a given list of `destinations` plus some amount `extra_random_destinations` computed randomly on initialization.
 Destinations are randomly selected from such pool.
 This causes incast contention, more explicitly than `FixedRandom`.
-```
+```ignore
 Hotspots{
 	//destinations: [],//default empty
 	extra_random_destinations: 5,//default 0
@@ -154,7 +154,7 @@ Hotspots{
 
 ### Product
 The elements are divided in blocks. Blocks are mapped to blocks by the `global_pattern`. The `block_pattern` must has input and output size equal to `block_size` and maps the specific elements.
-```
+```ignore
 Product{
 	block_pattern: RandomPermutation,
 	global_pattern: RandomPermutation,
@@ -165,7 +165,7 @@ Product{
 
 ### Component
 Divides the topology along link classes. The 'local' pattern is Uniform.
-```
+```ignore
 Components{
 	global_pattern: RandomPermutation,
 	component_classes: [0],
@@ -175,7 +175,7 @@ Components{
 
 ### Composition
 Allows to concatenate transformations.
-```
+```ignore
 Composition{
 	patterns: [  FileMap{filename: "/patterns/second"}, FileMap{filename: "/patterns/first"}  ]
 	legend_name: "Apply first to origin, and then second to get the destination",
@@ -185,7 +185,7 @@ Composition{
 
 ### Pow.
 A Pow is composition of a `pattern` with itself `exponent` times.
-```
+```ignore
 Pow{
 	pattern: FileMap{filename: "/patterns/mypattern"},
 	exponent: "3",
@@ -196,7 +196,7 @@ Pow{
 
 ### RandomMix
 Probabilistically mix a list of patterns.
-```
+```ignore
 RandomMix{
 	patterns: [Hotspots{extra_random_destination:10}, Uniform],
 	weight: [5,95],

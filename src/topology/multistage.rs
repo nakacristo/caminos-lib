@@ -1218,7 +1218,7 @@ Build a new Stage, intended as part of a multistage network.
 
 ### Fat-tree stage
 This is a full connectivity over the involved groups.
-```
+```ignore
 Fat{
 	bottom_factor: 4,
 	top_factor: 4,
@@ -1227,14 +1227,14 @@ Fat{
 
 ### Projective stage
 A stage following the connectivity in a Orthogonal Fat-Tree (OFT).
-```
+```ignore
 Projective{
 	prime: 3,
 }
 ```
 
 ### Randomly interconnected stage
-```
+```ignore
 RandomRegular{
 	bottom_size: 32,
 	top_size: 16,
@@ -1245,7 +1245,7 @@ RandomRegular{
 
 ### Widened stage operation
 This modifies a given stage by indicating that should be `multiplier` times more routers at the bottom. With `multiplier=2`, when used in the last stage, can be interpreted as using all ports in the topmost level downwards, therefore, doubling the downwards degree and the number of routers at the bottom. It is of no use for `Fat` or `RandomRegular` stages, but it is useful for the `Projective` stage. Indeed, it is employed internally when building directly a `OFT` topology.
-```
+```ignore
 Widened{
 	base: Projective { prime:3 },
 	multiplier:2,

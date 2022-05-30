@@ -188,13 +188,13 @@ pub struct RoutingBuilderArgument<'a>
 
 ## Generic routings
 
-```
+```ignore
 Shortest{
 	legend_name: "minimal routing",
 }
 ```
 
-```
+```ignore
 Valiant{
 	first: Shortest,
 	second: Shortest,
@@ -204,7 +204,7 @@ Valiant{
 ```
 
 For topologies that define global links:
-```
+```ignore
 WeighedShortest{
 	class_weight: [1,100],
 	legend_name: "Shortest avoiding using several global links",
@@ -212,7 +212,7 @@ WeighedShortest{
 ```
 
 For multi-stage topologies we may use
-```
+```ignore
 UpDown{
 	legend_name: "up/down routing",
 }
@@ -224,7 +224,7 @@ There is a `Mindless` routing without parameters that includes all neighbours as
 
 ### Sum
 To use some of two routings depending on whatever. virtual channels not on either list can be used freely. The extra label field can be used to set the priorities. Check the router policies for that.
-```
+```ignore
 Sum{
 	policy: TryBoth,//or Random
 	first_routing: Shortest,
@@ -239,7 +239,7 @@ Sum{
 
 ### ChannelsPerHop
 Modify a routing to use a given list of virtual channels each hop.
-```
+```ignore
 ChannelsPerHop{
 	routing: Shortest,
 	channels: [
@@ -253,7 +253,7 @@ ChannelsPerHop{
 
 ### ChannelsPerHopPerLinkClass
 Modify a routing to use a given list of virtual channels each hop.
-```
+```ignore
 ChannelsPerHopPerLinkClass{
 	routing: Shortest,
 	channels: [
@@ -265,7 +265,7 @@ ChannelsPerHopPerLinkClass{
 ```
 
 ### ChannelMap
-```
+```ignore
 ChannelMap{
 	routing: Shortest,
 	map: [
@@ -278,7 +278,7 @@ ChannelMap{
 
 ### AscendantChannelsWithLinkClass
 Virtual channels are used in ascent way. With higher classes meaning higher digits.
-```
+```ignore
 AscendantChannelsWithLinkClass{
 	routing: Shortest,
 	bases: [2,1],//allow two consecutive hops of class 0 before a hop of class 1
@@ -286,7 +286,7 @@ AscendantChannelsWithLinkClass{
 ```
 
 ### Stubborn makes a routing to calculate candidates just once. If that candidate is not accepted is trying again every cycle.
-```
+```ignore
 Stubborn{
 	routing: Shortest,
 	legend_name: "stubborn minimal",
@@ -299,7 +299,7 @@ Stubborn{
 
 The dimensional ordered routing. Packets will go minimal along the first dimension as much possible and then on the next.
 
-```
+```ignore
 DOR{
 	order: [0,1],
 	legend_name: "dimension ordered routing, 0 before 1",
@@ -310,7 +310,7 @@ DOR{
 ### O1TURN
 O1TURN is a pair of DOR to balance the usage of the links.
 
-```
+```ignore
 O1TURN{
 	reserved_virtual_channels_order01: [0],
 	reserved_virtual_channels_order10: [1],
@@ -322,7 +322,7 @@ O1TURN{
 
 McDonal OmniDimensional routing for HyperX. it is a shortest with some allowed deroutes. It does not allow deroutes on unaligned dimensions.
 
-```
+```ignore
 OmniDimensionalDeroute{
 	allowed_deroutes: 3,
 	include_labels: true,//deroutes are given higher labels, implying lower priority. Check router policies.
@@ -334,7 +334,7 @@ OmniDimensionalDeroute{
 
 A proposal by Valiant for Cartesian topologies. It randomizes all-but-one coordinates, followed by a DOR starting by the non-randomized coordinate.
 
-```
+```ignore
 ValiantDOR{
 	randomized: [2,1],
 	shortest: [0,1,2],

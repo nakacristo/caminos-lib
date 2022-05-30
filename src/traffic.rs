@@ -99,7 +99,7 @@ pub struct TrafficBuilderArgument<'a>
 Is a traffic where all servers behave equally and uniform in time. Some `pattern` is generated
 by `servers` number of involved servers along the whole simulation. Each server tries to use its link toward the network a `load`
 fraction of the cycles. The generated messages has a size in phits of `message_size`. The generation is the typical Bernoulli process.
-```
+```ignore
 HomogeneousTraffic{
 	pattern:Uniform,
 	servers:1000,
@@ -111,7 +111,7 @@ HomogeneousTraffic{
 ### Burst
 In the Burst traffic each of the involved `servers` has a initial list of `messages_per_server` messages to emit. When all the messages
 are consumed the simulation is requested to end.
-```
+```ignore
 Burst{
 	pattern:Uniform,
 	servers:1000,
@@ -124,7 +124,7 @@ Burst{
 
 A Reactive traffic is composed of an `action_traffic` generated normally, whose packets, when consumed create a response by the `reaction_traffic`.
 If both subtraffics are requesting to end and there is no pending message the reactive traffic also requests to end.
-```
+```ignore
 Reactive{
 	action_traffic:HomogeneousTraffic{...},
 	reaction_traffic:HomogeneousTraffic{...},
@@ -136,7 +136,7 @@ Reactive{
 ### TrafficSum
 
 Generates several traffic at once, if the total load allows it.
-```
+```ignore
 TrafficSum{
 	list: [HomogeneousTraffic{...},... ],
 }
@@ -145,7 +145,7 @@ TrafficSum{
 ### ShiftedTraffic
 
 A ShiftedTraffic shifts a given traffic a certain amount of servers. Yu should really check if some pattern transformation fit your purpose, since it will be simpler.
-```
+```ignore
 ShiftedTraffic{
 	traffic: HomogeneousTraffic{...},
 	shift: 50,
@@ -159,7 +159,7 @@ A ProductTraffic divides the servers into blocks. Each group generates traffic f
 * All servers in a group of a dragonfly. If the global_pattern is a permutation, there is only a global link between groups, and Shortest routing is used, then all the packets generated in a group will try by the same global link. Other global links being unused.
 Note there is also a product at pattern level, which may be easier to use.
 
-```
+```ignore
 ProductTraffic{
 	block_size: 10,
 	block_traffic: HomogeneousTraffic{...},
@@ -170,7 +170,7 @@ ProductTraffic{
 ### SubRangeTraffic
 
 A SubRangeTraffic makes servers outise the range to not generate traffic.
-```
+```ignore
 SubRangeTraffic{
 	start: 100,
 	end: 200,

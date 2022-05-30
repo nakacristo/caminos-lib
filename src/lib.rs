@@ -86,7 +86,7 @@ The `directory_main` receives also an `Action`. In the crate `caminos` this is d
 
 The configuration files are parsed using the `gramatica` crate. These files are parsed as a `ConfigurationValue` defined as following.
 
-```
+```ignore
 pub enum ConfigurationValue
 {
 	Literal(String),
@@ -116,7 +116,7 @@ pub enum ConfigurationValue
 
 An example of `main.cfg` file is
 
-```
+```ignore
 Configuration
 {
 	random_seed: ![42,43,44],//Simulate each seed
@@ -191,7 +191,7 @@ Configuration
 ## Example output description
 
 An example of output decription `main.od` is
-```
+```ignore
 [
 	CSV//To generate a csv with a selection of fields
 	{
