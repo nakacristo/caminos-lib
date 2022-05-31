@@ -185,6 +185,7 @@ fn particularize_named_experiments_selected(value:&ConfigurationValue, names:&BT
 
 
 ///Just returns a `Context{configuration:<configuration>, result:<result>}`.
+/// TODO: does something still uses this. Or has all being moved to `OutputEnvironmentEntry::config`.
 pub fn combine(experiment_index:usize, configuration:&ConfigurationValue, result:&ConfigurationValue) -> ConfigurationValue
 {
 	ConfigurationValue::Object(String::from("Context"),vec![
@@ -232,7 +233,7 @@ Evaluates an `expression` including the file `filename` into the current context
 
 
 **/
-pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> ConfigurationValue
+pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<ConfigurationValue,Error>
 //pub fn evaluate<'a,C:'a,V:Into<BorrowedConfigurationValue<'a,C>>>(expr:&Expr, context:V, path:&Path) -> ConfigurationValue
 //	where &'a C:Into<ConfigurationValue>, C:Clone
 {
@@ -241,19 +242,19 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 	{
 		&Expr::Equality(ref a,ref b) =>
 		{
-			let va=evaluate(a,context,path);
-			let vb=evaluate(b,context,path);
+			let va=evaluate(a,context,path)?;
+			let vb=evaluate(b,context,path)?;
 			if va==vb
 			{
-				ConfigurationValue::True
+				Ok(ConfigurationValue::True)
 			}
 			else
 			{
-				ConfigurationValue::False
+				Ok(ConfigurationValue::False)
 			}
 		},
-		&Expr::Literal(ref s) => ConfigurationValue::Literal(s.clone()),
-		&Expr::Number(f) => ConfigurationValue::Number(f),
+		&Expr::Literal(ref s) => Ok(ConfigurationValue::Literal(s.clone())),
+		&Expr::Number(f) => Ok(ConfigurationValue::Number(f)),
 		&Expr::Ident(ref s) => match context
 		{
 			ConfigurationValue::Object(ref _name, ref attributes) =>
@@ -262,16 +263,17 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 				{
 					if attr_name==s
 					{
-						return attr_value.clone();
+						return Ok(attr_value.clone());
 					}
 				};
-				panic!("There is not attribute {} in {}",s,context);
+				//panic!("There is not attribute {} in {}",s,context);
+				return Err(error!(bad_argument).with_message(format!("There is not attribute {} in {}",s,context)));
 			},
 			_ => panic!("Cannot evaluate identifier in non-object"),
 		},
 		&Expr::Member(ref expr, ref attribute) =>
 		{
-			let value=evaluate(expr,context,path);
+			let value=evaluate(expr,context,path)?;
 			match value
 			{
 				ConfigurationValue::Object(ref _name, ref attributes) =>
@@ -280,7 +282,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 					{
 						if attr_name==attribute
 						{
-							return attr_value.clone();
+							return Ok(attr_value.clone());
 						}
 					};
 					panic!("There is not member {} in {}",attribute,value);
@@ -291,10 +293,10 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 		&Expr::Parentheses(ref expr) => evaluate(expr,context,path),
 		&Expr::Name(ref expr) =>
 		{
-			let value=evaluate(expr,context,path);
+			let value=evaluate(expr,context,path)?;
 			match value
 			{
-				ConfigurationValue::Object(ref name, ref _attributes) => ConfigurationValue::Literal(name.clone()),
+				ConfigurationValue::Object(ref name, ref _attributes) => Ok(ConfigurationValue::Literal(name.clone())),
 				_ => panic!("{} has no name as it is not object",value),
 			}
 		},
@@ -312,11 +314,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"first" =>
 							{
-								first=Some(evaluate(val,context,path));
+								first=Some(evaluate(val,context,path)?);
 							},
 							"second" =>
 							{
-								second=Some(evaluate(val,context,path));
+								second=Some(evaluate(val,context,path)?);
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -324,7 +326,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 					let first=first.expect("first argument of lt not given.");
 					let second=second.expect("second argument of lt not given.");
 					//allow any type
-					if first==second { ConfigurationValue::True } else { ConfigurationValue::False }
+					Ok(if first==second { ConfigurationValue::True } else { ConfigurationValue::False })
 				}
 				"lt" =>
 				{
@@ -336,11 +338,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"first" =>
 							{
-								first=Some(evaluate(val,context,path));
+								first=Some(evaluate(val,context,path)?);
 							},
 							"second" =>
 							{
-								second=Some(evaluate(val,context,path));
+								second=Some(evaluate(val,context,path)?);
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -357,7 +359,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						ConfigurationValue::Number(x) => x,
 						_ => panic!("second argument of lt evaluated to a non-number ({}:?)",second),
 					};
-					if first<second { ConfigurationValue::True } else { ConfigurationValue::False }
+					Ok(if first<second { ConfigurationValue::True } else { ConfigurationValue::False })
 				}
 				"if" =>
 				{
@@ -370,15 +372,15 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"condition" =>
 							{
-								condition=Some(evaluate(val,context,path));
+								condition=Some(evaluate(val,context,path)?);
 							},
 							"true_expression" =>
 							{
-								true_expression=Some(evaluate(val,context,path));
+								true_expression=Some(evaluate(val,context,path)?);
 							},
 							"false_expression" =>
 							{
-								false_expression=Some(evaluate(val,context,path));
+								false_expression=Some(evaluate(val,context,path)?);
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -392,7 +394,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						ConfigurationValue::False => false,
 						_ => panic!("if function condition did not evaluate into a Boolean value."),
 					};
-					if condition { true_expression } else { false_expression }
+					Ok(if condition { true_expression } else { false_expression })
 				}
 				"add" | "plus" =>
 				{
@@ -404,11 +406,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"first" =>
 							{
-								first=Some(evaluate(val,context,path));
+								first=Some(evaluate(val,context,path)?);
 							},
 							"second" =>
 							{
-								second=Some(evaluate(val,context,path));
+								second=Some(evaluate(val,context,path)?);
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -425,7 +427,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						ConfigurationValue::Number(x) => x,
 						_ => panic!("second argument of {} evaluated to a non-number ({}:?)",function_name,second),
 					};
-					ConfigurationValue::Number(first+second)
+					Ok(ConfigurationValue::Number(first+second))
 				}
 				"sub" | "minus" =>
 				{
@@ -437,11 +439,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"first" =>
 							{
-								first=Some(evaluate(val,context,path));
+								first=Some(evaluate(val,context,path)?);
 							},
 							"second" =>
 							{
-								second=Some(evaluate(val,context,path));
+								second=Some(evaluate(val,context,path)?);
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -458,7 +460,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						ConfigurationValue::Number(x) => x,
 						_ => panic!("second argument of {} evaluated to a non-number ({}:?)",function_name,second),
 					};
-					ConfigurationValue::Number(first-second)
+					Ok(ConfigurationValue::Number(first-second))
 				}
 				"mul" =>
 				{
@@ -470,11 +472,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"first" =>
 							{
-								first=Some(evaluate(val,context,path));
+								first=Some(evaluate(val,context,path)?);
 							},
 							"second" =>
 							{
-								second=Some(evaluate(val,context,path));
+								second=Some(evaluate(val,context,path)?);
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -491,7 +493,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						ConfigurationValue::Number(x) => x,
 						_ => panic!("second argument of {} evaluated to a non-number ({}:?)",function_name,second),
 					};
-					ConfigurationValue::Number(first*second)
+					Ok(ConfigurationValue::Number(first*second))
 				}
 				"div" =>
 				{
@@ -503,11 +505,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"first" =>
 							{
-								first=Some(evaluate(val,context,path));
+								first=Some(evaluate(val,context,path)?);
 							},
 							"second" =>
 							{
-								second=Some(evaluate(val,context,path));
+								second=Some(evaluate(val,context,path)?);
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -524,7 +526,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						ConfigurationValue::Number(x) => x,
 						_ => panic!("second argument of {} evaluated to a non-number ({}:?)",function_name,second),
 					};
-					ConfigurationValue::Number(first/second)
+					Ok(ConfigurationValue::Number(first/second))
 				}
 				"log" =>
 				{
@@ -536,11 +538,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"arg" =>
 							{
-								arg=Some(evaluate(val,context,path));
+								arg=Some(evaluate(val,context,path)?);
 							},
 							"base" =>
 							{
-								base=Some(evaluate(val,context,path));
+								base=Some(evaluate(val,context,path)?);
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -557,7 +559,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						Some(ConfigurationValue::Number(x)) => x,
 						Some(other) => panic!("base argument of {} evaluated to a non-number ({}:?)",function_name,other),
 					};
-					ConfigurationValue::Number(arg.log(base))
+					Ok(ConfigurationValue::Number(arg.log(base)))
 				}
 				"at" =>
 				{
@@ -568,9 +570,9 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 					{
 						match key.as_ref()
 						{
-							"container" => container=Some(evaluate(val,context,path)),
-							"position" => position=Some(evaluate(val,context,path)),
-							"else" => else_value = evaluate(val,context,path),
+							"container" => container=Some(evaluate(val,context,path)?),
+							"position" => position=Some(evaluate(val,context,path)?),
+							"else" => else_value = evaluate(val,context,path)?,
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
 					}
@@ -588,9 +590,9 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 					};
 					//container[position].clone()
 					if position < container.len() {
-						container[position].clone()
+						Ok(container[position].clone())
 					} else {
-						else_value
+						Ok(else_value)
 					}
 				}
 				"AverageBins" =>
@@ -603,11 +605,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"data" =>
 							{
-								data=Some(evaluate(val,context,path));
+								data=Some(evaluate(val,context,path)?);
 							},
 							"width" =>
 							{
-								width=Some(evaluate(val,context,path));
+								width=Some(evaluate(val,context,path)?);
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -642,7 +644,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						}
 						ConfigurationValue::Number(total/width as f64)
 					}).collect();
-					ConfigurationValue::Array(result)
+					Ok(ConfigurationValue::Array(result))
 				}
 				"FileExpression" =>
 				{
@@ -654,7 +656,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"filename" =>
 							{
-								filename=Some(evaluate(val,context,path));
+								filename=Some(evaluate(val,context,path)?);
 							},
 							"expression" =>
 							{
@@ -736,11 +738,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"container" =>
 							{
-								container=Some(evaluate(val,context,path));
+								container=Some(evaluate(val,context,path)?);
 							},
 							"binding" =>
 							{
-								binding=Some(evaluate(val,context,path));
+								binding=Some(evaluate(val,context,path)?);
 							},
 							"expression" =>
 							{
@@ -760,7 +762,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 					let container=match container
 					{
 						ConfigurationValue::Array(a) => a,
-						ConfigurationValue::None => return ConfigurationValue::None,
+						ConfigurationValue::None => return Ok(ConfigurationValue::None),
 						_ => panic!("first argument of at evaluated to a non-array ({}:?)",container),
 					};
 					//let container = container.into_iter().map(|item|{
@@ -792,9 +794,9 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 							},
 							_ => panic!("wrong context"),
 						};
-						evaluate( expression, &context, path)
+						evaluate( expression, &context, path).expect("ERROR TO BE TRANSPOSED")
 					}).collect();
-					ConfigurationValue::Array(container)
+					Ok(ConfigurationValue::Array(container))
 				}
 				"slice" =>
 				{
@@ -807,11 +809,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"container" =>
 							{
-								container=Some(evaluate(val,context,path));
+								container=Some(evaluate(val,context,path)?);
 							},
 							"start" =>
 							{
-								start= match evaluate(val,context,path)
+								start= match evaluate(val,context,path)?
 								{
 									ConfigurationValue::Number(n) => Some(n as usize),
 									_ => panic!("the start argument of slice must be a number"),
@@ -819,7 +821,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 							},
 							"end" =>
 							{
-								end= match evaluate(val,context,path)
+								end= match evaluate(val,context,path)?
 								{
 									ConfigurationValue::Number(n) => Some(n as usize),
 									_ => panic!("the start argument of slice must be a number"),
@@ -841,7 +843,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						Some(n) => n.min(container.len()),
 					};
 					let container = container[start..end].to_vec();
-					ConfigurationValue::Array(container)
+					Ok(ConfigurationValue::Array(container))
 				}
 				"sort" =>
 				{
@@ -854,7 +856,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"container" =>
 							{
-								container=Some(evaluate(val,context,path));
+								container=Some(evaluate(val,context,path)?);
 							},
 							"expression" =>
 							{
@@ -862,7 +864,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 							},
 							"binding" =>
 							{
-								binding=Some(evaluate(val, context, path));
+								binding=Some(evaluate(val, context, path)?);
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -895,7 +897,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 									},
 									_ => panic!("wrong context"),
 								};
-								let a = evaluate(expr, &context, path);
+								let a = evaluate(expr, &context, path).expect("ERROR TO BE TRANSPOSED");
 								let context = match context
 								{
 									ConfigurationValue::Object(name, data) =>
@@ -906,14 +908,14 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 									},
 									_ => panic!("wrong context"),
 								};
-								let b = evaluate(expr, &context, path);
+								let b = evaluate(expr, &context, path).expect("ERROR TO BE TRANSPOSED");
 								a.partial_cmp(&b).unwrap()
 							})
 						},
 					};
 					//container.sort_by(|a,b|a.partial_cmp(b).unwrap());
 					container.sort_by(f);
-					ConfigurationValue::Array(container)
+					Ok(ConfigurationValue::Array(container))
 				}
 				"last" =>
 				{
@@ -924,7 +926,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"container" =>
 							{
-								container=Some(evaluate(val,context,path));
+								container=Some(evaluate(val,context,path)?);
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -935,7 +937,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						ConfigurationValue::Array(a) => a,
 						_ => panic!("first argument of at evaluated to a non-array ({}:?)",container),
 					};
-					container.last().expect("there is not last element in the array").clone()
+					Ok(container.last().expect("there is not last element in the array").clone())
 				}
 				"number_or" =>
 				// Returns the argument unchanged if it is a number, otherwise return the default value.
@@ -948,7 +950,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"arg" =>
 							{
-								arg=Some(evaluate(val,context,path));
+								arg=Some(evaluate(val,context,path)?);
 							},
 							"default" =>
 							{
@@ -961,7 +963,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 					let default=default.expect("default argument of number_or not given.");
 					match arg
 					{
-						ConfigurationValue::Number(n) => ConfigurationValue::Number(n),
+						ConfigurationValue::Number(n) => Ok(ConfigurationValue::Number(n)),
 						_ => default,
 					}
 				}
@@ -976,7 +978,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 						{
 							"container" =>
 							{
-								container=Some(evaluate(val,context,path));
+								container=Some(evaluate(val,context,path)?);
 							},
 							"expression" =>
 							{
@@ -984,7 +986,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 							},
 							"binding" =>
 							{
-								binding=Some(evaluate(val, context, path));
+								binding=Some(evaluate(val, context, path)?);
 							},
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
@@ -1029,7 +1031,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 							},
 							_ => panic!("wrong context"),
 						};
-						let b = evaluate(expression,&context,path);
+						let b = evaluate(expression,&context,path).expect("ERROR TO BE TRANSPOSED");
 						match b
 						{
 							ConfigurationValue::True => true,
@@ -1037,7 +1039,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 							b => panic!("filter expression evaluated to a non-Boolean ({:?})",b),
 						}
 					}).collect();
-					ConfigurationValue::Array(container)
+					Ok(ConfigurationValue::Array(container))
 				}
 				_ => panic!("Unknown function `{}'",function_name),
 			}
@@ -1046,7 +1048,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Configur
 }
 
 /// Evaluate some expressions inside a ConfigurationValue
-pub fn reevaluate(value:&ConfigurationValue, context:&ConfigurationValue, path:&Path) -> ConfigurationValue
+pub fn reevaluate(value:&ConfigurationValue, context:&ConfigurationValue, path:&Path) -> Result<ConfigurationValue,Error>
 {
 	//if let &ConfigurationValue::Expression(ref expr)=value
 	//{
@@ -1059,8 +1061,8 @@ pub fn reevaluate(value:&ConfigurationValue, context:&ConfigurationValue, path:&
 	match value
 	{
 		&ConfigurationValue::Expression(ref expr) => evaluate(expr,context,path),
-		&ConfigurationValue::Array(ref l) => ConfigurationValue::Array(l.iter().map(|e|reevaluate(e,context,path)).collect()),
-		_ => value.clone(),
+		&ConfigurationValue::Array(ref l) => Ok(ConfigurationValue::Array(l.iter().map(|e|reevaluate(e,context,path).expect("SHOULD TRANSPOSE THIS ERROR")).collect())),
+		_ => Ok(value.clone()),
 	}
 }
 
@@ -1398,7 +1400,12 @@ pub fn rewrite_eq(value:&mut ConfigurationValue, edition:&Expr, path:&Path) -> b
 	{
 		Expr::Equality(left,right) =>
 		{
-			let new_value = evaluate(right,value,path);
+			//let new_value = evaluate(right,value,path);
+			let new_value = match evaluate(right,value,path)
+			{
+				Ok(x) => x,
+				Err(_e) => return false,
+			};
 			//rewrite_pair(value,left,new_value)
 			if let Some(ptr) = config_mut_into(value,left)
 			{
@@ -1417,7 +1424,11 @@ pub fn rewrite_eq(value:&mut ConfigurationValue, edition:&Expr, path:&Path) -> b
 ///returns `true` is something in `value` has been changed.
 pub fn rewrite_pair(value:&mut ConfigurationValue, path_expr:&Expr, new_value:&Expr, path:&Path) -> bool
 {
-	let new_value = evaluate(new_value,value,path);
+	let new_value = match evaluate(new_value,value,path)
+	{
+		Ok(x) => x,
+		Err(_e) => return false,
+	};
 	if let Some(ptr) = config_mut_into(value,path_expr)
 	{
 		*ptr = new_value;
@@ -1650,10 +1661,35 @@ impl ConfigurationValue
 			_ => Err(error!(ill_formed_configuration, self.clone() )),
 		}
 	}
+	pub fn as_expr(&self) -> Result<&Expr,Error>
+	{
+		match self
+		{
+			&ConfigurationValue::Expression(ref e) => Ok(e),
+			_ => Err(error!(ill_formed_configuration, self.clone() )),
+		}
+	}
 	/// Build a generic IllFormedConfiguration error from this ConfigurationValue.
 	pub fn ill(&self,message:&str) -> Error
 	{
 		error!(ill_formed_configuration,self.clone()).with_message(message.to_string())
+	}
+	/// Convert this value into some string without newlines or commas.
+	/// If not possible just return `"error".to_string()`.
+	/// XXX: we could make a `or_else` method receiving a `Fn()->String`.
+	pub fn to_csv_field(&self) -> String
+	{
+		use ConfigurationValue::*;
+		match self
+		{
+			Literal(s) => s.to_string(),
+			Number(x) => format!("{x}"),
+			Object(name,attrs) => if attrs.is_empty() { name } else { "error" }.to_string(),
+			True => "true".to_string(),
+			False => "false".to_string(),
+			None => "None".to_string(),
+			_ => "error".to_string(),
+		}
 	}
 	//pub fn borrow(&self) -> BorrowedConfigurationValue<ConfigurationValue>
 	//{

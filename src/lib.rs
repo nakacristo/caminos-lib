@@ -30,6 +30,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * `Topology::coordinated_routing_record` now receives slices.
 * `CartesianData::new` now receives an slice.
 * SpaceAtReceptor and Stage now uses the Error type in its Result types.
+* `config::{evaluate,reevaluate}` now returns a `Result`.
 
 ## [0.3.0] to [0.4.0]
 
@@ -1604,7 +1605,9 @@ pub fn terminal_default_options() -> getopts::Options
 	opts.optopt("w","where","select the subset of indices for which the configuration expression evaluates to true","EXPRESION");
 	opts.optopt("m","message","write a message into the journal file","TEXT");
 	opts.optopt("i","interactive","whether to ask for confirmation","BOOLEAN");
+	opts.optopt("","use_csv","Use a CSV file as a source for the generations of outputs.","FILE");
 	opts.optflag("h","help","show this help");
+	opts.optflag("","foreign","Assume to be working with foreign data. Many checks are relaxed.");
 	opts
 }
 
@@ -1686,6 +1689,14 @@ pub fn terminal_main_normal_opts(args:&[String], plugs:&Plugs, option_matches:ge
 					std::process::exit(-1);
 				}
 			};
+		}
+		if option_matches.opt_present("foreign")
+		{
+			options.foreign=true;
+		}
+		if option_matches.opt_present("use_csv")
+		{
+			options.use_csv = Some(Path::new(&option_matches.opt_str("use_csv").unwrap()).to_path_buf());
 		}
 		return directory_main(&path,&args[0],&plugs,action,options);
 	}

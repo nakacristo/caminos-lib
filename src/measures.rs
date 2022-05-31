@@ -432,9 +432,9 @@ impl Statistics
 			let path = Path::new(".");
 			for (index,definition) in self.packet_defined_statistics_definitions.iter().enumerate()
 			{
-				let key : Vec<ConfigurationValue> = definition.0.iter().map(|key_expr|config::evaluate( key_expr, &context, path)).collect();
+				let key : Vec<ConfigurationValue> = definition.0.iter().map(|key_expr|config::evaluate( key_expr, &context, path).unwrap_or_else(|error|panic!("error building user defined statistics: {}",error))).collect();
 				let value : Vec<f32> = definition.1.iter().map(|key_expr|
-					match config::evaluate( key_expr, &context, path){
+					match config::evaluate( key_expr, &context, path).unwrap_or_else(|error|panic!("error building user defined statistics: {}",error)){
 						ConfigurationValue::Number(x) => x as f32,
 						_ => 0f32,
 					}).collect();

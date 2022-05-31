@@ -29,6 +29,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * `Topology::coordinated_routing_record` now receives slices.
 * `CartesianData::new` now receives an slice.
 * SpaceAtReceptor and Stage now uses the Error type in its Result types.
+* `config::{evaluate,reevaluate}` now returns a `Result`.
 
 ## [0.3.0] to [0.4.0]
 

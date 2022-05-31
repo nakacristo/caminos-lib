@@ -2,6 +2,12 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-05-31
+More sane CSV output. Allow to set the header names.
+Added `--foreign` and `--use_csv` terminal options.
+BREAKING CHANGE: `config::{evaluate,reevaluate}` now returns a `Result`.
+git commit -m "Added capability with working with foreign CSV data. Updated the API of evaluate and reevaluate to return a Result."
+
 ### 2022-05-30
 Add some `ignore` in the documentation to avoid `cargo test` errors.
 git commit -m "Ignore all doc errors."

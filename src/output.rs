@@ -17,7 +17,7 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 
 use crate::config_parser::{ConfigurationValue,Expr};
-use crate::config::{self,combine,evaluate,reevaluate,values_to_f32_with_count};
+use crate::config::{self,evaluate,reevaluate,values_to_f32_with_count};
 use crate::experiments::ExperimentFiles;
 use crate::error::{Error,SourceLocation};
 use crate::{get_git_id,source_location,match_object_panic,match_object,error};
@@ -166,8 +166,8 @@ Encapsulation of the information we have when trying to build output files. Like
 #[derive(Debug)]
 pub struct OutputEnvironment<'a>
 {
-	///Contains triplets `( experiment_index, experiment, result )`.
-	results: Vec<(usize,ConfigurationValue,ConfigurationValue)>,
+	/// UPDATE: Contains triplets `( experiment_index, experiment, result )`.
+	results: Vec<OutputEnvironmentEntry>,
 	///The total number of experiment entries in the main.cfg.
 	total_experiments: usize,
 	///The files associated to the experiment.
@@ -176,9 +176,66 @@ pub struct OutputEnvironment<'a>
 	legend_map: EnumeratedMap<ConfigurationValue>,
 }
 
+#[derive(Debug)]
+pub struct OutputEnvironmentEntry
+{
+	experiment_index: usize,
+	pub experiment: Option<ConfigurationValue>,
+	pub result: Option<ConfigurationValue>,
+	pub csv: Option<ConfigurationValue>,
+}
+
+impl OutputEnvironmentEntry
+{
+	pub fn new(experiment_index:usize) -> Self
+	{
+		OutputEnvironmentEntry{
+			experiment_index,
+			experiment:None,
+			result:None,
+			csv:None,
+		}
+	}
+	pub fn with_experiment(mut self,experiment:ConfigurationValue) -> Self
+	{
+		self.experiment=Some(experiment);
+		self
+	}
+	pub fn with_result(mut self,result:ConfigurationValue) -> Self
+	{
+		self.result=Some(result);
+		self
+	}
+	pub fn with_csv(mut self,csv:ConfigurationValue) -> Self
+	{
+		self.csv=Some(csv);
+		self
+	}
+	/// Much like config::combine ...
+	pub fn config(&self) -> ConfigurationValue
+	{
+		let mut attrs = vec![
+			(String::from("index"),ConfigurationValue::Number(self.experiment_index as f64)),
+		];
+		if let Some(configuration) = &self.experiment
+		{
+			attrs.push( (String::from("configuration"),configuration.clone()) );
+		}
+		if let Some(result) = &self.result
+		{
+			attrs.push( (String::from("result"),result.clone()) );
+		}
+		if let Some(csv) = &self.csv
+		{
+			attrs.push( (String::from("csv"),csv.clone()) );
+		}
+		ConfigurationValue::Object(String::from("Context"),attrs)
+	}
+}
+
 impl<'a> OutputEnvironment<'a>
 {
-	pub fn new(results: Vec<(usize,ConfigurationValue,ConfigurationValue)>, total_experiments: usize, files: &'a ExperimentFiles) -> OutputEnvironment<'a>
+	pub fn new(results: Vec<OutputEnvironmentEntry>, total_experiments: usize, files: &'a ExperimentFiles) -> OutputEnvironment<'a>
 	{
 		OutputEnvironment{
 			results,
@@ -214,9 +271,10 @@ impl<'a> OutputEnvironment<'a>
 		//for (index,(experiment_index,configuration,result)) in self.results.iter().enumerate()
 		for index in 0..self.results.len()
 		{
-			let (experiment_index,configuration,result) = &self.results[index];
-			let experiment_index = *experiment_index;
-			let context=combine(experiment_index,configuration,result);
+			//let (experiment_index,configuration,result) = &self.results[index];
+			//let experiment_index = *experiment_index;
+			let experiment_index = self.results[index].experiment_index;
+			let context=self.results[index].config();
 			f(self,experiment_index,context);
 		}
 	}
@@ -234,8 +292,9 @@ impl<'a> Iterator for OutputEnvironmentIterator<'a>
 	fn next(&mut self) -> Option<Self::Item>
 	{
 		if self.index<self.environment.results.len() {
-			let (experiment_index,configuration,result) = &self.environment.results[self.index];
-			let context=combine(*experiment_index,configuration,result);
+			//let (experiment_index,configuration,result) = &self.environment.results[self.index];
+			//let context=combine(*experiment_index,configuration,result);
+			let context = self.environment.results[self.index].config();
 			self.index+=1;
 			Some(context)
 		} else {
@@ -251,48 +310,48 @@ fn create_csv(description: &ConfigurationValue, environment:&mut OutputEnvironme
 {
 	let mut fields=None;
 	let mut filename=None;
-	if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=description
-	{
-		if cv_name!="CSV"
+	match_object_panic!(description,"CSV",value,
+		"fields" => match value
 		{
-			panic!("A CSV must be created from a `CSV` object not `{}`",cv_name);
-		}
-		for &(ref name,ref value) in cv_pairs
-		{
-			match name.as_ref()
-			{
-				"fields" => match value
-				{
-					&ConfigurationValue::Array(ref a) => fields=Some(a.iter().map(|v|match v{
-						&ConfigurationValue::Expression(ref expr) => expr.clone(),
-						_ => panic!("bad value for fields"),
-					}).collect::<Vec<Expr>>()),
+			&ConfigurationValue::Array(ref a) => fields=Some(a.iter().map(|v|{
+				match v{
+					&ConfigurationValue::Expression(ref expr) => {
+						(format!("{expr}"), expr.clone())
+					},
+					&ConfigurationValue::Array(ref arr) => {
+						if arr.len() != 2
+						{
+							panic!("Each CSV header must be an Expression or an Array [Name,Expression].");
+						}
+						let h = arr[0].as_str().expect("bad value for fields");
+						let e = arr[1].as_expr().expect("bad value for fields");
+						(h.to_string(),e.clone())
+					},
 					_ => panic!("bad value for fields"),
 				}
-				"filename" => match value
-				{
-					&ConfigurationValue::Literal(ref s) => filename=Some(s.to_string()),
-					_ => panic!("bad value for filename ({:?})",value),
-				}
-				_ => panic!("Nothing to do with field {} in CSV",name),
-			}
+			}).collect::<Vec<(String,Expr)>>()),
+			_ => panic!("bad value for fields"),
 		}
-	}
-	else
-	{
-		panic!("Trying to create a CSV from a non-Object");
-	}
+		"filename" => match value
+		{
+			&ConfigurationValue::Literal(ref s) => filename=Some(s.to_string()),
+			_ => panic!("bad value for filename ({:?})",value),
+		}
+	);
 	let fields=fields.expect("There were no fields");
 	let filename=filename.expect("There were no filename");
 	println!("Creating CSV with name \"{}\"",filename);
 	let path = environment.files.get_outputs_path();
 	let output_path=path.join(filename);
 	let mut output_file=File::create(&output_path).expect("Could not create output file.");
-	let header=fields.iter().map(|e|format!("{}",e)).collect::<Vec<String>>().join(", ");
+	//let header=fields.iter().map(|e|format!("{}",e)).collect::<Vec<String>>().join(", ");
+	let (headers,fields) : (Vec<_>,Vec<_>) = fields.into_iter().unzip();
+	let header = headers.join(", ");
 	writeln!(output_file,"{}",header).unwrap();
 	for context in environment.iter()
 	{
-		let row=fields.iter().map(|e| format!("{}",evaluate(e,&context,&path)) ).collect::<Vec<String>>().join(", ");
+		//let row=fields.iter().map(|e| format!("{}",evaluate(e,&context,&path)) ).collect::<Vec<String>>().join(", ");
+		let row=fields.iter().map(|e| evaluate(e,&context,&path).expect("ERROR TO BE TRANSPOSED").to_csv_field() ).collect::<Vec<String>>().join(", ");
 		writeln!(output_file,"{}",row).unwrap();
 	}
 	Ok(())
@@ -392,6 +451,7 @@ struct Plotkind<'a>
 	raw: Option<String>,
 }
 
+#[derive(Debug)]
 struct PlotData
 {
 	data: Vec<AveragedRecord>,
@@ -585,8 +645,8 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 	environment.map(|environment,_index,context|
 	{
 		//A first pass to populate maps
-		let selector=reevaluate(selector,&context,&outputs_path);
-		let legend=reevaluate(legend,&context,&outputs_path);
+		let selector=reevaluate(selector,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
+		let legend=reevaluate(legend,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
 		environment.selector_map.insert( &selector );
 		environment.legend_map.insert( &legend );
 	});
@@ -605,13 +665,13 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 			//for context in environment.iter()
 			environment.map(|environment,_index,context|
 			{
-				let histogram_values=reevaluate(data,&context,&outputs_path);
-				let selector=reevaluate(selector,&context,&outputs_path);
-				let legend=reevaluate(legend,&context,&outputs_path);
-				let git_id = evaluate(&git_id_expr,&context,&outputs_path);
+				let histogram_values=reevaluate(data,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
+				let selector=reevaluate(selector,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
+				let legend=reevaluate(legend,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
+				let git_id = evaluate(&git_id_expr,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
 				let selector_index = environment.selector_map.insert( &selector );
 				let legend_index = environment.legend_map.insert( &legend );
-				let abscissa_array = pk.abscissas.map(|cv|reevaluate(cv,&context,&outputs_path));
+				let abscissa_array = pk.abscissas.map(|cv|reevaluate(cv,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED"));
 				match histogram_values
 				{
 					ConfigurationValue::Array(ref l)=>
@@ -680,8 +740,8 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 			//for context in environment.iter()
 			environment.map(|environment,_index,context|
 			{
-				let selector=reevaluate(selector,&context,&outputs_path);
-				let legend=reevaluate(legend,&context,&outputs_path);
+				let selector=reevaluate(selector,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
+				let legend=reevaluate(legend,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
 				let selector_index = environment.selector_map.insert( &selector );
 				let legend_index = environment.legend_map.insert( &legend );
 				let record=RawRecord{
@@ -689,15 +749,15 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 					legend_index,
 					selector,
 					legend,
-					parameter:reevaluate(pk.parameter.unwrap(),&context,&outputs_path),
-					abscissa:reevaluate(pk.abscissas.unwrap(),&context,&outputs_path),
-					ordinate: pk.ordinates.map(|v|reevaluate(v,&context,&outputs_path)).unwrap_or_default(),
-					upper_whisker: pk.upper_whisker.map(|v|reevaluate(v,&context,&outputs_path)),
-					bottom_whisker: pk.bottom_whisker.map(|v|reevaluate(v,&context,&outputs_path)),
-					upper_box_limit: pk.upper_box_limit.map(|v|reevaluate(v,&context,&outputs_path)),
-					bottom_box_limit: pk.bottom_box_limit.map(|v|reevaluate(v,&context,&outputs_path)),
-					box_middle: pk.box_middle.map(|v|reevaluate(v,&context,&outputs_path)),
-					git_id: evaluate(&git_id_expr,&context,&outputs_path),
+					parameter:reevaluate(pk.parameter.unwrap(),&context,&outputs_path).expect("ERROR TO BE TRANSPOSED"),
+					abscissa:reevaluate(pk.abscissas.unwrap(),&context,&outputs_path).expect("ERROR TO BE TRANSPOSED"),
+					ordinate: pk.ordinates.map(|v|reevaluate(v,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED")).unwrap_or_default(),
+					upper_whisker: pk.upper_whisker.map(|v|reevaluate(v,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED")),
+					bottom_whisker: pk.bottom_whisker.map(|v|reevaluate(v,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED")),
+					upper_box_limit: pk.upper_box_limit.map(|v|reevaluate(v,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED")),
+					bottom_box_limit: pk.bottom_box_limit.map(|v|reevaluate(v,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED")),
+					box_middle: pk.box_middle.map(|v|reevaluate(v,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED")),
+					git_id: evaluate(&git_id_expr,&context,&outputs_path).unwrap_or_default(),
 				};
 				//println!("{:?}",record);
 				records.push(record);
@@ -811,7 +871,7 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 						(String::from("average"),ConfigurationValue::Number(ordinate as f64)),
 						(String::from("all"),collection_cv.clone()),
 					]);
-					match evaluate(expression,&context,&outputs_path)
+					match evaluate(expression,&context,&outputs_path)?
 					{
 						ConfigurationValue::Number(new_ordinate) =>
 						{
@@ -840,11 +900,7 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 			//	record_index=collection_end;
 			//}
 		}
-		//println!("averaged as");
-		//for average in averaged.iter()
-		//{
-		//	println!("{:?}",average);
-		//}
+		//println!("averaged as {averaged:?}");
 		avgs.push(averaged);
 	}
 	if let &ConfigurationValue::Object(ref name, ref _attributes) = backend
@@ -1546,12 +1602,16 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 		//let mut cfg_contents = String::new();
 		//cfg_file.read_to_string(&mut cfg_contents).expect("something went wrong reading main.cfg");
 		//cfg_contents
-		environment.files.cfg_contents.clone().unwrap()
+		environment.files.cfg_contents.clone().unwrap_or_else(||"There is no main.cfg".to_string())
 	};
 	let all_git_formatted=
 	{
-		let core = all_git_ids.iter().map(|s|format!("\\item {}",latex_protect_text(s))).collect::<Vec<String>>().join("\n");
-		format!("\\begin{{itemize}}\n{}\n\\end{{itemize}}",core)
+		if all_git_ids.is_empty() {
+			"No git-id found.".to_string()
+		} else {
+			let core = all_git_ids.iter().map(|s|format!("\\item {}",latex_protect_text(s))).collect::<Vec<String>>().join("\n");
+			format!("\\begin{{itemize}}\n{}\n\\end{{itemize}}",core)
+		}
 	};
 	let whole_tex=format!(r#"
 \documentclass[a4paper, 12pt, fleqn]{{article}}
@@ -1695,9 +1755,9 @@ fn create_preprocess_arg_max(description: &ConfigurationValue, environment:&mut 
 	let mut records : Vec< (ConfigurationValue, ConfigurationValue, f64 ) > = vec![];
 	for context in environment.iter()
 	{
-		let selector=reevaluate(selector,&context,&outputs_path);
-		let target=reevaluate(target,&context,&outputs_path);
-		let argument=reevaluate(argument,&context,&outputs_path);
+		let selector=reevaluate(selector,&context,&outputs_path)?;
+		let target=reevaluate(target,&context,&outputs_path)?;
+		let argument=reevaluate(argument,&context,&outputs_path)?;
 		match target
 		{
 			ConfigurationValue::Number(x) => records.push( (selector,argument,x) ),
@@ -1747,13 +1807,13 @@ fn create_preprocess_arg_max(description: &ConfigurationValue, environment:&mut 
 	let index_expr = Expr::Ident("result".to_string());
 	for context in environment.iter()
 	{
-		let selector=reevaluate(selector,&context,&outputs_path);
+		let selector=reevaluate(selector,&context,&outputs_path)?;
 		let index : usize = optimal.iter().position(|r|r.0 == selector).unwrap_or_else(||panic!("did not found selector {}",selector));
 		let content = vec![
 			(String::from("argument"),optimal[index].1.clone()),
 			(String::from("maximum_value"),ConfigurationValue::Number(optimal[index].2))
 		];
-		let experiment_index : usize = evaluate(&index_expr,&context,&outputs_path).as_f64()? as usize;
+		let experiment_index : usize = evaluate(&index_expr,&context,&outputs_path)?.as_f64()? as usize;
 		data[experiment_index]= ConfigurationValue::Object(String::from("PreprocessedArgMax"), content);
 	}
 	let cfg = ConfigurationValue::Array(data);

@@ -19,7 +19,7 @@ use indicatif::{ProgressBar,ProgressStyle};
 
 use crate::config_parser::{self,ConfigurationValue};
 use crate::{Simulation,Plugs,source_location,error,match_object_panic};
-use crate::output::{create_output,OutputEnvironment};
+use crate::output::{create_output,OutputEnvironment,OutputEnvironmentEntry};
 use crate::config::{self,evaluate,flatten_configuration_value};
 use crate::error::{Error,ErrorKind,SourceLocation};
 
@@ -421,6 +421,10 @@ pub struct ExperimentOptions
 	pub message: Option<String>,
 	/// Whether to ask confimation for some actions. E.g., each result with the Discard action.
 	pub interactive: Option<bool>,
+	/// Whether we are working with foreign data. Like trying to generate PDFs from a CSV from another simulator.
+	pub foreign: bool,
+	/// Optional CSV to include as a source for the output generation.
+	pub use_csv: Option<PathBuf>,
 }
 
 ///An `Experiment` object encapsulates the operations that are performed over a folder containing an experiment.
@@ -1038,7 +1042,8 @@ impl<'a> Experiment<'a>
 			_ => (),
 		}
 		let mut results;
-		self.files.build_experiments()?;
+		//self.files.build_experiments()?;
+		self.files.build_experiments().or_else(|e|if self.options.foreign {Ok(())} else {Err(e)})?;
 
 		let external_files = if let (Some(path),true) = (self.options.external_source.as_ref(), action!=Action::Shell  ) {
 			let mut ef = ExperimentFiles{
@@ -1312,7 +1317,7 @@ impl<'a> Experiment<'a>
 			progress.inc(1);
 			if let Some(ref expr) = self.options.where_clause
 			{
-				match evaluate(expr,experiment,self.files.root.as_ref().unwrap())
+				match evaluate(expr,experiment,self.files.root.as_ref().unwrap())?
 				{
 					ConfigurationValue::True => (),//good
 					ConfigurationValue::False => continue,//discard this index
@@ -1726,7 +1731,12 @@ impl<'a> Experiment<'a>
 					{
 						&ConfigurationValue::None => (),
 						result => {
-							results.push((experiment_index,experiment.clone(),result.clone()));
+							//results.push((experiment_index,experiment.clone(),result.clone()));
+							results.push(
+								OutputEnvironmentEntry::new(experiment_index)
+								.with_experiment(experiment.clone())
+								.with_result(result.clone())
+							);
 							continue;
 						},
 					}
@@ -1759,7 +1769,12 @@ impl<'a> Experiment<'a>
 							a[experiment_index] = result.clone();
 							added_packed_results+=1;
 						}
-						results.push((experiment_index,experiment.clone(),result));
+						//results.push((experiment_index,experiment.clone(),result));
+						results.push(
+							OutputEnvironmentEntry::new(experiment_index)
+							.with_experiment(experiment.clone())
+							.with_result(result.clone())
+						);
 					}
 					Err(_error)=>
 					{
@@ -1767,6 +1782,45 @@ impl<'a> Experiment<'a>
 					}
 				}
 				//println!("result file processed.");
+			}
+			if let Some(csv) = &self.options.use_csv
+			{
+				let mut csv_contents = String::new();
+				//let mut cfg_file=File::open(&cfg).expect("main.cfg could not be opened");
+				let mut csv_file=File::open(&csv).map_err(|e|Error::could_not_open_file(source_location!(),csv.to_path_buf(),e))?;
+				csv_file.read_to_string(&mut csv_contents).expect("something went wrong reading {csv}");
+				let mut lines = csv_contents.lines();
+				let header : Vec<String> = lines.next().ok_or_else( ||error!(could_not_parse_file,csv.to_path_buf()) )?
+					.split(',').map(|x|x.trim().to_string()).collect();
+				for (csv_index,line) in lines.enumerate()
+				{
+					let values : Vec<String> = line.split(',').map(|x|x.trim().to_string()).collect();
+					if values.is_empty()
+					{
+						println!("Skipping empty CSV line {csv_index}");
+						continue
+					}
+					if values.len() != header.len()
+					{
+						return Err(error!(could_not_parse_file,csv.to_owned()));
+					}
+					let res = if csv_index < results.len() { &mut results[csv_index] } else {
+						results.push(OutputEnvironmentEntry::new(csv_index));
+						results.last_mut().unwrap()
+					};
+					let attrs = (0..header.len()).map(|attr_index|{
+						let value = &values[attr_index];
+						let value_f64 = value.parse::<f64>().ok();
+						let value = if let Some(x) = value_f64 {
+							ConfigurationValue::Number(x)
+						} else {
+							ConfigurationValue::Literal(value.to_string())
+						};
+						(header[attr_index].clone(),value)
+					}).collect();
+					let csv = ConfigurationValue::Object("CSV".to_string(),attrs);
+					res.csv = Some(csv);
+				}
 			}
 			const MINIMUM_RESULT_COUNT_TO_GENERATE : usize = 3usize;
 			// I would use 1..MINIMUM_RESULT_COUNT_TO_GENERATE but
@@ -1785,9 +1839,10 @@ impl<'a> Experiment<'a>
 					let mut od_file=File::open(&od).expect("main.od could not be opened");
 					let mut od_contents = String::new();
 					od_file.read_to_string(&mut od_contents).expect("something went wrong reading main.od");
+					let total = self.files.experiments.len().max(results.len());
 					let mut environment = OutputEnvironment::new(
 						results,
-						self.files.experiments.len(),
+						total,
 						&self.files,
 					);
 					match config_parser::parse(&od_contents)
