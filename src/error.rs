@@ -127,7 +127,12 @@ impl Error
 	}
 	pub fn with_message(mut self,message:String) -> Error
 	{
-		self.message=Some(message);
+		match self.message
+		{
+			Some(ref mut text) => *text += &message,
+			None => self.message=Some(message),
+		}
+		//self.message=Some(message);
 		self
 	}
 	/// example call: Error::new_command_not_found(source_location!(),"squeue".to_string(),e).

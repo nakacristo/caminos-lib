@@ -794,8 +794,8 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 							},
 							_ => panic!("wrong context"),
 						};
-						evaluate( expression, &context, path).expect("ERROR TO BE TRANSPOSED")
-					}).collect();
+						evaluate( expression, &context, path)
+					}).collect::<Result<_,_>>()?;
 					Ok(ConfigurationValue::Array(container))
 				}
 				"slice" =>
@@ -897,7 +897,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 									},
 									_ => panic!("wrong context"),
 								};
-								let a = evaluate(expr, &context, path).expect("ERROR TO BE TRANSPOSED");
+								let a = evaluate(expr, &context, path).unwrap_or_else(|e|panic!("error {} in sort function",e));
 								let context = match context
 								{
 									ConfigurationValue::Object(name, data) =>
@@ -908,11 +908,12 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 									},
 									_ => panic!("wrong context"),
 								};
-								let b = evaluate(expr, &context, path).expect("ERROR TO BE TRANSPOSED");
+								let b = evaluate(expr, &context, path).unwrap_or_else(|e|panic!("error {} in sort function",e));
 								a.partial_cmp(&b).unwrap()
 							})
 						},
 					};
+					//FIXME: It does not seem possibly to propragate errors in the closure through any `sort_by` function.
 					//container.sort_by(|a,b|a.partial_cmp(b).unwrap());
 					container.sort_by(f);
 					Ok(ConfigurationValue::Array(container))
@@ -1013,17 +1014,8 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 						},
 						_ => panic!("wrong context"),
 					};
-					let container = container.into_iter().filter(|item|
+					let container = container.into_iter().filter_map(|item|
 					{
-						//let context = match context{
-						//	ConfigurationValue::Object(name, data) =>
-						//	{
-						//		let mut content = data.clone();
-						//		content.push( (binding.clone(), item.clone() ) );
-						//		ConfigurationValue::Object(name.to_string(),content)
-						//	},
-						//	_ => panic!("wrong context"),
-						//};
 						match &mut context{
 							ConfigurationValue::Object(_name, data) =>
 							{
@@ -1031,14 +1023,17 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 							},
 							_ => panic!("wrong context"),
 						};
-						let b = evaluate(expression,&context,path).expect("ERROR TO BE TRANSPOSED");
+						let b = evaluate(expression,&context,path);
 						match b
 						{
-							ConfigurationValue::True => true,
-							ConfigurationValue::False => false,
-							b => panic!("filter expression evaluated to a non-Boolean ({:?})",b),
+							Err(_) => Some(b),
+							Ok(ConfigurationValue::True) => Some(Ok(item)),
+							Ok(ConfigurationValue::False) => None,
+							b => Some(Err(error!(bad_argument)
+								.with_message(format!("filter expression evaluated to a non-Boolean ({:?})",b))
+							)),
 						}
-					}).collect();
+					}).collect::<Result<_,_>>()?;
 					Ok(ConfigurationValue::Array(container))
 				}
 				_ => panic!("Unknown function `{}'",function_name),
@@ -1061,7 +1056,11 @@ pub fn reevaluate(value:&ConfigurationValue, context:&ConfigurationValue, path:&
 	match value
 	{
 		&ConfigurationValue::Expression(ref expr) => evaluate(expr,context,path),
-		&ConfigurationValue::Array(ref l) => Ok(ConfigurationValue::Array(l.iter().map(|e|reevaluate(e,context,path).expect("SHOULD TRANSPOSE THIS ERROR")).collect())),
+		&ConfigurationValue::Array(ref l) => Ok(ConfigurationValue::Array(
+			l.iter()
+				.map(|e|reevaluate(e,context,path))
+				.collect::<Result<_,_>>()?
+		)),
 		_ => Ok(value.clone()),
 	}
 }

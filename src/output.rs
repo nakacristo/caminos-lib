@@ -265,8 +265,8 @@ impl<'a> OutputEnvironment<'a>
 		self.results.len()
 	}
 	/// Apply f(self,experiment_index,config) to each entry.
-	pub fn map<F>(&mut self,mut f:F)
-		where F: FnMut(&mut OutputEnvironment,usize,ConfigurationValue)
+	pub fn map<F>(&mut self,mut f:F) -> Result<(),Error>
+		where F: FnMut(&mut OutputEnvironment,usize,ConfigurationValue)->Result<(),Error>
 	{
 		//for (index,(experiment_index,configuration,result)) in self.results.iter().enumerate()
 		for index in 0..self.results.len()
@@ -275,8 +275,9 @@ impl<'a> OutputEnvironment<'a>
 			//let experiment_index = *experiment_index;
 			let experiment_index = self.results[index].experiment_index;
 			let context=self.results[index].config();
-			f(self,experiment_index,context);
+			f(self,experiment_index,context)?;
 		}
+		Ok(())
 	}
 }
 
@@ -351,7 +352,11 @@ fn create_csv(description: &ConfigurationValue, environment:&mut OutputEnvironme
 	for context in environment.iter()
 	{
 		//let row=fields.iter().map(|e| format!("{}",evaluate(e,&context,&path)) ).collect::<Vec<String>>().join(", ");
-		let row=fields.iter().map(|e| evaluate(e,&context,&path).expect("ERROR TO BE TRANSPOSED").to_csv_field() ).collect::<Vec<String>>().join(", ");
+		//let row=fields.iter().map(|e| evaluate(e,&context,&path).expect("ERROR TO BE TRANSPOSED").to_csv_field() ).collect::<Vec<String>>().join(", ");
+		let row=fields.iter()
+			.map(|e| Ok(evaluate(e,&context,&path)?.to_csv_field()) )
+			.collect::<Result<Vec<String>,Error>>()?
+			.join(", ");
 		writeln!(output_file,"{}",row).unwrap();
 	}
 	Ok(())
@@ -645,11 +650,12 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 	environment.map(|environment,_index,context|
 	{
 		//A first pass to populate maps
-		let selector=reevaluate(selector,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
-		let legend=reevaluate(legend,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
+		let selector=reevaluate(selector,&context,&outputs_path)?;
+		let legend=reevaluate(legend,&context,&outputs_path)?;
 		environment.selector_map.insert( &selector );
 		environment.legend_map.insert( &legend );
-	});
+		Ok(())
+	})?;
 	for pk in kind.iter()
 	{
 		println!("averaging plot {:?}",pk);
@@ -665,13 +671,13 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 			//for context in environment.iter()
 			environment.map(|environment,_index,context|
 			{
-				let histogram_values=reevaluate(data,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
-				let selector=reevaluate(selector,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
-				let legend=reevaluate(legend,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
-				let git_id = evaluate(&git_id_expr,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
+				let histogram_values=reevaluate(data,&context,&outputs_path)?;
+				let selector=reevaluate(selector,&context,&outputs_path)?;
+				let legend=reevaluate(legend,&context,&outputs_path)?;
+				let git_id = evaluate(&git_id_expr,&context,&outputs_path)?;
 				let selector_index = environment.selector_map.insert( &selector );
 				let legend_index = environment.legend_map.insert( &legend );
-				let abscissa_array = pk.abscissas.map(|cv|reevaluate(cv,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED"));
+				let abscissa_array = pk.abscissas.map(|cv|reevaluate(cv,&context,&outputs_path)).transpose()?;
 				match histogram_values
 				{
 					ConfigurationValue::Array(ref l)=>
@@ -733,15 +739,16 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 					ConfigurationValue::None => println!("WARNING: ignoring null histogram/array."),
 					_ => panic!("histogram/array from non-Array"),
 				}
-			});
+				Ok(())
+			})?;
 		}
 		else
 		{
 			//for context in environment.iter()
 			environment.map(|environment,_index,context|
 			{
-				let selector=reevaluate(selector,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
-				let legend=reevaluate(legend,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED");
+				let selector=reevaluate(selector,&context,&outputs_path)?;
+				let legend=reevaluate(legend,&context,&outputs_path)?;
 				let selector_index = environment.selector_map.insert( &selector );
 				let legend_index = environment.legend_map.insert( &legend );
 				let record=RawRecord{
@@ -749,19 +756,20 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 					legend_index,
 					selector,
 					legend,
-					parameter:reevaluate(pk.parameter.unwrap(),&context,&outputs_path).expect("ERROR TO BE TRANSPOSED"),
-					abscissa:reevaluate(pk.abscissas.unwrap(),&context,&outputs_path).expect("ERROR TO BE TRANSPOSED"),
-					ordinate: pk.ordinates.map(|v|reevaluate(v,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED")).unwrap_or_default(),
-					upper_whisker: pk.upper_whisker.map(|v|reevaluate(v,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED")),
-					bottom_whisker: pk.bottom_whisker.map(|v|reevaluate(v,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED")),
-					upper_box_limit: pk.upper_box_limit.map(|v|reevaluate(v,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED")),
-					bottom_box_limit: pk.bottom_box_limit.map(|v|reevaluate(v,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED")),
-					box_middle: pk.box_middle.map(|v|reevaluate(v,&context,&outputs_path).expect("ERROR TO BE TRANSPOSED")),
+					parameter:reevaluate(pk.parameter.unwrap(),&context,&outputs_path)?,
+					abscissa:reevaluate(pk.abscissas.unwrap(),&context,&outputs_path)?,
+					ordinate: pk.ordinates.map(|v|reevaluate(v,&context,&outputs_path)).transpose()?.unwrap_or_default(),
+					upper_whisker: pk.upper_whisker.map(|v|reevaluate(v,&context,&outputs_path)).transpose()?,
+					bottom_whisker: pk.bottom_whisker.map(|v|reevaluate(v,&context,&outputs_path)).transpose()?,
+					upper_box_limit: pk.upper_box_limit.map(|v|reevaluate(v,&context,&outputs_path)).transpose()?,
+					bottom_box_limit: pk.bottom_box_limit.map(|v|reevaluate(v,&context,&outputs_path)).transpose()?,
+					box_middle: pk.box_middle.map(|v|reevaluate(v,&context,&outputs_path)).transpose()?,
 					git_id: evaluate(&git_id_expr,&context,&outputs_path).unwrap_or_default(),
 				};
 				//println!("{:?}",record);
 				records.push(record);
-			});
+				Ok(())
+			})?;
 		}
 		records.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Less));
 		//println!("ordered as");

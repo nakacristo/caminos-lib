@@ -1559,7 +1559,7 @@ pub fn directory_main(path:&Path, binary:&str, plugs:&Plugs, action:Action, opti
 	let binary_path=Path::new(binary);
 	//let mut experiment=Experiment::new(binary_path,path,plugs,option_matches);
 	let mut experiment=Experiment::new(binary_path,path,plugs,options);
-	experiment.execute_action(action).map_err(|error|error.with_message(format!("Eecution of the action {action} failed")))
+	experiment.execute_action(action).map_err(|error|error.with_message(format!("Execution of the action {action} failed.")))
 	//match experiment.execute_action(action)
 	//{
 	//	Ok(()) => (),

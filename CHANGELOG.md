@@ -2,6 +2,12 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-06-02
+`Error::with_message` now appends the message is some already exists.
+`OutputEnvironment::map` now is and uses functions returning Result.
+Now errors in `OutputEnvironment` and other places are propagated through their closures.
+git commit -m "Propragate some errors."
+
 ### 2022-05-31
 More sane CSV output. Allow to set the header names.
 Added `--foreign` and `--use_csv` terminal options.
