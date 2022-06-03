@@ -70,25 +70,6 @@ impl Routing for UpDown
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
 		RoutingNextCandidates{candidates:r,idempotent:true}
 	}
-	fn initialize_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _rng: &RefCell<StdRng>)
-	{
-	}
-	fn update_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _current_port:usize, _target_server:usize, _rng: &RefCell<StdRng>)
-	{
-	}
-	fn initialize(&mut self, _topology:&dyn Topology, _rng: &RefCell<StdRng>)
-	{
-	}
-	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
-	{
-	}
-	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
-	{
-		return None;
-	}
-	fn reset_statistics(&mut self, _next_cycle:usize)
-	{
-	}
 }
 
 impl UpDown
@@ -159,12 +140,6 @@ impl Routing for ExplicitUpDown
 		}
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
 		RoutingNextCandidates{candidates:r,idempotent:true}
-	}
-	fn initialize_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _rng: &RefCell<StdRng>)
-	{
-	}
-	fn update_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _current_port:usize, _target_server:usize, _rng: &RefCell<StdRng>)
-	{
 	}
 	fn initialize(&mut self, topology:&dyn Topology, _rng: &RefCell<StdRng>)
 	{
@@ -244,16 +219,6 @@ impl Routing for ExplicitUpDown
 		{
 			panic!("ExplicitUpDown has not being properly initialized");
 		}
-	}
-	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
-	{
-	}
-	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
-	{
-		return None;
-	}
-	fn reset_statistics(&mut self, _next_cycle:usize)
-	{
 	}
 }
 

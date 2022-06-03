@@ -68,6 +68,10 @@ pub struct SumRouting
 	//first_extra_label: i32,
 	//second_extra_label: i32,
 	extra_label: [i32;2],
+	//
+	enabled_statistics: bool,
+	//when capturing statistics track the hops of each kind.
+	tracked_hops: RefCell<[i64;2]>,
 }
 
 //routin_info.selections uses
@@ -202,6 +206,8 @@ impl Routing for SumRouting
 			let s = is as usize;
 			let routing = &self.routing[s];
 			let meta=bri.meta.as_mut().unwrap();
+			let tracked_hops = &mut self.tracked_hops.borrow_mut();
+			tracked_hops[s] +=1;
 			meta[s].borrow_mut().hops+=1;
 			routing.update_routing_info(&meta[s],topology,current_router,current_port,target_server,rng);
 		}
@@ -209,7 +215,7 @@ impl Routing for SumRouting
 		{
 			if cs[0]==0
 			{
-				//Readd the escape option
+				//Read the escape option
 				cs = vec![0,1];
 				let second_meta = RefCell::new(RoutingInfo::new());
 				self.routing[1].initialize_routing_info(&second_meta,topology,current_router,target_server,rng);
@@ -254,9 +260,26 @@ impl Routing for SumRouting
 		}
 		//TODO: recurse over subroutings
 	}
-	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	fn statistics(&self, cycle:usize) -> Option<ConfigurationValue>
 	{
-		return None;
+		if self.enabled_statistics {
+			let tracked_hops = self.tracked_hops.borrow();
+			let mut content = vec![
+				(String::from("first_routing_hops"),ConfigurationValue::Number(tracked_hops[0] as f64)),
+				(String::from("second_routing_hops"),ConfigurationValue::Number(tracked_hops[1] as f64)),
+			];
+			if let Some(inner)=self.routing[0].statistics(cycle)
+			{
+				content.push( (String::from("first_statistics"),inner) );
+			}
+			if let Some(inner)=self.routing[1].statistics(cycle)
+			{
+				content.push( (String::from("second_statistics"),inner) );
+			}
+			Some(ConfigurationValue::Object(String::from("SumRoutingStatistics"),content))
+		} else {
+			None
+		}
 	}
 	fn reset_statistics(&mut self, _next_cycle:usize)
 	{
@@ -274,6 +297,7 @@ impl SumRouting
 		let mut second_allowed_virtual_channels=None;
 		let mut first_extra_label=0i32;
 		let mut second_extra_label=0i32;
+		let mut enabled_statistics=false;
 		match_object_panic!(arg.cv,"Sum",value,
 			"policy" => policy=Some(new_sum_routing_policy(value)),
 			"first_routing" => first_routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
@@ -286,6 +310,7 @@ impl SumRouting
 				.map(|v|v.as_f64().expect("bad value in second_allowed_virtual_channels") as usize).collect()),
 			"first_extra_label" => first_extra_label = value.as_f64().expect("bad value for first_extra_label") as i32,
 			"second_extra_label" => second_extra_label = value.as_f64().expect("bad value for second_extra_label") as i32,
+			"enabled_statistics" => enabled_statistics = value.as_bool().expect("bad value for enabled_statistics"),
 		);
 		let policy=policy.expect("There were no policy");
 		let first_routing=first_routing.expect("There were no first_routing");
@@ -303,6 +328,8 @@ impl SumRouting
 			//first_extra_label,
 			//second_extra_label,
 			extra_label: [first_extra_label, second_extra_label],
+			enabled_statistics,
+			tracked_hops: RefCell::new([0,0]),
 		}
 	}
 }
@@ -388,13 +415,6 @@ impl Routing for Stubborn
 			self.routing.performed_request(&meta_requested,meta_info,topology,current_router,target_server,num_virtual_channels,rng);
 		}
 		//otherwise it is direct to server
-	}
-	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
-	{
-		return None;
-	}
-	fn reset_statistics(&mut self, _next_cycle:usize)
-	{
 	}
 }
 
@@ -550,16 +570,6 @@ impl Routing for EachLengthSourceAdaptiveRouting
 	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
 		self.routing.initialize(topology,rng);
-	}
-	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
-	{
-	}
-	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
-	{
-		return None;
-	}
-	fn reset_statistics(&mut self, _next_cycle:usize)
-	{
 	}
 }
 
