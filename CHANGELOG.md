@@ -2,10 +2,17 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-06-05
+git commit -m "Fix statistics of nested SumRouting."
+
+### 2022-06-04
+More fixes on statistics of SumRouting.
+
 ### 2022-06-03
 Added default implementations of some methods of Routing.
 Added statistics to SumRouting.
 git commit -m "Added statistics to SumRouting. Added default implementations to some methods of the Routing trait."
+Some fixes on SumRouting.
 
 ### 2022-06-02
 `Error::with_message` now appends the message is some already exists.

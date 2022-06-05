@@ -22,8 +22,11 @@ use crate::topology::{Topology,Location};
 #[derive(Debug)]
 pub enum SumRoutingPolicy
 {
+	///Random at source.
 	Random,
+	///Keep both options as long as possible.
 	TryBoth,
+	///Keep both options as long as possible. Preserve made decisions.
 	Stubborn,
 	StubbornWhenSecond,
 	///Note that both routings are informed of the hops given, which could be illegal for one of them.
@@ -153,8 +156,9 @@ impl Routing for SumRouting
 					let r=routing.next(&meta[index].borrow(),topology,current_router,target_server,allowed_virtual_channels.len(),rng);
 					//r.into_iter().map( |(x,c)| (x,allowed_virtual_channels[c]) ).collect()
 					r.into_iter()
-					//.map( |CandidateEgress{port,virtual_channel,label,estimated_remaining_hops}| CandidateEgress{port,virtual_channel:allowed_virtual_channels[virtual_channel],label,estimated_remaining_hops} ).collect()
-					.map( |candidate| CandidateEgress{virtual_channel:allowed_virtual_channels[candidate.virtual_channel],label:candidate.label+extra_label,..candidate} ).collect()
+					//.map( |candidate| CandidateEgress{virtual_channel:allowed_virtual_channels[candidate.virtual_channel],label:candidate.label+extra_label,..candidate} ).collect()
+					// We need to keep the annotation to have a coherent state able to relay the annotation of the subrouting.
+					.map( |candidate| CandidateEgress{virtual_channel:allowed_virtual_channels[candidate.virtual_channel],label:candidate.label+extra_label,annotation:Some(RoutingAnnotation{values:vec![s[0]],meta:vec![candidate.annotation]}),..candidate} ).collect()
 				}
 			}
 		};
@@ -182,7 +186,29 @@ impl Routing for SumRouting
 	}
 	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &RefCell<StdRng>)
 	{
+		use SumRoutingPolicy::*;
 		let mut bri=routing_info.borrow_mut();
+		if self.enabled_statistics
+		{
+			if let Some(cs) = &bri.selections
+			{
+				let tracked_hops = &mut self.tracked_hops.borrow_mut();
+				let range = if cs.len()==3 { &cs[2..=2] } else { &cs[..] };
+				//let range = match &self.policy
+				//{
+				//	SecondWhenFirstEmpty => &cs[2..=2],
+				//	_ =>
+				//	{
+				//		let limit = cs.len().min(2);
+				//		&cs[0..limit]
+				//	}
+				//};
+				for &is in range.iter()
+				{
+					tracked_hops[is as usize] +=1;
+				}
+			}
+		}
 		let mut cs = match bri.selections
 		{
 			None => unreachable!(),
@@ -191,27 +217,24 @@ impl Routing for SumRouting
 				if t.len()==3 {
 					match self.policy
 					{
-						SumRoutingPolicy::SecondWhenFirstEmpty => t.clone(),
+						SecondWhenFirstEmpty => t.clone(),
 						_ => vec![t[2]],
 						//let s=t[2];
 						//bri.selections=Some(vec![s]);
 						//s as usize
 					}
 				} else { t.clone() }
-
 			},
 		};
-		for &is in cs.iter()
+		for &is in cs.iter().take(2)
 		{
 			let s = is as usize;
 			let routing = &self.routing[s];
 			let meta=bri.meta.as_mut().unwrap();
-			let tracked_hops = &mut self.tracked_hops.borrow_mut();
-			tracked_hops[s] +=1;
 			meta[s].borrow_mut().hops+=1;
 			routing.update_routing_info(&meta[s],topology,current_router,current_port,target_server,rng);
 		}
-		if let SumRoutingPolicy::EscapeToSecond = self.policy
+		if let EscapeToSecond = self.policy
 		{
 			if cs[0]==0
 			{
@@ -235,7 +258,7 @@ impl Routing for SumRouting
 		self.routing[0].initialize(topology,rng);
 		self.routing[1].initialize(topology,rng);
 	}
-	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, _num_virtual_channels:usize, rng:&RefCell<StdRng>)
 	{
 		let mut bri=routing_info.borrow_mut();
 		//if let SumRoutingPolicy::TryBoth=self.policy
@@ -258,7 +281,25 @@ impl Routing for SumRouting
 				}
 			}
 		}
-		//TODO: recurse over subroutings
+		let &CandidateEgress{ref annotation,..} = requested;
+		if let Some(annotation) = annotation.as_ref()
+		{
+			let meta=bri.meta.as_mut().unwrap();
+			let mut sub_requested = requested.clone();
+			let s = annotation.values[0] as usize;
+			let routing = &self.routing[s];
+			sub_requested.annotation = requested.annotation.as_ref().unwrap().meta[0].clone();
+			let sub_num_vc = self.allowed_virtual_channels[s].len();
+			routing.performed_request(&sub_requested,&meta[s],topology,current_router,target_server,sub_num_vc,rng);
+		}
+		//let cs: Vec<i32> = bri.selections.as_ref().unwrap().iter().take(2).cloned().collect();
+		//for sel in cs
+		//{
+		//	let s = sel as usize;
+		//	let routing = &self.routing[s];
+		//	sub_requested.annotation = requested.annotation.as_ref().unwrap().meta[s].clone();
+		//	routing.performed_request(requested,&meta[s],topology,current_router,target_server,num_virtual_channels,rng);
+		//}
 	}
 	fn statistics(&self, cycle:usize) -> Option<ConfigurationValue>
 	{
