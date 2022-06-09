@@ -352,7 +352,7 @@ use policies::{VirtualChannelPolicy,VCPolicyBuilderArgument};
 use pattern::{Pattern,PatternBuilderArgument};
 use config::flatten_configuration_value;
 use measures::{Statistics,ServerStatistics};
-use error::Error;
+use error::{Error,SourceLocation};
 
 ///The objects that create and consume traffic to/from the network.
 #[derive(Clone,Quantifiable)]
@@ -1702,8 +1702,7 @@ pub fn terminal_main_normal_opts(args:&[String], plugs:&Plugs, option_matches:ge
 	}
 	else
 	{
-		//let mut f = File::open(&args[1]).expect("file cannot be opened");
-		let mut f = File::open(&path).expect("file cannot be opened");
+		let mut f = File::open(&path).map_err(|err|error!(could_not_open_file,path.to_path_buf(),err).with_message("could not open configuration file.".to_string()))?;
 		let results_file= if option_matches.opt_present("results")
 		{
 			Some(File::create(option_matches.opt_str("results").unwrap()).expect("Could not create results file"))

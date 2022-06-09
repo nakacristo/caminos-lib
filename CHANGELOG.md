@@ -2,6 +2,17 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-06-09
+FIX Up*/Down* routing, which was wrong in multiple ways.
+git commit -m "Fixed UpDownStar."
+
+### 2022-06-08
+Comment out `dbg!` statements in `ExplicitUpDown`.
+
+### 2022-06-07
+Described some error.
+Do not merge Nones from external experiments.
+
 ### 2022-06-05
 git commit -m "Fix statistics of nested SumRouting."
 

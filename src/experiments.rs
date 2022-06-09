@@ -804,6 +804,7 @@ impl ExperimentFiles
 							if a.len()!=n {
 								panic!("The Experiments stored in binary.results has length {} instead of {} as the number of experiment items",a.len(),n);
 							}
+							//println!("\n-----\ngot {} results, {} non-null\n------\n",a.len(),a.iter().filter(|x|**x != ConfigurationValue::None).count());
 						},
 						_ => panic!("A non-Experiments stored on binary.results"),
 					};
@@ -1369,7 +1370,11 @@ impl<'a> Experiment<'a>
 							if let ConfigurationValue::Experiments(ref a) = external_files.packed_results
 							{
 								//println!("got {:?}", a[ext_index]);
-								ext_result_value = Some( a[ext_index].clone() );
+								let external_value = &a[ext_index];
+								if *external_value!=ConfigurationValue::None
+								{
+									ext_result_value = Some( external_value.clone() );
+								}
 								//println!("external data in binary");
 							} else {
 								let ext_path=self.options.external_source.as_ref().unwrap().join(format!("runs/run{}/local.result",ext_index));
@@ -1865,6 +1870,10 @@ impl<'a> Experiment<'a>
 		if added_packed_results>=1 || removed_packed_results>=1
 		{
 			let packed_results_path = self.files.root.as_ref().unwrap().join("binary.results");
+			//if let ConfigurationValue::Experiments(ref a) = self.files.packed_results
+			//{
+			//	println!("\n-----\npacked {} results, {} non-null\n------\n",a.len(),a.iter().filter(|x|**x != ConfigurationValue::None).count());
+			//}
 			let mut binary_results_file=File::create(&packed_results_path).expect("Could not create binary results file.");
 			let binary_results = config::config_to_binary(&self.files.packed_results).expect("error while serializing into binary");
 			binary_results_file.write_all(&binary_results).expect("error happened when creating binary file");
