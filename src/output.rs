@@ -1079,10 +1079,11 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 			{
 				let selectorname=latex_make_command_name(&tracked_selector_value.unwrap().to_string());
 				figure_tikz.push_str(&format!(r#"
-\begin{{experimentfigure}}
-	\begin{{center}}
-	\tikzpicturedependsonfile{{externalized-plots/external-{folder_id}-{prefix}-selector{selectorname}-kind0.md5}}
-	\tikzsetnextfilename{{externalized-legends/legend-{folder_id}-{prefix}-{selectorname}}}
+\begin{{experimentfigure}}%
+	%\begin{{center}}
+	\centering%
+	\tikzpicturedependsonfile{{externalized-plots/external-{folder_id}-{prefix}-selector{selectorname}-kind0.md5}}%
+	\tikzsetnextfilename{{externalized-legends/legend-{folder_id}-{prefix}-{selectorname}}}%
 	\pgfplotslegendfromname{{legend-{folder_id}-{prefix}-{selectorname}}}\\"#,selectorname=selectorname,prefix=prefix,folder_id=folder_id));
 				let dependency_str = format!("external-{folder_id}-{prefix}-selector{selectorname}-kind0.pdf");
 				//let target_str = format!("legend-{folder_id}-{prefix}-{selectorname}");
@@ -1405,7 +1406,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 				extra = extra + raw_style + ",";
 			}
 			figure_tikz.push_str(&format!(r#"
-	\tikzsetnextfilename{{externalized-plots/external-{tikzname}}}
+	\tikzsetnextfilename{{externalized-plots/external-{tikzname}}}%
 	\begin{{tikzpicture}}[baseline,remember picture]
 	\begin{{axis}}[
 		automatically generated {axis},{extra}
@@ -1440,8 +1441,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 		}
 		let selector_tex_caption=Some(latex_protect_text(&tracked_selector_value.unwrap().to_string()));
 		figure_tikz.push_str(&format!(r#"
-	\end{{center}}
-	\caption{{\captionprologue {caption}}}
+	%\end{{center}}
+	\caption{{\captionprologue {caption}}}%
+	\label{{fig:PLACEHOLDER}}%
 \end{{experimentfigure}}
 "#,caption=selector_tex_caption.unwrap()));
 		tikz.push_str(&figure_tikz);
@@ -1501,6 +1503,58 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 		legend style={{draw=none}},
 	}},
 }}
+\def\timetickcode{{%
+	%\pgfkeys{{/pgf/fpu}}%
+	\pgfkeys{{/pgf/fpu,/pgf/fpu/output format=fixed}}%
+	%\pgfkeys{{/pgf/fpu=true}}%
+	\pgfmathparse{{\tick}}%
+	%\typeout{{tick=\tick, math=\pgfmathresult}}%
+	\edef\tmp{{\pgfmathresult}}%
+	%\pgfmathsetmacro\xseconds{{Mod(\tmp,60)}}%
+	%\pgfkeys{{/pgf/fpu=false}}%
+	%\pgfmathtruncatemacro\xseconds{{Mod(\tmp,60)}}%
+	%\pgfkeys{{/pgf/fpu=true}}%
+	%\typeout{{total seconds=\tmp}}%
+	%\pgfmathparse{{\tmp/60}}\typeout{{tmp/60=\pgfmathresult}}%
+	%\pgfmathparse{{floor(\tmp/60)}}\typeout{{floor(tmp/60)=\pgfmathresult}}%
+	%\pgfmathparse{{round(\tmp/60)}}\typeout{{round(tmp/60)=\pgfmathresult}}%
+	%\pgfmathparse{{int(\tmp/60)}}\typeout{{int(tmp/60)=\pgfmathresult}}%
+	\pgfmathtruncatemacro\seconds{{\tmp-60*floor(\tmp/60)}}%
+	%\typeout{{truncated seconds=\seconds}}%
+	\pgfmathtruncatemacro\tmp{{(\tmp - \seconds)/60}}%
+	%\typeout{{total minutes=\tmp}}%
+	%\pgfmathtruncatemacro\minutes{{Mod(\tmp,60)}}%
+	\pgfmathtruncatemacro\minutes{{\tmp-60*floor(\tmp/60)}}%
+	%\typeout{{truncated minutes=\seconds}}%
+	\pgfmathtruncatemacro\tmp{{(\tmp - \minutes)/60}}%
+	%\typeout{{total hours=\tmp}}%
+	%\pgfmathtruncatemacro\hours{{Mod(\tmp,24)}}%
+	\pgfmathtruncatemacro\hours{{\tmp-24*floor(\tmp/24)}}%
+	%\typeout{{truncated hours=\hours}}%
+	\pgfmathtruncatemacro\days{{(\tmp - \hours)/24}}%
+	%{{\tiny\days-\hours:\minutes:\seconds}}%
+	\ifnum\days=0%
+		{{\tiny\hours:\minutes:\seconds}}%
+	\else%
+		{{\tiny\days-\hours:\minutes}}%
+	\fi%
+	%{{\tiny\tick}}%
+}}
+\def\memorytickcode{{%
+	\pgfkeys{{/pgf/fpu,/pgf/fpu/output format=fixed}}%
+	%\pgfmathprintnumber[sci,sci zerofill,precision=1]{{\tick}}%
+	\pgfmathtruncatemacro\unitcase{{log2(\tick+0.001)/10+1.1}}%We add a byte to keep the log2 sensible.
+	%\pgfmathfloatifflags{{}}
+	\pgfmathparse{{\tick / pow(1024,\unitcase-1)}}%
+	\pgfmathprintnumber{{\pgfmathresult}}%
+	\ifcase\unitcase B%0
+		\or KB%1
+		\or MB%2
+		\or GB%3
+		\or TB%4
+		\else +1024,\pgfmathprintnumber{{unitcase}}B%
+	\fi%
+}}
 \tikzset{{
 	automatically generated plot/.style={{
 		%/pgfplots/error bars/.cd,error bar style={{ultra thick}},x dir=both, y dir=both,
@@ -1522,6 +1576,22 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 		%}},
 	}},
 	%/pgf/images/aux in dpth=true,
+	x time ticks/.style={{
+		/pgfplots/scaled x ticks=false,
+		/pgfplots/xticklabel={{\timetickcode}},
+	}},
+	y time ticks/.style={{
+		/pgfplots/scaled y ticks=false,
+		/pgfplots/yticklabel={{\timetickcode}}
+	}},
+	x memory ticks from kilobytes/.style={{
+		/pgfplots/scaled x ticks=false,
+		/pgfplots/xticklabel={{\memorytickcode}}
+	}},
+	y memory ticks from kilobytes/.style={{
+		/pgfplots/scaled y ticks=false,
+		/pgfplots/yticklabel={{\memorytickcode}}
+	}},
 }}"#);
 	let mut local_prelude=format!(r#"
 %% -- experiment-local prelude

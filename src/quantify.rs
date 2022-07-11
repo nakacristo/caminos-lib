@@ -298,6 +298,22 @@ impl<T:Quantifiable+?Sized> Quantifiable for RefCell<T>
 	}
 }
 
+impl Quantifiable for dyn std::any::Any
+{
+	fn total_memory(&self) -> usize
+	{
+		size_of::<&dyn std::any::Any>()
+	}
+	fn print_memory_breakdown(&self)
+	{
+		unimplemented!();
+	}
+	fn forecast_total_memory(&self) -> usize
+	{
+		unimplemented!();
+	}
+}
+
 pub fn human_bytes(byte_amount:usize) -> String
 {
 	if byte_amount<3000

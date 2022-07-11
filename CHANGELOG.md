@@ -2,6 +2,25 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-07-11
+Added `RoutingInfo::auxiliar` to allow using arbitrary types.
+git commit -m 'Allow arbitrary data in RoutingInfo. Improvements to tikz backend. New `try` config function.'
+
+### 2022-07-07
+Prevent some errors from panic in `config::evaluate`.
+Added config function `try`.
+
+### 2022-06-28
+Avoid scaling ticks when using the time/memory tick styles.
+
+### 2022-06-27
+Show less significant figures with `timetickcode` within the tikz backend.
+Added tick styles `{x,y} memory ticks from kilobytes`.
+Minor improvements to the generated latex code.
+
+### 2022-06-23
+Addedd tikz styles `{x,y} time ticks`.
+
 ### 2022-06-09
 FIX Up*/Down* routing, which was wrong in multiple ways.
 git commit -m "Fixed UpDownStar."

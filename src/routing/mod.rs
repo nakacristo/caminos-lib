@@ -49,6 +49,8 @@ pub struct RoutingInfo
 	pub visited_routers: Option<Vec<usize>>,
 	///Mostly for the generic Valiant scheme.
 	pub meta: Option<Vec<RefCell<RoutingInfo>>>,
+	///Arbitrary data with internal mutability.
+	pub auxiliar: RefCell<Option<Box<dyn std::any::Any>>>,
 }
 
 impl RoutingInfo
@@ -62,6 +64,7 @@ impl RoutingInfo
 			selections: None,
 			visited_routers: None,
 			meta: None,
+			auxiliar: RefCell::new(None),
 		}
 	}
 }

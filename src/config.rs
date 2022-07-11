@@ -285,9 +285,11 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 							return Ok(attr_value.clone());
 						}
 					};
-					panic!("There is not member {} in {}",attribute,value);
+					//panic!("There is not member {} in {}",attribute,value);
+					return Err(error!(bad_argument).with_message(format!("There is no member {attribute} in {value}")));
 				},
-				_ => panic!("There is no member {} in {}",attribute,value),
+				//_ => panic!("There is no member {} in {}",attribute,value),
+				_=> return Err(error!(bad_argument).with_message(format!("{value} is not an object, so it does not have member {attribute}"))),
 			}
 		},
 		&Expr::Parentheses(ref expr) => evaluate(expr,context,path),
@@ -1035,6 +1037,39 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 						}
 					}).collect::<Result<_,_>>()?;
 					Ok(ConfigurationValue::Array(container))
+				}
+				"try" =>
+				{
+					let mut expression=None;
+					let mut default = None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"expression" =>
+							{
+								//condition=Some(evaluate(val,context,path)?);
+								expression = Some(val);
+							},
+							"default" =>
+							{
+								//default=Some(evaluate(val,context,path)?);
+								default = Some(val);
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let expression=expression.expect("expression argument of number_or not given.");
+					let value = match evaluate(expression,context,path)
+					{
+						Ok(value) => value,
+						Err(_) => if let Some(d) = default {
+								evaluate(d,context,path)?
+							} else {
+								ConfigurationValue::None
+							},
+					};
+					Ok(value)
 				}
 				_ => panic!("Unknown function `{}'",function_name),
 			}
