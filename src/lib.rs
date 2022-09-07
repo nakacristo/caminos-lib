@@ -10,7 +10,7 @@ This crate is `caminos-lib`. To use it add `caminos-lib` to your dependencies in
 
 ```toml
 [dependencies]
-caminos-lib = "0.4"
+caminos-lib = "0.5"
 ```
 
 Alternatively, consider whether the binary crate `caminos` fits your intended use.
@@ -19,7 +19,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 
 <details>
 
-## [0.4.0] to
+## [0.4.0] to [0.5.0]
 
 * Added the function `server_state` to the `Traffic` trait.
 * Functions on the output module now use ExperimentFiles instead of Path.

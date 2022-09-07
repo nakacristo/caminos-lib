@@ -1,8 +1,12 @@
 # Change Log
 
-## next [0.4.4 or greater]
+## next [0.5.1 or greater]
+
+## [0.5]
 
 ### 2022-09-07
+git tag 0.5.0 -m "v0.5.0"
+Publish as 0.5. 
 
 ### 2022-07-11
 Added `RoutingInfo::auxiliar` to allow using arbitrary types.
