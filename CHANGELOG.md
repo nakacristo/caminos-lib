@@ -5,6 +5,7 @@
 
 ### 2022-09-07
 Added license files.
+Brought allocator, the so called BasicModular router and a couple related things from Daniel Postigo located at https://github.com/codefan-byte/caminos-tfg/tree/router-allocator-daniel/src/allocator .
 
 ## [0.5]
 

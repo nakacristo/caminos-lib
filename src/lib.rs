@@ -321,6 +321,7 @@ pub mod experiments;
 pub mod config;
 pub mod error;
 pub mod measures;
+pub mod allocator;
 
 use std::rc::Rc;
 use std::boxed::Box;
@@ -353,6 +354,7 @@ use pattern::{Pattern,PatternBuilderArgument};
 use config::flatten_configuration_value;
 use measures::{Statistics,ServerStatistics};
 use error::{Error,SourceLocation};
+use allocator::{Allocator,AllocatorBuilderArgument};
 
 ///The objects that create and consume traffic to/from the network.
 #[derive(Clone,Quantifiable)]
@@ -789,6 +791,7 @@ impl<'a> Simulation<'a>
 			topology:topology.as_ref(),
 			maximum_packet_size,
 			statistics_temporal_step,
+			rng:&rng,
 		})).collect();
 		let servers=(0..num_servers).map(|index|{
 			let port=topology.server_neighbour(index);
@@ -1412,6 +1415,7 @@ pub struct Plugs
 	traffics: BTreeMap<String,fn(TrafficBuilderArgument) -> Box<dyn Traffic> >,
 	patterns: BTreeMap<String, fn(PatternBuilderArgument) -> Box<dyn Pattern> >,
 	policies: BTreeMap<String, fn(VCPolicyBuilderArgument) -> Box<dyn VirtualChannelPolicy> >,
+	allocators: BTreeMap<String, fn(AllocatorBuilderArgument) -> Box<dyn Allocator> >,
 }
 
 impl Plugs

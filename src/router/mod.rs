@@ -1,5 +1,6 @@
 
 pub mod basic;
+pub mod basic_modular;
 
 use std::rc::{Rc};
 use std::cell::RefCell;
@@ -12,6 +13,7 @@ use quantifiable_derive::Quantifiable;//the derive macro
 
 use crate::{Phit,Packet,Plugs,error,source_location};
 use self::basic::Basic;
+use self::basic_modular::BasicModular;
 use crate::config_parser::ConfigurationValue;
 use crate::topology::{Topology};
 use crate::event::{Eventful};
@@ -65,6 +67,8 @@ pub struct RouterBuilderArgument<'a>
 	///The corresponding value of the `Statistics` struct.
 	///Available to the router for the case it want to use the same period.
 	pub statistics_temporal_step: usize,
+	///The random number generator.
+	pub rng: &'a RefCell<StdRng>,
 }
 
 ///Creates a router from a configuration value.
@@ -80,6 +84,7 @@ pub fn new_router(arg:RouterBuilderArgument) -> Rc<RefCell<dyn Router>>
 		{
 			//"Basic" => Basic::<SimpleVirtualChannels>::new(arg.router_index, arg.cv, arg.plugs, arg.topology, arg.maximum_packet_size),
 			"Basic" => Basic::<SimpleVirtualChannels>::new(arg),
+			"BasicModular" => BasicModular::<SimpleVirtualChannels>::new(arg),
 			_ => panic!("Unknown router {}",cv_name),
 		}
 	}
