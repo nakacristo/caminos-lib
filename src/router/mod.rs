@@ -1,6 +1,6 @@
 
 pub mod basic;
-pub mod basic_modular;
+pub mod input_output_monocycle;
 
 use std::rc::{Rc};
 use std::cell::RefCell;
@@ -13,7 +13,7 @@ use quantifiable_derive::Quantifiable;//the derive macro
 
 use crate::{Phit,Packet,Plugs,error,source_location};
 use self::basic::Basic;
-use self::basic_modular::InputOutputMonocycle;
+use self::input_output_monocycle::InputOutputMonocycle;
 use crate::config_parser::ConfigurationValue;
 use crate::topology::{Topology};
 use crate::event::{Eventful};

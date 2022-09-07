@@ -1,3 +1,11 @@
+/*!
+
+This file implements the iSLIP algorithm by N. McKeown.
+
+\[Reference\] Nick McKeown, "The iSLIP Scheduling Algorithm for Input-Queued Switches," IEEE/ACM TRANSACTIONS ON NETWORKING, VOL. 7, NO. 2, APRIL 1999.
+
+*/
+
 use std::cell::RefCell;
 use std::vec;
 
@@ -64,7 +72,7 @@ impl RoundVec {
 
 
 /// An iSLIP allocator, more info 'https://doi.org/10.1109/90.769767'
-pub struct IslipAllocator {
+pub struct ISLIPAllocator {
     /// The max number of inputs ports
     num_clients: usize,
     /// The number of outputs ports
@@ -81,43 +89,43 @@ pub struct IslipAllocator {
     out_requests: Vec<RoundVec>,
 }
 
-impl IslipAllocator {
+impl ISLIPAllocator {
     /// Creates a new iSLIP allocator
     /// # Arguments
     /// * `args` - The arguments of the allocator
     /// # Returns
-    /// * `IslipAllocator` - The new iSLIP allocator
-    pub fn new(args: AllocatorBuilderArgument) -> IslipAllocator {
-        // Check if the arguments are valid
-        if args.num_clients == 0 || args.num_resources == 0 {
-            panic!("Invalid arguments for IslipAllocator");
-        }
-        // Get the number of iterations to perform
-        let mut num_iterations = None;
-        match_object_panic!(args.cv, "Islip", value,
-        "num_iter" => match value
-        {
-            &ConfigurationValue::Number(i) => num_iterations = Some(i as usize),
-            _ => panic!("Bad value for num_iter"),
-        }
-        );
-        if num_iterations.is_none() {
-            // Warn the user that the default value will be used
-            println!("Warning: num_iter for the iSLIP allocator is not specified in the configuration file, the default value (1) will be used");
-        }
-        let num_iterations = num_iterations.unwrap_or(1);
-        let in_match = vec![None; args.num_clients];
-        let out_match = vec![None; args.num_resources];
-        IslipAllocator {
-            num_clients: args.num_clients,
-            num_resources: args.num_resources,
-            num_iterations,
-            in_match,
-            out_match,
-            in_requests: vec![RoundVec::new(args.num_resources); args.num_clients],
-            out_requests: vec![RoundVec::new(args.num_clients); args.num_resources],
-        }
-    }
+    /// * `ISLIPAllocator` - The new iSLIP allocator
+	pub fn new(args: AllocatorBuilderArgument) -> ISLIPAllocator {
+		// Check if the arguments are valid
+		if args.num_clients == 0 || args.num_resources == 0 {
+			panic!("Invalid arguments for ISLIPAllocator");
+		}
+		// Get the number of iterations to perform
+		let mut num_iterations = None;
+		match_object_panic!(args.cv, "ISLIP", value,
+			"num_iter" => match value
+			{
+				&ConfigurationValue::Number(i) => num_iterations = Some(i as usize),
+				_ => panic!("Bad value for num_iter"),
+			}
+		);
+		if num_iterations.is_none() {
+			// Warn the user that the default value will be used
+			println!("Warning: num_iter for the iSLIP allocator is not specified in the configuration file, the default value (1) will be used");
+		}
+		let num_iterations = num_iterations.unwrap_or(1);
+		let in_match = vec![None; args.num_clients];
+		let out_match = vec![None; args.num_resources];
+		ISLIPAllocator {
+num_clients: args.num_clients,
+				 num_resources: args.num_resources,
+				 num_iterations,
+				 in_match,
+				 out_match,
+				 in_requests: vec![RoundVec::new(args.num_resources); args.num_clients],
+				 out_requests: vec![RoundVec::new(args.num_clients); args.num_resources],
+		}
+	}
 
     /// Check if the request is valid
     /// # Arguments
@@ -134,7 +142,7 @@ impl IslipAllocator {
     }
 }
 
-impl Allocator for IslipAllocator {
+impl Allocator for ISLIPAllocator {
     /// Add a request to the allocator
     /// # Arguments
     /// * `request` - The request to add

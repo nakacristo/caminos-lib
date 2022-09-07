@@ -1729,6 +1729,16 @@ impl ConfigurationValue
 	//{
 	//	BorrowedConfigurationValue::from(self)
 	//}
+	pub fn rename(&mut self,new_name: String)
+	{
+		match self
+		{
+			&mut ConfigurationValue::Literal ( ref mut name ) => *name = new_name,
+			&mut ConfigurationValue::Object( ref mut name, _ ) => *name = new_name,
+			&mut ConfigurationValue::NamedExperiments( ref mut name,_) => *name = new_name,
+			_ => (),
+		}
+	}
 }
 
 //Perhaps the best would be to implement a trait

@@ -9,6 +9,8 @@ Brought allocator, the so called BasicModular router and a couple related things
 Renamed the PortRequest from `basic_modular` as VCARequest and moved it into the allocator mod.
 Changed label for AVCRequest on missing priority from -1 to 0, to comply with the statet convention; althought is it unused.
 New BasicModular routing renamed onto InputOutputMonocycle.
+Renamed file `basic_modular.rs` into `input_output_monocycle.rs`.
+Rename IslipAllocator into ISLIPAllocator, and make some configuration aliases.
 
 ## [0.5]
 

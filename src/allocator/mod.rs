@@ -14,7 +14,7 @@ use std::cell::RefCell;
 use ::rand::rngs::StdRng;
 use random::RandomAllocator;
 use random_priority::RandomPriorityAllocator;
-use islip::IslipAllocator;
+use islip::ISLIPAllocator;
 
 
 /// A request to a Virtual Channel Allocator.
@@ -150,6 +150,33 @@ pub struct AllocatorBuilderArgument<'a>
     pub rng : &'a RefCell<StdRng>,
 }
 
+/**
+The allocator `Random` fully randomizes all requests, ignoring priority. It is not clear whether it can be implemented, but helps to avoid specific details when a generic allocator is desired.
+It avoids possible starvation pitfalls with other allocators. Note this is not a random separable-first allocator.
+```ignore
+Random{
+	//Optional seed to build a new random generator independent of the simulation's global generator.
+	//seed:42
+}
+```
+
+The `RandomWithPriority` allocator is like the `Random` one, but sorts by priority.
+```ignore
+RandomWithPriority{
+	//Optional seed to build a new random generator independent of the simulation's global generator.
+	//seed:42
+}
+```
+
+The well-known iSLIP allocator.
+```ignore
+Islip{
+	//Number of iterations to perform.
+	//Defaults to 1 if omitted.
+	num_iter:2,
+}
+```
+**/
 pub fn new_allocator(arg:AllocatorBuilderArgument) -> Box<dyn Allocator>
 {
     if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv
@@ -161,7 +188,14 @@ pub fn new_allocator(arg:AllocatorBuilderArgument) -> Box<dyn Allocator>
         {
             "Random" => Box::new(RandomAllocator::new(arg)),
             "RandomWithPriority" => Box::new(RandomPriorityAllocator::new(arg)),
-            "Islip" => Box::new(IslipAllocator::new(arg)),
+            "Islip" | "iSLIP" =>
+			{
+				let mut cv = arg.cv.clone();
+				cv.rename("ISLIP".into());
+				let alias = AllocatorBuilderArgument{cv:&cv,..arg};
+				Box::new(ISLIPAllocator::new(alias))
+			}
+            "ISLIP" => Box::new(ISLIPAllocator::new(arg)),
             _ => panic!("Unknown allocator: {}", cv_name),
         }
     }
