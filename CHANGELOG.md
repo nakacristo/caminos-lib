@@ -2,6 +2,8 @@
 
 ## next [0.4.4 or greater]
 
+### 2022-09-07
+
 ### 2022-07-11
 Added `RoutingInfo::auxiliar` to allow using arbitrary types.
 git commit -m 'Allow arbitrary data in RoutingInfo. Improvements to tikz backend. New `try` config function.'

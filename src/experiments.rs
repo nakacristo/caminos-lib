@@ -35,7 +35,6 @@ pub enum Action
 	///Package the executions into Slurm jobs and send them to the Slurm queue system.
 	Slurm,
 	///Checks how many results it has.
-	///TODO: implement looking at slurm error files.
 	Check,
 	///Bring results from the remote via sftp.
 	Pull,
