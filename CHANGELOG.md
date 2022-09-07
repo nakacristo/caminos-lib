@@ -6,6 +6,8 @@
 ### 2022-09-07
 Added license files.
 Brought allocator, the so called BasicModular router and a couple related things from Daniel Postigo located at https://github.com/codefan-byte/caminos-tfg/tree/router-allocator-daniel/src/allocator .
+Renamed the PortRequest from `basic_modular` as VCARequest and moved it into the allocator mod.
+
 
 ## [0.5]
 

@@ -4,7 +4,7 @@ use std::ops::Deref;
 use std::mem::size_of;
 use ::rand::{Rng,rngs::StdRng};
 use super::{Router,TransmissionMechanism,StatusAtEmissor,SpaceAtReceptor,TransmissionToServer,TransmissionFromServer,SimpleVirtualChannels,AugmentedBuffer,AcknowledgeMessage};
-use crate::allocator::{Allocator,Request,AllocatorBuilderArgument, new_allocator};
+use crate::allocator::{Allocator,VCARequest,AllocatorBuilderArgument, new_allocator};
 use crate::config_parser::ConfigurationValue;
 use crate::router::RouterBuilderArgument;
 use crate::topology::Location;
@@ -483,31 +483,6 @@ impl<TM:TransmissionMechanism> BasicModular<TM>
 }
 
 
-///A phit in the virtual channel `virtual_channel` of the port `entry_port` is requesting to go to the virtual channel `requested_vc` of the port `requested_port`.
-///The label is the one returned by the routing algorithm or 0 if it comes from a selection in a previous cycle.
-#[derive(Clone)]
-pub struct PortRequest
-{
-	pub entry_port: usize,
-	pub entry_vc: usize,
-	pub requested_port: usize,
-	pub requested_vc: usize,
-	pub label: i32,
-}
-
-impl PortRequest
-{
-	// method to transform a PortRequest into a `allocator::Request`.
-	fn to_allocator_request(&self, num_vcs: usize)->Request
-	{
-		Request::new(
-			self.entry_port*num_vcs+self.entry_vc,
-    		self.requested_port*num_vcs+self.requested_vc,
-    		if self.label<0 {None} else {	Some(self.label as usize) },
-		)
-	}
-}
-
 impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 {
 	///main routine of the router. Do all things that must be done in a cycle, if any.
@@ -527,7 +502,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 			//}
 		}
 		self.last_process_at_cycle = Some(simulation.cycle);
-		let mut request:Vec<PortRequest>=vec![];
+		let mut request:Vec<VCARequest>=vec![];
 		let topology = simulation.network.topology.as_ref();
 		
 		let amount_virtual_channels=self.num_virtual_channels();
@@ -765,7 +740,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 							let CandidateEgress{port:requested_port,virtual_channel:requested_vc,label,..} = candidate;
 //							if self.selected_input[requested_port][requested_vc].is_none()
 //							{
-								request.push( PortRequest{entry_port,entry_vc,requested_port,requested_vc,label});
+								request.push( VCARequest{entry_port,entry_vc,requested_port,requested_vc,label});
 //							}
 						}
 					},
@@ -783,7 +758,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 					match self.selected_input[requested_port][requested_vc]
 					{
 						Some(_) => (),
-						None => request.push( PortRequest{entry_port,entry_vc,requested_port,requested_vc,label} ),
+						None => request.push( VCARequest{entry_port,entry_vc,requested_port,requested_vc,label} ),
 					};
 				}*/
 				self.time_at_input_head[entry_port][entry_vc]+=1;
@@ -814,9 +789,9 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 		});
 
 		// Perform the allocation
-		let mut requests_granteds : Vec<PortRequest> = Vec::new();
+		let mut requests_granteds : Vec<VCARequest> = Vec::new();
 		for gr in &mut self.crossbar_allocator.perform_allocation(&simulation.rng) {
-			// convert from allocator Request to PortRequest
+			// convert from allocator Request to VCARequest
 			requests_granteds.push(gr.to_port_request(amount_virtual_channels));
 		}
 	
@@ -824,7 +799,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 
 		//Complete the arbitration of the requests by writing the selected_input of the output virtual ports.
 		//let request=request_sequence.concat();
-		for PortRequest{entry_port,entry_vc,requested_port,requested_vc,..} in request_it
+		for VCARequest{entry_port,entry_vc,requested_port,requested_vc,..} in request_it
 		{
 			self.selected_input[requested_port][requested_vc]=Some((entry_port,entry_vc));
 			self.selected_output[entry_port][entry_vc]=Some((requested_port,requested_vc));

@@ -9,7 +9,6 @@ pub mod islip;
 
 use crate::Plugs;
 use crate::config_parser::ConfigurationValue;
-use crate::router::basic_modular::PortRequest;
 
 use std::cell::RefCell;
 use ::rand::rngs::StdRng;
@@ -18,7 +17,36 @@ use random_priority::RandomPriorityAllocator;
 use islip::IslipAllocator;
 
 
+/// A request to a Virtual Channel Allocator.
+/// A phit in the virtual channel `virtual_channel` of the port `entry_port` is requesting to go to the virtual channel `requested_vc` of the port `requested_port`.
+/// The label is the one returned by the routing algorithm or 0 if that information has been lost.
+/// TODO: Revise. previously it was said "it comes from a selection in a previous cycle" in relation to that information lost.
+#[derive(Clone)]
+pub struct VCARequest
+{
+	pub entry_port: usize,
+	pub entry_vc: usize,
+	pub requested_port: usize,
+	pub requested_vc: usize,
+	pub label: i32,
+}
+
+impl VCARequest
+{
+	// method to transform a VCARequest into a `allocator::Request`.
+	pub fn to_allocator_request(&self, num_vcs: usize)->Request
+	{
+		Request::new(
+			self.entry_port*num_vcs+self.entry_vc,
+    		self.requested_port*num_vcs+self.requested_vc,
+    		if self.label<0 {None} else {	Some(self.label as usize) },
+		)
+	}
+}
+
+
 /// A client (input of crossbar) want a resource (output of crossbar) with a certain priority.
+/// The type structure with the Allocator work. Other request types, such as `VCARequest` have methods to be converted into a `Request`.
 #[derive(Clone)]
 pub struct Request {
     /// The input of the crossbar
@@ -36,9 +64,9 @@ impl Request {
     pub fn new(client: usize, resource: usize, priority: Option<usize>) -> Request { Self { client, resource, priority } }
 
     // method to transform a Request into a router::basic_ioq::PortRequest
-    pub fn to_port_request(&self, num_vcs: usize)->PortRequest
+    pub fn to_port_request(&self, num_vcs: usize)->VCARequest
 	{
-		PortRequest{
+		VCARequest{
 			entry_port: self.client/num_vcs,
 			entry_vc: self.client%num_vcs,
 			requested_port: self.resource/num_vcs,
