@@ -2,6 +2,10 @@
 
 ## next [0.5.1 or greater]
 
+
+### 2022-09-07
+Added license files.
+
 ## [0.5]
 
 ### 2022-09-07
