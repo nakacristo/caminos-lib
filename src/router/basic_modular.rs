@@ -24,13 +24,14 @@ enum OutputArbiter
 		port_token: Vec<usize>,
 	},
 }
-pub struct BasicModular<TM:TransmissionMechanism>
+//pub struct BasicModular<TM:TransmissionMechanism>
+pub struct InputOutputMonocycle<TM:TransmissionMechanism>
 {
     ///Weak pointer to itself, see https://users.rust-lang.org/t/making-a-rc-refcell-trait2-from-rc-refcell-trait1/16086/3
-	self_rc: Weak<RefCell<BasicModular<TM>>>,
+	self_rc: Weak<RefCell<InputOutputMonocycle<TM>>>,
 	///If there is an event pending
 	event_pending: bool,
-	///The cycle number of the last time BasicModular::process was called. Only for debugging/assertion purposes.
+	///The cycle number of the last time InputOutputMonocycle::process was called. Only for debugging/assertion purposes.
 	last_process_at_cycle: Option<usize>,
 	///Its index in the topology
 	router_index: usize,
@@ -84,7 +85,7 @@ pub struct BasicModular<TM:TransmissionMechanism>
 	statistics_reception_space_occupation_per_vc: Vec<f64>,
 }
 
-impl<TM:'static+TransmissionMechanism> Router for BasicModular<TM>
+impl<TM:'static+TransmissionMechanism> Router for InputOutputMonocycle<TM>
 {
     fn insert(&mut self, phit:Rc<Phit>, port:usize, rng: &RefCell<StdRng>)
     {
@@ -140,9 +141,9 @@ impl<TM:'static+TransmissionMechanism> Router for BasicModular<TM>
         {
             if let ConfigurationValue::Object(cv_name,previous_pairs) = previous
             {
-                if cv_name!="BasicModular"
+                if cv_name!="InputOutputMonocycle"
                 {
-                    panic!("incompatible statistics, should be `BasicModular` object not `{}`",cv_name);
+                    panic!("incompatible statistics, should be `InputOutputMonocycle` object not `{}`",cv_name);
                 }
                 for (ref name,ref value) in previous_pairs
                 {
@@ -198,7 +199,7 @@ impl<TM:'static+TransmissionMechanism> Router for BasicModular<TM>
                             }
                             _ => panic!("bad value for average_output_buffer_occupation_per_vc"),
                         },
-                        _ => panic!("Nothing to do with field {} in BasicModular statistics",name),
+                        _ => panic!("Nothing to do with field {} in InputOutputMonocycle statistics",name),
                     }
                 }
             }
@@ -244,7 +245,7 @@ impl<TM:'static+TransmissionMechanism> Router for BasicModular<TM>
             }
             result_content.push((String::from("average_reception_space_occupation_per_vc"),ConfigurationValue::Array(content.iter().map(|x|ConfigurationValue::Number(*x)).collect())));
         }
-        Some(ConfigurationValue::Object(String::from("BasicModular"),result_content))
+        Some(ConfigurationValue::Object(String::from("InputOutputMonocycle"),result_content))
     }
 
     fn reset_statistics(&mut self, next_cycle:usize)
@@ -262,9 +263,9 @@ impl<TM:'static+TransmissionMechanism> Router for BasicModular<TM>
 }
 
 
-impl BasicModular<SimpleVirtualChannels>
+impl InputOutputMonocycle<SimpleVirtualChannels>
 {
-	pub fn new(arg:RouterBuilderArgument) -> Rc<RefCell<BasicModular<SimpleVirtualChannels>>>
+	pub fn new(arg:RouterBuilderArgument) -> Rc<RefCell<InputOutputMonocycle<SimpleVirtualChannels>>>
 	{
 		let RouterBuilderArgument{
 			router_index,
@@ -289,9 +290,9 @@ impl BasicModular<SimpleVirtualChannels>
 		let mut allocator_value=None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
 		{
-			if cv_name!="BasicModular"
+			if cv_name!="InputOutputMonocycle"
 			{
-				panic!("A BasicModular must be created from a `BasicModular` object not `{}`",cv_name);
+				panic!("A InputOutputMonocycle must be created from a `InputOutputMonocycle` object not `{}`",cv_name);
 			}
 			for &(ref name,ref value) in cv_pairs
 			{
@@ -356,13 +357,13 @@ impl BasicModular<SimpleVirtualChannels>
 					};
 */
 					"allocator" => allocator_value=Some(value.clone()),
-					_ => panic!("Nothing to do with field {} in BasicModular",name),
+					_ => panic!("Nothing to do with field {} in InputOutputMonocycle",name),
 				}
 			}
 		}
 		else
 		{
-			panic!("Trying to create a BasicModular from a non-Object");
+			panic!("Trying to create a InputOutputMonocycle from a non-Object");
 		}
 		//let sides=sides.expect("There were no sides");
 		let virtual_channels=virtual_channels.expect("There were no virtual_channels");
@@ -424,7 +425,7 @@ impl BasicModular<SimpleVirtualChannels>
 				(0..virtual_channels).map(|_|AugmentedBuffer::new()).collect()
 			).collect()
 		};
-		let r=Rc::new(RefCell::new(BasicModular{
+		let r=Rc::new(RefCell::new(InputOutputMonocycle{
 			self_rc: Weak::new(),
 			event_pending: false,
 			last_process_at_cycle: None,
@@ -457,7 +458,7 @@ impl BasicModular<SimpleVirtualChannels>
 	}
 }
 
-impl<TM:TransmissionMechanism> BasicModular<TM>
+impl<TM:TransmissionMechanism> InputOutputMonocycle<TM>
 {
 	///Whether a phit in an input buffer can advance.
 	///bubble_in_use should be true only for leading phits that require the additional space.
@@ -483,7 +484,7 @@ impl<TM:TransmissionMechanism> BasicModular<TM>
 }
 
 
-impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
+impl<TM:'static+TransmissionMechanism> Eventful for InputOutputMonocycle<TM>
 {
 	///main routine of the router. Do all things that must be done in a cycle, if any.
 	fn process(&mut self, simulation:&Simulation) -> Vec<EventGeneration>
@@ -494,7 +495,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 			cycles_span = simulation.cycle - *last;
 			if *last >= simulation.cycle
 			{
-				panic!("Trying to process at cycle {} a router::BasicModular already processed at {}",simulation.cycle,last);
+				panic!("Trying to process at cycle {} a router::InputOutputMonocycle already processed at {}",simulation.cycle,last);
 			}
 			//if *last +1 < simulation.cycle
 			//{
@@ -789,13 +790,13 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 		});
 
 		// Perform the allocation
-		let mut requests_granteds : Vec<VCARequest> = Vec::new();
-		for gr in &mut self.crossbar_allocator.perform_allocation(&simulation.rng) {
+		let mut requests_granted : Vec<VCARequest> = Vec::new();
+		for gr in self.crossbar_allocator.perform_allocation(&simulation.rng) {
 			// convert from allocator Request to VCARequest
-			requests_granteds.push(gr.to_port_request(amount_virtual_channels));
+			requests_granted.push(gr.to_port_request(amount_virtual_channels));
 		}
 	
-		let request_it = requests_granteds.into_iter();
+		let request_it = requests_granted.into_iter();
 
 		//Complete the arbitration of the requests by writing the selected_input of the output virtual ports.
 		//let request=request_sequence.concat();
@@ -873,7 +874,7 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
                         }
                         else
                         {
-                            panic!("BasicModular router requires knowledge of available space to apply bubble.");
+                            panic!("InputOutputMonocycle router requires knowledge of available space to apply bubble.");
                         }
                     }
                     else
@@ -1010,13 +1011,13 @@ impl<TM:'static+TransmissionMechanism> Eventful for BasicModular<TM>
 	}
 }
 
-impl<TM:TransmissionMechanism> Quantifiable for BasicModular<TM>
+impl<TM:TransmissionMechanism> Quantifiable for InputOutputMonocycle<TM>
 {
 	fn total_memory(&self) -> usize
 	{
 		//FIXME: redo
-		//return size_of::<BasicModular<TM>>() + self.virtual_ports.total_memory() + self.port_token.total_memory();
-		return size_of::<BasicModular<TM>>();
+		//return size_of::<InputOutputMonocycle<TM>>() + self.virtual_ports.total_memory() + self.port_token.total_memory();
+		return size_of::<InputOutputMonocycle<TM>>();
 	}
 	fn print_memory_breakdown(&self)
 	{

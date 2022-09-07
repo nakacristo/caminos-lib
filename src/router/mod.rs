@@ -13,7 +13,7 @@ use quantifiable_derive::Quantifiable;//the derive macro
 
 use crate::{Phit,Packet,Plugs,error,source_location};
 use self::basic::Basic;
-use self::basic_modular::BasicModular;
+use self::basic_modular::InputOutputMonocycle;
 use crate::config_parser::ConfigurationValue;
 use crate::topology::{Topology};
 use crate::event::{Eventful};
@@ -84,7 +84,7 @@ pub fn new_router(arg:RouterBuilderArgument) -> Rc<RefCell<dyn Router>>
 		{
 			//"Basic" => Basic::<SimpleVirtualChannels>::new(arg.router_index, arg.cv, arg.plugs, arg.topology, arg.maximum_packet_size),
 			"Basic" => Basic::<SimpleVirtualChannels>::new(arg),
-			"BasicModular" => BasicModular::<SimpleVirtualChannels>::new(arg),
+			"InputOutputMonocycle" => InputOutputMonocycle::<SimpleVirtualChannels>::new(arg),
 			_ => panic!("Unknown router {}",cv_name),
 		}
 	}

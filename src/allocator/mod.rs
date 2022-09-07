@@ -87,16 +87,27 @@ impl GrantedRequests {
         self.granted_requests.push(request);
     }
 }
-impl Iterator for GrantedRequests {
-    type Item = Request;
-    fn next(&mut self) -> Option<Self::Item> {
-        if !self.granted_requests.is_empty() {
-            let r = self.granted_requests.remove(0);
-            Some(r)
-        } else {
-            None
-        }
-    }
+
+//impl Iterator for GrantedRequests {
+//    type Item = Request;
+//	// TODO: This next is O(n) instead of O(1). Can it be causing a loss of performance?
+//    fn next(&mut self) -> Option<Self::Item> {
+//        if !self.granted_requests.is_empty() {
+//            let r = self.granted_requests.remove(0);
+//            Some(r)
+//        } else {
+//            None
+//        }
+//    }
+//}
+
+// This should be faster, but has not been verified.
+impl IntoIterator for GrantedRequests {
+	type Item = Request;
+	type IntoIter = <Vec<Request> as IntoIterator>::IntoIter;
+	fn into_iter(self) -> <Self as IntoIterator>::IntoIter {
+		self.granted_requests.into_iter()
+	}
 }
 
 pub trait Allocator {
