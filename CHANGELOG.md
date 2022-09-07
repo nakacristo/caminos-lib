@@ -7,6 +7,7 @@
 Added license files.
 Brought allocator, the so called BasicModular router and a couple related things from Daniel Postigo located at https://github.com/codefan-byte/caminos-tfg/tree/router-allocator-daniel/src/allocator .
 Renamed the PortRequest from `basic_modular` as VCARequest and moved it into the allocator mod.
+Changed label for AVCRequest on missing priority from -1 to 0, to comply with the statet convention; althought is it unused.
 
 
 ## [0.5]

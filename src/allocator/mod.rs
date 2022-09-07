@@ -19,8 +19,7 @@ use islip::IslipAllocator;
 
 /// A request to a Virtual Channel Allocator.
 /// A phit in the virtual channel `virtual_channel` of the port `entry_port` is requesting to go to the virtual channel `requested_vc` of the port `requested_port`.
-/// The label is the one returned by the routing algorithm or 0 if that information has been lost.
-/// TODO: Revise. previously it was said "it comes from a selection in a previous cycle" in relation to that information lost.
+/// The label is the one returned by the routing algorithm or 0 if that information has been lost. For example it is 0 after a conversion from a granted `Request` with no priority.
 #[derive(Clone)]
 pub struct VCARequest
 {
@@ -71,7 +70,7 @@ impl Request {
 			entry_vc: self.client%num_vcs,
 			requested_port: self.resource/num_vcs,
 			requested_vc: self.resource%num_vcs,
-			label: if self.priority.is_none() {-1} else {self.priority.unwrap() as i32},
+			label: if self.priority.is_none() {0} else {self.priority.unwrap() as i32},
 		}
 	}
 }
