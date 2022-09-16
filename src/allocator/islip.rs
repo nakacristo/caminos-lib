@@ -2,7 +2,7 @@
 
 This file implements the iSLIP algorithm by N. McKeown.
 
-\[Reference\] Nick McKeown, "The iSLIP Scheduling Algorithm for Input-Queued Switches," IEEE/ACM TRANSACTIONS ON NETWORKING, VOL. 7, NO. 2, APRIL 1999.
+\[Reference\] Nick McKeown, "The iSLIP Scheduling Algorithm for Input-Queued Switches," IEEE/ACM TRANSACTIONS ON NETWORKING, VOL. 7, NO. 2, APRIL 1999. doi: <https://doi.org/10.1109/90.769767>
 
 */
 
@@ -71,7 +71,12 @@ impl RoundVec {
 }
 
 
-/// An iSLIP allocator, more info 'https://doi.org/10.1109/90.769767'
+/**
+An iSLIP allocator.
+
+N. McKeown, "The iSLIP scheduling algorithm for input-queued switches," in IEEE/ACM Transactions on Networking, vol. 7, no. 2, pp. 188-201, April 1999, doi: <https://doi.org/10.1109/90.769767>
+
+**/
 pub struct ISLIPAllocator {
     /// The max number of inputs ports
     num_clients: usize,

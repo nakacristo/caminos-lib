@@ -93,6 +93,7 @@
 			label_ordinates: "peak memory",
 			min_ordinate: 0.0,
 			//max_ordinate: 1.0,
+			raw:"y memory ticks from kilobytes,",
 		}],
 		legend: =configuration.routing.legend_name,
 		prefix: "memory",
@@ -113,6 +114,7 @@
 			label_ordinates: "user time",
 			min_ordinate: 0.0,
 			//max_ordinate: 1.0,
+			raw:"y time ticks,",
 		}],
 		legend: =configuration.routing.legend_name,
 		prefix: "utime",
@@ -133,6 +135,7 @@
 			label_ordinates: "system time",
 			min_ordinate: 0.0,
 			//max_ordinate: 1.0,
+			raw:"y time ticks,",
 		}],
 		legend: =configuration.routing.legend_name,
 		prefix: "stime",
@@ -377,3 +380,4 @@
 		},
 	},
 ]
+

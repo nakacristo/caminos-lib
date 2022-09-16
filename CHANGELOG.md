@@ -1,7 +1,16 @@
 # Change Log
 
-## next [0.5.1 or greater]
+## next [0.5.2 or greater]
 
+
+## [0.5.1]
+
+### 2022-09-16
+Minor documentation improvements.
+Tag as 0.5.1.
+
+### 2022-09-08
+Updated default main.od to include human values for memory and time.
 
 ### 2022-09-07
 Added license files.

@@ -1,5 +1,9 @@
 /*!
- * An Allocator defines the interface for an allocation strategy for a router crossbar
+
+An Allocator defines the interface for an allocation strategy for a router crossbar
+
+see [`new_allocator`](fn.new_allocator.html) for documentation on the configuration syntax of predefined allocators.
+
 */
 
 pub mod random;
@@ -37,8 +41,8 @@ impl VCARequest
 	{
 		Request::new(
 			self.entry_port*num_vcs+self.entry_vc,
-    		self.requested_port*num_vcs+self.requested_vc,
-    		if self.label<0 {None} else {	Some(self.label as usize) },
+			self.requested_port*num_vcs+self.requested_vc,
+			if self.label<0 {None} else {	Some(self.label as usize) },
 		)
 	}
 }
@@ -48,22 +52,22 @@ impl VCARequest
 /// The type structure with the Allocator work. Other request types, such as `VCARequest` have methods to be converted into a `Request`.
 #[derive(Clone)]
 pub struct Request {
-    /// The input of the crossbar
-    pub client: usize,
-    /// The output of the crossbar
-    pub resource: usize,
-    /// The priority of the request (None if not specified)
-    /// The priority is used to determine the order of the requests
-    /// The lower the priority, the earlier the request is granted
-    /// If the priority is 0, the request is an intransit request
-    pub priority: Option<usize>,
+	/// The input of the crossbar
+	pub client: usize,
+	/// The output of the crossbar
+	pub resource: usize,
+	/// The priority of the request (None if not specified)
+	/// The priority is used to determine the order of the requests
+	/// The lower the priority, the earlier the request is granted
+	/// If the priority is 0, the request is an intransit request
+	pub priority: Option<usize>,
 }
 
 impl Request {
-    pub fn new(client: usize, resource: usize, priority: Option<usize>) -> Request { Self { client, resource, priority } }
+	pub fn new(client: usize, resource: usize, priority: Option<usize>) -> Request { Self { client, resource, priority } }
 
-    // method to transform a Request into a router::basic_ioq::PortRequest
-    pub fn to_port_request(&self, num_vcs: usize)->VCARequest
+	// method to transform a Request into a router::basic_ioq::PortRequest
+	pub fn to_port_request(&self, num_vcs: usize)->VCARequest
 	{
 		VCARequest{
 			entry_port: self.client/num_vcs,
@@ -78,27 +82,27 @@ impl Request {
 /// A collection of granted requests
 #[derive(Default)]
 pub struct GrantedRequests {
-    /// The granted requests
-    granted_requests: Vec<Request>,
+	/// The granted requests
+	granted_requests: Vec<Request>,
 }
 impl GrantedRequests {
-    /// Add a granted request to the collection
-    fn add_granted_request(&mut self, request: Request) {
-        self.granted_requests.push(request);
-    }
+	/// Add a granted request to the collection
+	fn add_granted_request(&mut self, request: Request) {
+		self.granted_requests.push(request);
+	}
 }
 
 //impl Iterator for GrantedRequests {
-//    type Item = Request;
+//	  type Item = Request;
 //	// TODO: This next is O(n) instead of O(1). Can it be causing a loss of performance?
-//    fn next(&mut self) -> Option<Self::Item> {
-//        if !self.granted_requests.is_empty() {
-//            let r = self.granted_requests.remove(0);
-//            Some(r)
-//        } else {
-//            None
-//        }
-//    }
+//	  fn next(&mut self) -> Option<Self::Item> {
+//		  if !self.granted_requests.is_empty() {
+//			  let r = self.granted_requests.remove(0);
+//			  Some(r)
+//		  } else {
+//			  None
+//		  }
+//	  }
 //}
 
 // This should be faster, but has not been verified.
@@ -110,44 +114,50 @@ impl IntoIterator for GrantedRequests {
 	}
 }
 
+/**
+An Allocator manages the requests from a set of clients to a set of resources. Requests are added via `add_request`.
+When all requests have been made a call to `perform_allocation` returns a valid, possibly partial, allocation; its state is then cleared, removing all requests.
+
+unrelated to `std::alloc::Allocator`.
+**/
 pub trait Allocator {
-    /// Add a new request to the allocator.
-    /// (It assumes that the request is not already in the allocator)
-    /// # Arguments
-    /// * `request` - The request to add
-    fn add_request(&mut self, request: Request);
+	/// Add a new request to the allocator.
+	/// (It assumes that the request is not already in the allocator)
+	/// # Arguments
+	/// * `request` - The request to add
+	fn add_request(&mut self, request: Request);
 
-    /// Returns the granted requests and clear the client's requests
-    /// # Parameters
-    /// * `rng` - The random number generator to use
-    /// # Returns
-    /// * `GrantedRequests` - The granted requests
-    fn perform_allocation(&mut self, rng : &RefCell<StdRng>) -> GrantedRequests;
+	/// Returns the granted requests and clear the client's requests
+	/// # Parameters
+	/// * `rng` - The random number generator to use
+	/// # Returns
+	/// * `GrantedRequests` - The granted requests
+	fn perform_allocation(&mut self, rng : &RefCell<StdRng>) -> GrantedRequests;
 
-    /// Check if the allocator supports the intransit priority option
-    /// # Returns
-    /// * `bool` - True if the allocator supports the intransit priority option
-    /// # Remarks
-    /// The intransit priority option is used to specify the give more priority to the requests
-    /// that come from the another router rather than a server.
-    fn support_intransit_priority(&self) -> bool;
+	/// Check if the allocator supports the intransit priority option
+	/// # Returns
+	/// * `bool` - True if the allocator supports the intransit priority option
+	/// # Remarks
+	/// The intransit priority option is used to specify the give more priority to the requests
+	/// that come from the another router rather than a server.
+	fn support_intransit_priority(&self) -> bool;
 }
 
 /// Arguments for the allocator builder
 #[non_exhaustive]
 pub struct AllocatorBuilderArgument<'a>
 {
-    /// A ConfigurationValue::Object defining the allocator
-    pub cv : &'a ConfigurationValue,
-    /// The number of outputs of the router crossbar
-    pub num_resources : usize,
-    /// The number of inputs of the router crossbar
-    pub num_clients : usize,
+	/// A ConfigurationValue::Object defining the allocator
+	pub cv : &'a ConfigurationValue,
+	/// The number of outputs of the router crossbar
+	pub num_resources : usize,
+	/// The number of inputs of the router crossbar
+	pub num_clients : usize,
 
-    /// A reference to the Plugs object
-    pub plugs : &'a Plugs,
-    /// The random number generator to use
-    pub rng : &'a RefCell<StdRng>,
+	/// A reference to the Plugs object
+	pub plugs : &'a Plugs,
+	/// The random number generator to use
+	pub rng : &'a RefCell<StdRng>,
 }
 
 /**
@@ -179,28 +189,28 @@ Islip{
 **/
 pub fn new_allocator(arg:AllocatorBuilderArgument) -> Box<dyn Allocator>
 {
-    if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv
-    {
-        if let Some(builder) = arg.plugs.allocators.get(cv_name) {
-            return builder(arg)
-        };
-        match cv_name.as_ref()
-        {
-            "Random" => Box::new(RandomAllocator::new(arg)),
-            "RandomWithPriority" => Box::new(RandomPriorityAllocator::new(arg)),
-            "Islip" | "iSLIP" =>
+	if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv
+	{
+		if let Some(builder) = arg.plugs.allocators.get(cv_name) {
+			return builder(arg)
+		};
+		match cv_name.as_ref()
+		{
+			"Random" => Box::new(RandomAllocator::new(arg)),
+			"RandomWithPriority" => Box::new(RandomPriorityAllocator::new(arg)),
+			"Islip" | "iSLIP" =>
 			{
 				let mut cv = arg.cv.clone();
 				cv.rename("ISLIP".into());
 				let alias = AllocatorBuilderArgument{cv:&cv,..arg};
 				Box::new(ISLIPAllocator::new(alias))
 			}
-            "ISLIP" => Box::new(ISLIPAllocator::new(arg)),
-            _ => panic!("Unknown allocator: {}", cv_name),
-        }
-    }
-    else
-    {
-        panic!("Trying to create an Allocator from a non-Object");
-    }
+			"ISLIP" => Box::new(ISLIPAllocator::new(arg)),
+			_ => panic!("Unknown allocator: {}", cv_name),
+		}
+	}
+	else
+	{
+		panic!("Trying to create an Allocator from a non-Object");
+	}
 }

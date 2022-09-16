@@ -29,7 +29,7 @@ enum OutputArbiter
 ///The basic Router struct. Very similar to FSIN's router.
 pub struct Basic<TM:TransmissionMechanism>
 {
-	///Weak pointer to itself, see https://users.rust-lang.org/t/making-a-rc-refcell-trait2-from-rc-refcell-trait1/16086/3
+	///Weak pointer to itself, see <https://users.rust-lang.org/t/making-a-rc-refcell-trait2-from-rc-refcell-trait1/16086/3>
 	self_rc: Weak<RefCell<Basic<TM>>>,
 	///If there is an event pending
 	event_pending: bool,
@@ -52,14 +52,14 @@ pub struct Basic<TM:TransmissionMechanism>
 	allow_request_busy_port: bool,
 	///Use the labels provided by the routing to sort the petitions in the output arbiter.
 	output_prioritize_lowest_label: bool,
-	///transmission_port_status[port] = status
+	/// `transmission_port_status[port] = status`
 	transmission_port_status: Vec<Box<dyn StatusAtEmissor>>,
-	///reception_port_space[port] = space
+	/// `reception_port_space[port] = space`
 	reception_port_space: Vec<Box<dyn SpaceAtReceptor>>,
 	///If 0 then there are no output buffer, if greater than 0 then the size of each of them.
 	output_buffer_size: usize,
-	///The outut buffers indexed as [output_port][output_vc].
-	///Phits are stored with their (entry_port,entry_vc).
+	///The outut buffers indexed as `[output_port][output_vc]`.
+	///Phits are stored with their `(entry_port,entry_vc)`.
 	output_buffers: Vec<Vec<AugmentedBuffer<(usize,usize)>>>,
 	///If not None then the input port+virtual_channel which is either sending by this port+virtual_channel or writing to this output buffer.
 	///We keep the packet for debugging/check considerations.

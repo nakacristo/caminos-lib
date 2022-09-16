@@ -27,7 +27,7 @@ enum OutputArbiter
 //pub struct BasicModular<TM:TransmissionMechanism>
 pub struct InputOutputMonocycle<TM:TransmissionMechanism>
 {
-    ///Weak pointer to itself, see https://users.rust-lang.org/t/making-a-rc-refcell-trait2-from-rc-refcell-trait1/16086/3
+    ///Weak pointer to itself, see <https://users.rust-lang.org/t/making-a-rc-refcell-trait2-from-rc-refcell-trait1/16086/3>
 	self_rc: Weak<RefCell<InputOutputMonocycle<TM>>>,
 	///If there is an event pending
 	event_pending: bool,
@@ -48,14 +48,14 @@ pub struct InputOutputMonocycle<TM:TransmissionMechanism>
 	///To allow to request a port even if some other packet is being transmitted throught it to a different virtual channel (as FSIN does).
 	///It may appear that should obviously be put to `true`, but in practice that just reduces performance.
 	allow_request_busy_port: bool,
-	///transmission_port_status[port] = status
+	/// `transmission_port_status[port] = status`
 	transmission_port_status: Vec<Box<dyn StatusAtEmissor>>,
-	///reception_port_space[port] = space
+	/// `reception_port_space[port] = space`
 	reception_port_space: Vec<Box<dyn SpaceAtReceptor>>,
 	///if greater than 0 then the size of each of them, else BAD!
 	output_buffer_size: usize,
-	///The outut buffers indexed as [output_port][output_vc].
-	///Phits are stored with their (entry_port,entry_vc).
+	///The outut buffers indexed as `[output_port][output_vc]`.
+	///Phits are stored with their `(entry_port,entry_vc)`.
 	output_buffers: Vec<Vec<AugmentedBuffer<(usize,usize)>>>,
 	///If not None then the input port+virtual_channel which is either sending by this port+virtual_channel or writing to this output buffer.
 	///We keep the packet for debugging/check considerations.
