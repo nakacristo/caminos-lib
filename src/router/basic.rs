@@ -13,6 +13,7 @@ use crate::policies::{RequestInfo,VirtualChannelPolicy,new_virtual_channel_polic
 use crate::event::{Event,Eventful,EventGeneration,CyclePosition};
 use crate::{Phit,Packet,Simulation};
 use crate::quantify::Quantifiable;
+use crate::packet::PacketRef;
 //use crate::Plugs;
 
 
@@ -63,10 +64,10 @@ pub struct Basic<TM:TransmissionMechanism>
 	output_buffers: Vec<Vec<AugmentedBuffer<(usize,usize)>>>,
 	///If not None then the input port+virtual_channel which is either sending by this port+virtual_channel or writing to this output buffer.
 	///We keep the packet for debugging/check considerations.
-	selected_input: Vec<Vec<Option<(Rc<Packet>,usize,usize)>>>,
+	selected_input: Vec<Vec<Option<(PacketRef,usize,usize)>>>,
 	///If not None then all the phits should go through this port+virtual_channel or stored in this output buffer, since they are part of the same packet
 	///We keep the packet for debugging/check considerations.
-	selected_output: Vec<Vec<Option<(Rc<Packet>,usize,usize)>>>,
+	selected_output: Vec<Vec<Option<(PacketRef,usize,usize)>>>,
 	///Number of cycles that the current phit, if any, in the head of a given (port,virtual channel) input buffer the phit has been waiting.
 	time_at_input_head: Vec<Vec<usize>>,
 	///And arbiter of the physical output port.
@@ -682,7 +683,7 @@ impl<TM:'static+TransmissionMechanism> Basic<TM>
 #[derive(Clone)]
 struct PortRequest
 {
-	packet: Rc<Packet>,
+	packet: PacketRef,
 	entry_port: usize,
 	entry_vc: usize,
 	requested_port: usize,

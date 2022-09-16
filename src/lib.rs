@@ -356,7 +356,7 @@ use config::flatten_configuration_value;
 use measures::{Statistics,ServerStatistics};
 use error::{Error,SourceLocation};
 use allocator::{Allocator,AllocatorBuilderArgument};
-pub use packet::{Phit,Packet,Message,PacketExtraInfo};
+pub use packet::{Phit,Packet,Message,PacketExtraInfo,PacketRef};
 
 ///The objects that create and consume traffic to/from the network.
 #[derive(Clone,Quantifiable)]
@@ -371,7 +371,7 @@ pub struct Server
 	///Created messages but not sent.
 	stored_messages: VecDeque<Rc<Message>>,
 	///The packets of the message that have not yet been sent.
-	stored_packets: VecDeque<Rc<Packet>>,
+	stored_packets: VecDeque<PacketRef>,
 	///The phits of a packet being sent.
 	stored_phits: VecDeque<Rc<Phit>>,
 	///For each message we store the number of consumed phits, until the whole message is consumed.
@@ -1007,14 +1007,14 @@ impl<'a> Simulation<'a>
 						{
 							size
 						};
-						server.stored_packets.push_back(Rc::new(Packet{
+						server.stored_packets.push_back(Packet{
 							size:ps,
 							routing_info: RefCell::new(RoutingInfo::new()),
 							message:message.clone(),
 							index:0,
 							cycle_into_network:RefCell::new(0),
 							extra: RefCell::new(None),
-						}));
+						}.into_ref());
 						size-=ps;
 					}
 				}

@@ -56,3 +56,12 @@ dirs = "4.0"
 
 quantifiable-derive = "0.1.0"
 #quantifiable-derive = { path = "../quantifiable-derive" }
+
+[features]
+#default = ["rc_packet"]
+#rc_packet = []
+
+default = []
+#default = ["raw_packet"]
+raw_packet =[]
+

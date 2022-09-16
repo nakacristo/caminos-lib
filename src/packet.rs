@@ -17,6 +17,36 @@ use std::cell::RefCell;
 
 use crate::routing::RoutingInfo;
 
+#[cfg(feature="raw_packet")]
+use std::ops::Deref;
+
+
+
+//#[cfg(feature="rc_packet")]
+#[cfg(not(feature="raw_packet"))]
+pub type PacketRef = Rc<Packet>;
+
+#[cfg(feature="raw_packet")]
+#[derive(Debug,Clone,Quantifiable)]
+pub struct PacketRef {
+	packet: *const Packet,
+}
+
+#[cfg(feature="raw_packet")]
+impl Deref for PacketRef {
+	type Target = Packet;
+	fn deref(&self) -> &<Self as Deref>::Target
+	{
+		todo!()
+	}
+}
+
+#[cfg(feature="raw_packet")]
+impl AsRef<Packet> for PacketRef {
+	fn as_ref(&self) -> &Packet { todo!() }
+}
+
+
 ///Minimal unit to be processed by the network.
 ///Not to be confused with flits.
 #[derive(Quantifiable)]
@@ -24,7 +54,7 @@ use crate::routing::RoutingInfo;
 pub struct Phit
 {
 	///The packet to what this phit belongs
-	pub packet: Rc<Packet>,
+	pub packet: PacketRef,
 	///position inside the packet
 	pub index: usize,
 	///The virtual channel in which this phit should be inserted
@@ -60,6 +90,18 @@ pub struct Packet
 	pub cycle_into_network: RefCell<usize>,
 	///Extra info tracked for some special statistics.
 	pub extra: RefCell<Option<PacketExtraInfo>>,
+}
+
+impl Packet
+{
+	#[cfg(not(feature="raw_packet"))]
+	pub fn into_ref(self) -> PacketRef {
+		Rc::new(self)
+	}
+	#[cfg(feature="raw_packet")]
+	pub fn into_ref(self) -> PacketRef {
+		todo!()
+	}
 }
 
 ///An application message, broken into packets

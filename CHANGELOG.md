@@ -4,6 +4,7 @@
 
 ### 2022-09-16
 New file packet.rs, and moved into it the Phit, Packet, and Message structs.
+Patially implemented feature `raw_packet`, to use raw pointers instead of `Rc<Packet>`.
 
 ## [0.5.1]
 
