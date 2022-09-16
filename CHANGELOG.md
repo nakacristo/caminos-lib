@@ -2,6 +2,8 @@
 
 ## next [0.5.2 or greater]
 
+### 2022-09-16
+New file packet.rs, and moved into it the Phit, Packet, and Message structs.
 
 ## [0.5.1]
 

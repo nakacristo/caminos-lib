@@ -322,6 +322,7 @@ pub mod config;
 pub mod error;
 pub mod measures;
 pub mod allocator;
+pub mod packet;
 
 use std::rc::Rc;
 use std::boxed::Box;
@@ -355,6 +356,7 @@ use config::flatten_configuration_value;
 use measures::{Statistics,ServerStatistics};
 use error::{Error,SourceLocation};
 use allocator::{Allocator,AllocatorBuilderArgument};
+pub use packet::{Phit,Packet,Message,PacketExtraInfo};
 
 ///The objects that create and consume traffic to/from the network.
 #[derive(Clone,Quantifiable)]
@@ -544,80 +546,6 @@ impl Network
 				s.statistics.temporal_statistics.get(index).map(|m|m.created_phits as f64).unwrap_or(0f64)
 			))
 		}).collect()
-	}
-}
-
-///Minimal unit to be processed by the network.
-///Not to be confused with flits.
-#[derive(Quantifiable)]
-#[derive(Debug)]
-pub struct Phit
-{
-	///The packet to what this phit belongs
-	pub packet: Rc<Packet>,
-	///position inside the packet
-	pub index: usize,
-	///The virtual channel in which this phit should be inserted
-	pub virtual_channel: RefCell<Option<usize>>,
-}
-
-
-#[derive(Quantifiable)]
-#[derive(Debug,Default)]
-pub struct PacketExtraInfo
-{
-	link_classes: Vec<usize>,
-	entry_virtual_channels: Vec<Option<usize>>,
-	cycle_per_hop: Vec<usize>,
-}
-
-///A portion of a message. They are divided into phits.
-///All phits must go through the same queues without phits of other packets in between.
-#[derive(Quantifiable)]
-#[derive(Debug)]
-pub struct Packet
-{
-	///Number of phits
-	pub size: usize,
-	///Information for the routing
-	pub routing_info: RefCell<RoutingInfo>,
-	///The message to what this packet belongs.
-	pub message: Rc<Message>,
-	///position inside the message
-	pub index: usize,
-	///The cycle when the packet has touched the first router. This is, the packet leading phit has been inserted into a router.
-	///We set it to 0 if the packet has not entered the network yet.
-	pub cycle_into_network: RefCell<usize>,
-	///Extra info tracked for some special statistics.
-	pub extra: RefCell<Option<PacketExtraInfo>>,
-}
-
-///An application message, broken into packets
-#[derive(Quantifiable)]
-#[derive(Debug)]
-pub struct Message
-{
-	///Server that created the message.
-	pub origin: usize,
-	///Server that is the destination of the message.
-	pub destination: usize,
-	///Number of phits.
-	pub size: usize,
-	///Cycle when the message was created.
-	pub creation_cycle: usize,
-}
-
-impl Phit
-{
-	///Whether the phit is leading a packet. Routers check this to make requests, stablish flows, etc.
-	pub fn is_begin(&self) -> bool
-	{
-		self.index==0
-	}
-	///Whether this phit is the last one of a packet. Routers use this to finalize some operations.
-	pub fn is_end(&self) -> bool
-	{
-		self.index==self.packet.size-1
 	}
 }
 
