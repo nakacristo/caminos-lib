@@ -427,8 +427,9 @@ impl Server
 			statistics.track_consumed_packet(cycle,&phit.packet);
 			if cp < phit.packet.size
 			{
-				println!("phit tail has been consuming without haing consumed a whole packet.");
+				println!("phit tail has been consuming without having consumed a whole packet.");
 			}
+			phit.packet.destroy();//See the notes on the raw_packet feature.
 		}
 	}
 }
