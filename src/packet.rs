@@ -14,40 +14,9 @@ pub use quantifiable_derive::Quantifiable;//the derive macro
 
 use std::rc::Rc;
 use std::cell::RefCell;
-
-use crate::routing::RoutingInfo;
-
-#[cfg(feature="raw_packet")]
 use std::ops::Deref;
 
-
-
-//#[cfg(feature="rc_packet")]
-#[cfg(not(feature="raw_packet"))]
-pub type PacketRef = Rc<Packet>;
-
-#[cfg(feature="raw_packet")]
-#[derive(Debug,Clone,Quantifiable)]
-pub struct PacketRef {
-	packet: *const Packet,
-}
-
-#[cfg(feature="raw_packet")]
-impl Deref for PacketRef {
-	type Target = Packet;
-	fn deref(&self) -> &<Self as Deref>::Target
-	{
-		unsafe {
-			&*self.packet
-		}
-	}
-}
-
-#[cfg(feature="raw_packet")]
-impl AsRef<Packet> for PacketRef {
-	fn as_ref(&self) -> &Packet { &*self }
-}
-
+use crate::routing::RoutingInfo;
 
 ///Minimal unit to be processed by the network.
 ///Not to be confused with flits.
@@ -98,13 +67,14 @@ impl Packet
 {
 	#[cfg(not(feature="raw_packet"))]
 	pub fn into_ref(self) -> PacketRef {
-		Rc::new(self)
+		PacketRef{inner:Rc::new(self)}
 	}
 	#[cfg(feature="raw_packet")]
 	pub fn into_ref(self) -> PacketRef {
 		let packet = Box::into_raw(Box::new(self));
+		let inner = PacketRefInner{ packet };
 		PacketRef {
-			packet
+			inner
 		}
 	}
 }
@@ -137,4 +107,43 @@ impl Phit
 		self.index==self.packet.size-1
 	}
 }
+
+
+#[derive(Debug,Clone,Quantifiable)]
+pub struct PacketRef {
+	inner: PacketRefInner
+}
+
+
+
+//#[cfg(feature="rc_packet")]
+#[cfg(not(feature="raw_packet"))]
+pub type PacketRefInner = Rc<Packet>;
+
+#[cfg(feature="raw_packet")]
+#[derive(Debug,Clone,Quantifiable)]
+pub struct PacketRefInner {
+	packet: *const Packet,
+}
+
+impl Deref for PacketRef {
+	type Target = Packet;
+	#[cfg(not(feature="raw_packet"))]
+	fn deref(&self) -> &<Self as Deref>::Target
+	{
+		&*self.inner
+	}
+	#[cfg(feature="raw_packet")]
+	fn deref(&self) -> &<Self as Deref>::Target
+	{
+		unsafe {
+			&*self.inner.packet
+		}
+	}
+}
+
+impl AsRef<Packet> for PacketRef {
+	fn as_ref(&self) -> &Packet { &*self }
+}
+
 
