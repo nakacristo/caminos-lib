@@ -37,13 +37,15 @@ impl Deref for PacketRef {
 	type Target = Packet;
 	fn deref(&self) -> &<Self as Deref>::Target
 	{
-		todo!()
+		unsafe {
+			&*self.packet
+		}
 	}
 }
 
 #[cfg(feature="raw_packet")]
 impl AsRef<Packet> for PacketRef {
-	fn as_ref(&self) -> &Packet { todo!() }
+	fn as_ref(&self) -> &Packet { &*self }
 }
 
 
