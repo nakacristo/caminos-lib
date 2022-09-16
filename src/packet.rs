@@ -102,7 +102,10 @@ impl Packet
 	}
 	#[cfg(feature="raw_packet")]
 	pub fn into_ref(self) -> PacketRef {
-		todo!()
+		let packet = Box::into_raw(Box::new(self));
+		PacketRef {
+			packet
+		}
 	}
 }
 
