@@ -133,7 +133,7 @@ impl PacketRef
 		To be called when the last phit is deallocated so we may deallocate the whole packet.
 		It is a NOP when using `Rc<Packet>` but important when `feature=raw_packet`.
 	**/
-	#[cfg(not(feature="raw_packet"))]
+	#[cfg(not(any(feature="raw_packet",feature="slab_packet")))]
 	pub fn destroy(&self)
 	{
 	}
@@ -141,6 +141,11 @@ impl PacketRef
 	pub fn destroy(&self)
 	{
 		let _boxed = unsafe { Box::from_raw(self.inner.packet as *mut Packet) };
+	}
+	#[cfg(feature="slab_packet")]
+	pub fn destroy(&self)
+	{
+		let _packet = PACKET_SLAB.with(|slab|slab.borrow_mut().remove(self.inner.packet));
 	}
 }
 
