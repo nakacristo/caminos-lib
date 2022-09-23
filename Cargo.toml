@@ -47,6 +47,7 @@ procfs = "0.12"
 
 # At some point this was somehow not automatically added by indicatif but were required.
 #lazy_static = "1.4.0"
+#lazy_static = { version="1.4.0", optional= true }
 
 # Make diffs between files. To show inconsistencies of the configuration files in remote hosts.
 diff = "0.1.12"
@@ -57,6 +58,10 @@ dirs = "4.0"
 quantifiable-derive = "0.1.0"
 #quantifiable-derive = { path = "../quantifiable-derive" }
 
+# For allocations of specific sizes.
+slab = { version= "0.4.7", optional = true }
+
+
 [features]
 #default = ["rc_packet"]
 #rc_packet = []
@@ -64,4 +69,5 @@ quantifiable-derive = "0.1.0"
 default = []
 #default = ["raw_packet"]
 raw_packet =[]
+slab_packet = ["slab"]
 

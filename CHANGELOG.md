@@ -2,6 +2,9 @@
 
 ## next [0.5.2 or greater]
 
+### 2022-09-23
+Try on slab crate.
+
 ### 2022-09-16
 New file packet.rs, and moved into it the Phit, Packet, and Message structs.
 Implemented feature `raw_packet`, to use raw pointers instead of `Rc<Packet>`.

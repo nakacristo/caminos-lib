@@ -63,15 +63,28 @@ pub struct Packet
 	pub extra: RefCell<Option<PacketExtraInfo>>,
 }
 
+#[cfg(feature="slab_packet")]
+thread_local!{
+	static PACKET_SLAB : RefCell<slab::Slab<Packet>> = RefCell::new(slab::Slab::new());
+}
+
 impl Packet
 {
-	#[cfg(not(feature="raw_packet"))]
+	#[cfg(not(any(feature="raw_packet",feature="slab_packet")))]
 	pub fn into_ref(self) -> PacketRef {
 		PacketRef{inner:Rc::new(self)}
 	}
 	#[cfg(feature="raw_packet")]
 	pub fn into_ref(self) -> PacketRef {
 		let packet = Box::into_raw(Box::new(self));
+		let inner = PacketRefInner{ packet };
+		PacketRef {
+			inner
+		}
+	}
+	#[cfg(feature="slab_packet")]
+	pub fn into_ref(self) -> PacketRef {
+		let packet = PACKET_SLAB.with(|slab| {slab.borrow_mut().insert(self) });
 		let inner = PacketRefInner{ packet };
 		PacketRef {
 			inner
@@ -134,7 +147,7 @@ impl PacketRef
 
 
 //#[cfg(feature="rc_packet")]
-#[cfg(not(feature="raw_packet"))]
+#[cfg(not(any(feature="raw_packet",feature="slab_packet")))]
 pub type PacketRefInner = Rc<Packet>;
 
 #[cfg(feature="raw_packet")]
@@ -143,9 +156,15 @@ pub struct PacketRefInner {
 	packet: *const Packet,
 }
 
+#[cfg(feature="slab_packet")]
+#[derive(Debug,Clone,Quantifiable)]
+pub struct PacketRefInner {
+	packet: usize,
+}
+
 impl Deref for PacketRef {
 	type Target = Packet;
-	#[cfg(not(feature="raw_packet"))]
+	#[cfg(not(any(feature="raw_packet",feature="slab_packet")))]
 	fn deref(&self) -> &<Self as Deref>::Target
 	{
 		&*self.inner
@@ -155,6 +174,23 @@ impl Deref for PacketRef {
 	{
 		unsafe {
 			&*self.inner.packet
+		}
+	}
+	#[cfg(feature="slab_packet")]
+	fn deref(&self) -> &<Self as Deref>::Target
+	{
+		//PACKET_SLAB.with(|slab|slab.get(self.inner.packet).expect("The packet is not in the slab."))
+		let packet = self.inner.packet;
+		//let f : dyn for<'a> FnOnce(&'a slab::Slab<Packet>)->&'a Packet = |slab:&slab::Slab<Packet>|slab.get(packet).expect("The packet is not in the slab.");
+		//fn aux(slab: &'static slab::Slab<Packet>, packet:usize) -> &'static Packet
+		//{
+		//	slab.get(packet).expect("The packet is not in the slab.")
+		//}
+		//let ref_packet: &'static Packet = PACKET_SLAB.with(|slab|aux(slab,packet));
+		let pt_packet: *const Packet = PACKET_SLAB.with(|slab|slab.borrow().get(packet).expect("The packet is not in the slab.") as *const Packet);
+		unsafe {
+			// The reference is valid until calling destroy.
+			&*pt_packet
 		}
 	}
 }
