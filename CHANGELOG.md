@@ -2,6 +2,9 @@
 
 ## next [0.5.2 or greater]
 
+### 2022-09-30
+Added naive implementation of `MultiStage::{minimum_degree,maximum_degree}`.
+
 ### 2022-09-23
 Try on slab crate.
 

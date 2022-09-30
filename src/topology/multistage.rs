@@ -770,11 +770,11 @@ impl Topology for MultiStage
 	}
 	fn maximum_degree(&self) -> usize
 	{
-		unimplemented!();
+		(0..self.num_routers()).map(|router|self.degree(router)).max().expect("there must be some router")
 	}
 	fn minimum_degree(&self) -> usize
 	{
-		unimplemented!();
+		(0..self.num_routers()).map(|router|self.degree(router)).min().expect("there must be some router")
 	}
 	fn degree(&self, router_index: usize) -> usize
 	{
