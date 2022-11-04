@@ -11,6 +11,7 @@ pub mod basic;
 pub mod extra;
 pub mod channel_operations;
 pub mod updown;
+pub mod polarized;
 
 use std::cell::RefCell;
 use std::fmt::Debug;
@@ -29,6 +30,7 @@ pub use self::basic::*;
 pub use self::extra::*;
 pub use self::channel_operations::*;
 pub use self::updown::*;
+pub use self::polarized::Polarized;
 
 ///Information stored in the packet for the `Routing` algorithms to operate.
 #[derive(Quantifiable)]
@@ -191,11 +193,19 @@ pub struct RoutingBuilderArgument<'a>
 
 ## Generic routings
 
+The most basic routing is to use any shortest path from the source to the destination. Note that for many traffic patterns using only these paths
+make the packets flow through a few links, with enormous congestion.
+
 ```ignore
 Shortest{
 	legend_name: "minimal routing",
 }
 ```
+
+As solution for those cases problematic for shortest routing, Valiant proposed a randomization scheme. Each packet to be sent from a source to a destination is routed first to a random intermediate node, and from that intermediate to destination. These randomization makes the two parts behave as if the
+traffic pattern was uniform at the cost of doubling the lengths.
+
+See Valiant, L. G. (1982). A scheme for fast parallel communication. SIAM journal on computing, 11(2), 350-361.
 
 ```ignore
 Valiant{
@@ -203,6 +213,32 @@ Valiant{
 	second: Shortest,
 	legend_name: "Using Valiant scheme, shortest to intermediate and shortest to destination",
 	//selection_exclude_indirect_routers: false,//optional parameter
+}
+```
+
+As a routing that gives both short, long routes, and many intermediates we have the Polarized routing. It is recommended to have some mechanism to select among those routes based on network measures such as queue occupation.
+
+- Camarero, C., Martínez, C., & Beivide, R. (2021, August). Polarized routing: an efficient and versatile algorithm for large direct networks. In 2021 IEEE Symposium on High-Performance Interconnects (HOTI) (pp. 52-59). IEEE.
+- Camarero, C., Martínez, C., & Beivide, R. (2022). Polarized routing for large interconnection networks. IEEE Micro, 42(2), 61-67.
+
+```ignore
+Polarized{
+	/// Include the weight as label, shifted so that the lowest weight is given the label 0. Otherwise it just put a value of 0 for all.
+	include_labels: true,
+	/// Restrict the routes to those that strictly improve the weight function at each step.
+	/// Note that mmany/most topologies benefit from using routes that have a few edges with no change to the weight.
+	/// Therefore one should expect too few routes when using this option.
+	/// Strong polarized routes have maximum length of at most 2*diameter.
+	strong: false,
+	/// Whether to raise a panic when there are no candidates. default to true.
+	/// It is to be set to false when employing in conjunction with another routing when Polarized return an empty set of routes.
+	//panic_on_empty: true,
+	/// Builds a `PolarizedStatistics{empty_count:XX,best_count:[XX,YY,ZZ]}` in the results.
+	/// It tracks the number of first calls to `next` that returned an empty set and the number of times the best candidate was either +0, +1, or +2.
+	/// defaults to false.
+	//enable_statistics: false,
+	/// Its name in generated plots.
+	legend_name: "Polarized routing",
 }
 ```
 
@@ -365,6 +401,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"Shortest" => Box::new(Shortest::new(arg)),
 			"Valiant" => Box::new(Valiant::new(arg)),
 			"ValiantDOR" => Box::new(ValiantDOR::new(arg)),
+			"Polarized" => Box::new(Polarized::new(arg)),
 			"Sum" => Box::new(SumRouting::new(arg)),
 			"Mindless" => Box::new(Mindless::new(arg)),
 			"WeighedShortest" => Box::new(WeighedShortest::new(arg)),

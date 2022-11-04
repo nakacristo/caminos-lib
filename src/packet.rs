@@ -130,8 +130,8 @@ pub struct PacketRef {
 impl PacketRef
 {
 	/**
-		To be called when the last phit is deallocated so we may deallocate the whole packet.
-		It is a NOP when using `Rc<Packet>` but important when `feature=raw_packet`.
+	To be called when the last phit is deallocated so we may deallocate the whole packet.
+	It is a NOP when using `Rc<Packet>` but important when `feature=raw_packet`.
 	**/
 	#[cfg(not(any(feature="raw_packet",feature="slab_packet")))]
 	pub fn destroy(&self)

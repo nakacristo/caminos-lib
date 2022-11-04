@@ -271,7 +271,6 @@ impl AcknowledgeMessage
 	}
 	pub fn ack_fix_available_size(amount:usize)->AcknowledgeMessage
 	{
-		
 		AcknowledgeMessage{
 			virtual_channel: None,
 			set_available_size: Some(amount),
