@@ -563,6 +563,39 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 					};
 					Ok(ConfigurationValue::Number(arg.log(base)))
 				}
+				"pow" =>
+				{
+					let mut exponent=None;
+					let mut base=None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"exponent" =>
+							{
+								exponent=Some(evaluate(val,context,path)?);
+							},
+							"base" =>
+							{
+								base=Some(evaluate(val,context,path)?);
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let exponent=exponent.expect("exponent argument of and not given.");
+					let exponent=match exponent
+					{
+						ConfigurationValue::Number(x) => x,
+						_ => panic!("exponent argument of {} evaluated to a non-number ({}:?)",function_name,exponent),
+					};
+					let base=match base
+					{
+						None => 1f64.exp(),
+						Some(ConfigurationValue::Number(x)) => x,
+						Some(other) => panic!("base argument of {} evaluated to a non-number ({}:?)",function_name,other),
+					};
+					Ok(ConfigurationValue::Number(base.powf(exponent)))
+				}
 				"at" =>
 				{
 					let mut container=None;

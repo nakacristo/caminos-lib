@@ -2,6 +2,9 @@
 
 ## next [0.5.2 or greater]
 
+### 2022-11-17
+Added pow config function.
+
 ### 2022-11-04
 Added the Polarized routing to the public repository.
 Added routing documentation.
