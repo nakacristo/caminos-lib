@@ -20,7 +20,7 @@ the message was created until the cycle in its consumption was completed. Note t
 * `server_average_cycle_last_created_phit` is the average of the timestamps in which the servers have created their last phit. This measure is intended for traffics that have a clear ending.
 * `server_average_cycle_last_consumed_message` is the average of the timestamps in which the servers have last consumed a phit. This measure is intended for traffics that have a clear ending.
 * `server_average_missed_generations` counts the average of times a server has skipped generating a message because its internal queue is full. Under some assumptions a greater than 0 value means some flows have infinite latency. It may also mean that `server_queue_size` is not large enough.
-* `server_average_missed_generations` counts the number of severs that have missed some generations. Under some assumptions this is couting the number of flows with infinite latency.
+* `servers_with_missed_generations` counts the number of severs that have missed some generations. Under some assumptions this is couting the number of flows with infinite latency.
 * `virtual_channel_usage` is an array with the link utilization indexed by the virtual channel. This is, when a phit is transmitted by a link requesting a virtual channel `vc`, a `+1` is tracked into the index `vc`.
 * `git_id` has an id of the CAMINOS binary, which is meaningful when building from a git repository.
 * `version_number` has the CAMINOS version as read from the Cargo.toml.

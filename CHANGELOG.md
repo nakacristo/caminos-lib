@@ -2,6 +2,9 @@
 
 ## next [0.5.2 or greater]
 
+### 2022-11-18
+Correct `servers_with_missed_generations` in documentation.
+
 ### 2022-11-17
 Added pow config function.
 
