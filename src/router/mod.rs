@@ -207,7 +207,7 @@ impl<ExtraInfo> Quantifiable for AugmentedBuffer<ExtraInfo>
 
 
 ///Structure for a port to contain the information necessary about the other endpoint, so that we can know if we can send data.
-pub trait StatusAtEmissor
+pub trait StatusAtEmissor : Quantifiable
 {
 	///Get the number of virtual channels used in the link.
 	fn num_virtual_channels(&self)->usize;
@@ -283,6 +283,7 @@ impl AcknowledgeMessage
 ///Declares a `StatusAtEmissor` to keep a register on the emissor of the status of the receptor, such as credit counters.
 ///Declares a `SpaceAtReceptor` necessary to store the incoming packets.
 ///It implies a contract between the pair of types (`StatusAtEmissor`, `SpaceAtReceptor`), which should be logically compatible.
+// TODO: should some element receive the LinkClass ??
 pub trait TransmissionMechanism
 {
 	type StatusAtEmissor: StatusAtEmissor;
@@ -336,6 +337,7 @@ pub fn new_transmission_mechanism(arg:TransmissionMechanismBuilderArgument) -> B
 //impl AcknowledgeMessage for AckPhitFromVirtualChannel {}
 
 ///A simple status consisting of a credit counter per virtual channel.
+#[derive(Quantifiable)]
 struct CreditCounterVector
 {
 	///The known available space in the next router by the given index (usually for virtual channel).
@@ -540,6 +542,7 @@ impl TransmissionMechanism for SimpleVirtualChannels
 }
 
 ///For senders that not care about the receptor or phantom senders that do not actually send anything.
+#[derive(Quantifiable)]
 struct EmptyStatus();
 
 ///For receptors that do not require space, let it be because they consume it immediately or because they do not actually receive anything.

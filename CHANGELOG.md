@@ -4,6 +4,7 @@
 
 ### 2023-01-09
 Some rework on TransmissionMechanism, including removing the generic parameter from `Router::Basic<TM>`.
+Allow servers to have different StatusAtEmissor.
 
 ### 2022-11-18
 Correct `servers_with_missed_generations` in documentation.

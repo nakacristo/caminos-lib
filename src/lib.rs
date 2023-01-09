@@ -345,7 +345,7 @@ use config_parser::{ConfigurationValue,Expr};
 use topology::{Topology,new_topology,TopologyBuilderArgument,Location,
 	multistage::{Stage,StageBuilderArgument}};
 use traffic::{Traffic,new_traffic,TrafficBuilderArgument,TrafficError};
-use router::{Router,new_router,RouterBuilderArgument,TransmissionFromServer,TransmissionMechanism,StatusAtEmissor};
+use router::{Router,new_router,RouterBuilderArgument,TransmissionFromServer,TransmissionMechanism};
 use routing::{RoutingInfo,Routing,new_routing,RoutingBuilderArgument};
 use event::{EventQueue,Event};
 use quantify::Quantifiable;
@@ -359,7 +359,7 @@ use allocator::{Allocator,AllocatorBuilderArgument};
 pub use packet::{Phit,Packet,Message,PacketExtraInfo,PacketRef};
 
 ///The objects that create and consume traffic to/from the network.
-#[derive(Clone,Quantifiable)]
+#[derive(Quantifiable)]
 pub struct Server
 {
 	///The index of the server in the network.
@@ -367,7 +367,7 @@ pub struct Server
 	///To which router the server is connected + link class index. Although we could just compute with the topology each time...
 	port: (Location,usize),
 	///Known available capacity in the connected router.
-	router_status: router::StatusAtServer,
+	router_status: Box<dyn router::StatusAtEmissor+'static>,
 	///Created messages but not sent.
 	stored_messages: VecDeque<Rc<Message>>,
 	///The packets of the message that have not yet been sent.
@@ -737,7 +737,8 @@ impl<'a> Simulation<'a>
 					let buffer_size=(0..nvc).map(|vc|router.virtual_port_size(router_port,vc)).max().expect("0 buffers in the router");
 					let size_to_send=maximum_packet_size;
 					let from_server_mechanism = TransmissionFromServer::new(buffer_amount,buffer_size,size_to_send);
-					from_server_mechanism.new_status_at_emissor()
+					let status = from_server_mechanism.new_status_at_emissor();
+					Box::new(status)
 				}
 				_ => panic!("Server is not connected to router"),
 			};
