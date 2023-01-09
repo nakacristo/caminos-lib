@@ -5,7 +5,7 @@ use std::ops::{Deref,DerefMut};
 use std::mem::{size_of};
 use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom};
 
-use super::{Router,TransmissionMechanism,StatusAtEmissor,SpaceAtReceptor,TransmissionToServer,TransmissionFromServer,SimpleVirtualChannels,AugmentedBuffer,AcknowledgeMessage,RouterBuilderArgument};
+use super::{Router,TransmissionMechanism,StatusAtEmissor,SpaceAtReceptor,TransmissionToServer,TransmissionFromServer,AugmentedBuffer,AcknowledgeMessage,RouterBuilderArgument,new_transmission_mechanism,TransmissionMechanismBuilderArgument};
 use crate::config_parser::ConfigurationValue;
 use crate::topology::{Location};
 use crate::routing::CandidateEgress;
@@ -28,10 +28,10 @@ enum OutputArbiter
 }
 
 ///The basic Router struct. Very similar to FSIN's router.
-pub struct Basic<TM:TransmissionMechanism>
+pub struct Basic
 {
 	///Weak pointer to itself, see <https://users.rust-lang.org/t/making-a-rc-refcell-trait2-from-rc-refcell-trait1/16086/3>
-	self_rc: Weak<RefCell<Basic<TM>>>,
+	self_rc: Weak<RefCell<Basic>>,
 	///If there is an event pending
 	event_pending: bool,
 	///The cycle number of the last time Basic::process was called. Only for debugging/assertion purposes.
@@ -122,7 +122,7 @@ impl BasicRouterMeasurement
 	}
 }
 
-impl<TM:'static+TransmissionMechanism> Router for Basic<TM>
+impl Router for Basic
 {
 	fn insert(&mut self, phit:Rc<Phit>, port:usize, rng: &RefCell<StdRng>)
 	{
@@ -384,10 +384,10 @@ impl<TM:'static+TransmissionMechanism> Router for Basic<TM>
 	}
 }
 
-impl Basic<SimpleVirtualChannels>
+impl Basic
 {
 	//pub fn new(router_index: usize, cv:&ConfigurationValue, plugs:&Plugs, topology:&dyn Topology, maximum_packet_size:usize) -> Rc<RefCell<Basic<SimpleVirtualChannels>>>
-	pub fn new(arg:RouterBuilderArgument) -> Rc<RefCell<Basic<SimpleVirtualChannels>>>
+	pub fn new(arg:RouterBuilderArgument) -> Rc<RefCell<Basic>>
 	{
 		let RouterBuilderArgument{
 			router_index,
@@ -516,7 +516,8 @@ impl Basic<SimpleVirtualChannels>
 		let time_at_input_head=(0..input_ports).map(|_|
 			(0..virtual_channels).map(|_|0).collect()
 		).collect();
-		let transmission_mechanism = SimpleVirtualChannels::new(virtual_channels,buffer_size,flit_size);
+		//let transmission_mechanism = SimpleVirtualChannels::new(virtual_channels,buffer_size,flit_size);
+		let transmission_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{virtual_channels,buffer_size,flit_size});
 		let to_server_mechanism = TransmissionToServer();
 		let from_server_mechanism = TransmissionFromServer::new(virtual_channels,buffer_size,flit_size);
 		let transmission_port_status:Vec<Box<dyn StatusAtEmissor>> = (0..input_ports).map(|p|
@@ -527,7 +528,8 @@ impl Basic<SimpleVirtualChannels>
 			}
 			else
 			{
-				Box::new(transmission_mechanism.new_status_at_emissor())
+				//Box::new(transmission_mechanism.new_status_at_emissor())
+				transmission_mechanism.new_status_at_emissor()
 			}
 		).collect();
 		let reception_port_space = (0..input_ports).map(|p|
@@ -538,7 +540,8 @@ impl Basic<SimpleVirtualChannels>
 			}
 			else
 			{
-				Box::new(transmission_mechanism.new_space_at_receptor())
+				//Box::new(transmission_mechanism.new_space_at_receptor())
+				transmission_mechanism.new_space_at_receptor()
 			}
 		).collect();
 		let output_buffers= if output_buffer_size==0 {vec![]} else{
@@ -581,7 +584,7 @@ impl Basic<SimpleVirtualChannels>
 	}
 }
 
-impl<TM:'static+TransmissionMechanism> Basic<TM>
+impl Basic
 {
 	///Whether a phit in an input buffer can advance.
 	///bubble_in_use should be true only for leading phits that require the additional space.
@@ -691,7 +694,7 @@ struct PortRequest
 	label: i32,
 }
 
-impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
+impl Eventful for Basic
 {
 	///main routine of the router. Do all things that must be done in a cycle, if any.
 	fn process(&mut self, simulation:&Simulation) -> Vec<EventGeneration>
@@ -1345,13 +1348,13 @@ impl<TM:'static+TransmissionMechanism> Eventful for Basic<TM>
 	}
 }
 
-impl<TM:TransmissionMechanism> Quantifiable for Basic<TM>
+impl Quantifiable for Basic
 {
 	fn total_memory(&self) -> usize
 	{
 		//FIXME: redo
 		//return size_of::<Basic<TM>>() + self.virtual_ports.total_memory() + self.port_token.total_memory();
-		return size_of::<Basic<TM>>();
+		return size_of::<Basic>();
 	}
 	fn print_memory_breakdown(&self)
 	{

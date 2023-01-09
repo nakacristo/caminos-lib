@@ -83,7 +83,7 @@ pub fn new_router(arg:RouterBuilderArgument) -> Rc<RefCell<dyn Router>>
 		match cv_name.as_ref()
 		{
 			//"Basic" => Basic::<SimpleVirtualChannels>::new(arg.router_index, arg.cv, arg.plugs, arg.topology, arg.maximum_packet_size),
-			"Basic" => Basic::<SimpleVirtualChannels>::new(arg),
+			"Basic" => Basic::new(arg),
 			"InputOutputMonocycle" => InputOutputMonocycle::<SimpleVirtualChannels>::new(arg),
 			_ => panic!("Unknown router {}",cv_name),
 		}
@@ -293,6 +293,40 @@ pub trait TransmissionMechanism
 	//Receive a phit acknowledge from the receiving endpoint.
 	//fn acknowledge(status:&mut Self::StatusAtEmissor, message:Self::AcknowledgeMessage);
 }
+
+pub trait AbstractTransmissionMechanism
+{
+	fn new_status_at_emissor(&self)-> Box<dyn StatusAtEmissor>;
+	fn new_space_at_receptor(&self)-> Box<dyn SpaceAtReceptor>;
+}
+
+impl<E:StatusAtEmissor+'static,R:SpaceAtReceptor+'static,T:TransmissionMechanism<StatusAtEmissor=E,SpaceAtReceptor=R>> AbstractTransmissionMechanism for T
+{
+	fn new_status_at_emissor(&self)-> Box<dyn StatusAtEmissor>
+	{
+		Box::new(self.new_status_at_emissor())
+	}
+	fn new_space_at_receptor(&self)-> Box<dyn SpaceAtReceptor>
+	{
+		Box::new(self.new_space_at_receptor())
+	}
+}
+
+// TODO: became more general
+pub struct TransmissionMechanismBuilderArgument
+{
+	virtual_channels: usize,
+	buffer_size: usize,
+	flit_size: usize,
+}
+
+/// Creates a transmition mechanism from ...
+pub fn new_transmission_mechanism(arg:TransmissionMechanismBuilderArgument) -> Box<dyn AbstractTransmissionMechanism>
+{
+	// TODO: became more general
+	Box::new(SimpleVirtualChannels::new(arg.virtual_channels, arg.buffer_size, arg.flit_size))
+}
+
 
 //struct AckPhitFromVirtualChannel
 //{
@@ -504,7 +538,6 @@ impl TransmissionMechanism for SimpleVirtualChannels
 		}
 	}
 }
-
 
 ///For senders that not care about the receptor or phantom senders that do not actually send anything.
 struct EmptyStatus();
