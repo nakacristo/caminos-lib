@@ -7,7 +7,7 @@ use super::{Router,TransmissionMechanism,StatusAtEmissor,SpaceAtReceptor,Transmi
 use crate::allocator::{Allocator,VCARequest,AllocatorBuilderArgument, new_allocator};
 use crate::config_parser::ConfigurationValue;
 use crate::router::RouterBuilderArgument;
-use crate::topology::Location;
+use crate::topology::{Location,Topology};
 use crate::routing::CandidateEgress;
 use crate::policies::{RequestInfo,VirtualChannelPolicy,new_virtual_channel_policy,VCPolicyBuilderArgument};
 use crate::event::{Event,Eventful,EventGeneration,CyclePosition};
@@ -260,6 +260,18 @@ impl<TM:'static+TransmissionMechanism> Router for InputOutputMonocycle<TM>
             *x=0f64;
         }
     }
+	fn build_emissor_status(&self, port:usize, topology:&dyn Topology) -> Box<dyn StatusAtEmissor+'static>
+	{
+		if let (Location::ServerPort(_server),_link_class)=topology.neighbour(self.router_index,port)
+		{
+			let from_server_mechanism = TransmissionFromServer::new(self.num_virtual_channels(),self.buffer_size,self.flit_size);
+			Box::new(from_server_mechanism.new_status_at_emissor())
+		}
+		else
+		{
+			unimplemented!()
+		}
+	}
 }
 
 

@@ -345,7 +345,7 @@ use config_parser::{ConfigurationValue,Expr};
 use topology::{Topology,new_topology,TopologyBuilderArgument,Location,
 	multistage::{Stage,StageBuilderArgument}};
 use traffic::{Traffic,new_traffic,TrafficBuilderArgument,TrafficError};
-use router::{Router,new_router,RouterBuilderArgument,TransmissionFromServer,TransmissionMechanism};
+use router::{Router,new_router,RouterBuilderArgument};
 use routing::{RoutingInfo,Routing,new_routing,RoutingBuilderArgument};
 use event::{EventQueue,Event};
 use quantify::Quantifiable;
@@ -731,14 +731,15 @@ impl<'a> Simulation<'a>
 					router_port
 				} => {
 					let router=routers[router_index].borrow();
-					let nvc=router.num_virtual_channels();
-					let buffer_amount=nvc;
-					//TODO: this seems that should a function of the TransmissionFromServer...
-					let buffer_size=(0..nvc).map(|vc|router.virtual_port_size(router_port,vc)).max().expect("0 buffers in the router");
-					let size_to_send=maximum_packet_size;
-					let from_server_mechanism = TransmissionFromServer::new(buffer_amount,buffer_size,size_to_send);
-					let status = from_server_mechanism.new_status_at_emissor();
-					Box::new(status)
+					// let nvc=router.num_virtual_channels();
+					// let buffer_amount=nvc;
+					// //TODO: this seems that should a function of the TransmissionFromServer...
+					// let buffer_size=(0..nvc).map(|vc|router.virtual_port_size(router_port,vc)).max().expect("0 buffers in the router");
+					// let size_to_send=maximum_packet_size;
+					// let from_server_mechanism = TransmissionFromServer::new(buffer_amount,buffer_size,size_to_send);
+					// let status = from_server_mechanism.new_status_at_emissor();
+					// Box::new(status)
+					router.build_emissor_status(router_port,&*topology)
 				}
 				_ => panic!("Server is not connected to router"),
 			};

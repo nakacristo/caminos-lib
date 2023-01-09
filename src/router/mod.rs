@@ -49,6 +49,9 @@ pub trait Router: Eventful + Quantifiable
 	fn aggregate_statistics(&self, statistics:Option<ConfigurationValue>, router_index:usize, total_routers:usize, cycle:usize) -> Option<ConfigurationValue>;
 	///Clears all collected statistics
 	fn reset_statistics(&mut self,next_cycle:usize);
+	///Build a status for an element that sends packets directly to the router ports.
+	///This is intended to build the status of the servers.
+	fn build_emissor_status(&self, port:usize, topology:&dyn Topology) -> Box<dyn StatusAtEmissor+'static>;
 }
 
 #[non_exhaustive]

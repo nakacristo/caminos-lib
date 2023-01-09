@@ -7,7 +7,7 @@ use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom};
 
 use super::{Router,TransmissionMechanism,StatusAtEmissor,SpaceAtReceptor,TransmissionToServer,TransmissionFromServer,AugmentedBuffer,AcknowledgeMessage,RouterBuilderArgument,new_transmission_mechanism,TransmissionMechanismBuilderArgument};
 use crate::config_parser::ConfigurationValue;
-use crate::topology::{Location};
+use crate::topology::{Location,Topology};
 use crate::routing::CandidateEgress;
 use crate::policies::{RequestInfo,VirtualChannelPolicy,new_virtual_channel_policy,VCPolicyBuilderArgument};
 use crate::event::{Event,Eventful,EventGeneration,CyclePosition};
@@ -380,6 +380,18 @@ impl Router for Basic
 		for x in self.principal_measurement.reception_space_occupation_per_vc.iter_mut()
 		{
 			*x=0f64;
+		}
+	}
+	fn build_emissor_status(&self, port:usize, topology:&dyn Topology) -> Box<dyn StatusAtEmissor+'static>
+	{
+		if let (Location::ServerPort(_server),_link_class)=topology.neighbour(self.router_index,port)
+		{
+			let from_server_mechanism = TransmissionFromServer::new(self.num_virtual_channels(),self.buffer_size,self.flit_size);
+			Box::new(from_server_mechanism.new_status_at_emissor())
+		}
+		else
+		{
+			unimplemented!()
 		}
 	}
 }
