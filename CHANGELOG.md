@@ -6,6 +6,7 @@
 Some rework on TransmissionMechanism, including removing the generic parameter from `Router::Basic<TM>`.
 Allow servers to have different StatusAtEmissor.
 Added method `Router::build_emissor_status` to build the status at the servers.
+Enhanced Basic router to select different transmission mechanism.
 
 ### 2022-11-18
 Correct `servers_with_missed_generations` in documentation.

@@ -5,7 +5,7 @@ use std::ops::{Deref,DerefMut};
 use std::mem::{size_of};
 use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom};
 
-use super::{Router,TransmissionMechanism,StatusAtEmissor,SpaceAtReceptor,TransmissionToServer,TransmissionFromServer,AugmentedBuffer,AcknowledgeMessage,RouterBuilderArgument,new_transmission_mechanism,TransmissionMechanismBuilderArgument};
+use super::{Router,AbstractTransmissionMechanism,StatusAtEmissor,SpaceAtReceptor,AugmentedBuffer,AcknowledgeMessage,RouterBuilderArgument,new_transmission_mechanism,TransmissionMechanismBuilderArgument};
 use crate::config_parser::ConfigurationValue;
 use crate::topology::{Location,Topology};
 use crate::routing::CandidateEgress;
@@ -57,6 +57,13 @@ pub struct Basic
 	transmission_port_status: Vec<Box<dyn StatusAtEmissor>>,
 	/// `reception_port_space[port] = space`
 	reception_port_space: Vec<Box<dyn SpaceAtReceptor>>,
+	// The router to router mechanism employed.
+	// transmission_mechanism: Box<dyn AbstractTransmissionMechanism>,
+	// The router to server mechanism employed.
+	// to_server_mechanism: Box<dyn AbstractTransmissionMechanism>,
+	/// The server to router mechanism employed.
+	/// This will be used to build the status at the servers.
+	from_server_mechanism: Box<dyn AbstractTransmissionMechanism>,
 	///If 0 then there are no output buffer, if greater than 0 then the size of each of them.
 	output_buffer_size: usize,
 	///The outut buffers indexed as `[output_port][output_vc]`.
@@ -386,8 +393,9 @@ impl Router for Basic
 	{
 		if let (Location::ServerPort(_server),_link_class)=topology.neighbour(self.router_index,port)
 		{
-			let from_server_mechanism = TransmissionFromServer::new(self.num_virtual_channels(),self.buffer_size,self.flit_size);
-			Box::new(from_server_mechanism.new_status_at_emissor())
+			//let from_server_mechanism = TransmissionFromServer::new(self.num_virtual_channels(),self.buffer_size,self.flit_size);
+			//Box::new(from_server_mechanism.new_status_at_emissor())
+			self.from_server_mechanism.new_status_at_emissor()
 		}
 		else
 		{
@@ -422,6 +430,9 @@ impl Basic
 		let mut allow_request_busy_port=None;
 		let mut output_prioritize_lowest_label=None;
 		let mut output_buffer_size=None;
+		let mut transmission_mechanism=None;
+		let mut to_server_mechanism=None;
+		let mut from_server_mechanism=None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
 		{
 			if cv_name!="Basic"
@@ -499,6 +510,21 @@ impl Basic
 						&ConfigurationValue::False => output_prioritize_lowest_label=Some(false),
 						_ => panic!("bad value for output_prioritize_lowest_label"),
 					},
+					"transmission_mechanism" => match value
+					{
+						&ConfigurationValue::Literal(ref s) => transmission_mechanism = Some(s.to_string()),
+						_ => panic!("bad value for transmission_mechanism"),
+					},
+					"to_server_mechanism" => match value
+					{
+						&ConfigurationValue::Literal(ref s) => to_server_mechanism = Some(s.to_string()),
+						_ => panic!("bad value for to_server_mechanism"),
+					},
+					"from_server_mechanism" => match value
+					{
+						&ConfigurationValue::Literal(ref s) => from_server_mechanism = Some(s.to_string()),
+						_ => panic!("bad value for from_server_mechanism"),
+					},
 					_ => panic!("Nothing to do with field {} in Basic",name),
 				}
 			}
@@ -528,15 +554,21 @@ impl Basic
 		let time_at_input_head=(0..input_ports).map(|_|
 			(0..virtual_channels).map(|_|0).collect()
 		).collect();
+		let transmission_mechanism = transmission_mechanism.unwrap_or_else(||"SimpleVirtualChannels".to_string());
+		let from_server_mechanism = from_server_mechanism.unwrap_or_else(||"TransmissionFromServer".to_string());
+		let to_server_mechanism = to_server_mechanism.unwrap_or_else(||"TransmissionToServer".to_string());
 		//let transmission_mechanism = SimpleVirtualChannels::new(virtual_channels,buffer_size,flit_size);
-		let transmission_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{virtual_channels,buffer_size,flit_size});
-		let to_server_mechanism = TransmissionToServer();
-		let from_server_mechanism = TransmissionFromServer::new(virtual_channels,buffer_size,flit_size);
+		let transmission_builder_argument = TransmissionMechanismBuilderArgument{name:"",virtual_channels,buffer_size,size_to_send:flit_size};
+		let transmission_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{name:&transmission_mechanism,..transmission_builder_argument});
+		let to_server_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{name:&to_server_mechanism,..transmission_builder_argument});
+		//let from_server_mechanism = TransmissionFromServer::new(virtual_channels,buffer_size,flit_size);
+		let from_server_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{name:&from_server_mechanism,..transmission_builder_argument});
 		let transmission_port_status:Vec<Box<dyn StatusAtEmissor>> = (0..input_ports).map(|p|
 			if let (Location::ServerPort(_server),_link_class)=topology.neighbour(router_index,p)
 			{
-				let b:Box<dyn StatusAtEmissor> = Box::new(to_server_mechanism.new_status_at_emissor());
-				b
+				//let b:Box<dyn StatusAtEmissor> = Box::new(to_server_mechanism.new_status_at_emissor());
+				//b
+				to_server_mechanism.new_status_at_emissor()
 			}
 			else
 			{
@@ -547,8 +579,9 @@ impl Basic
 		let reception_port_space = (0..input_ports).map(|p|
 			if let (Location::ServerPort(_server),_link_class)=topology.neighbour(router_index,p)
 			{
-				let b:Box<dyn SpaceAtReceptor> = Box::new(from_server_mechanism.new_space_at_receptor());
-				b
+				//let b:Box<dyn SpaceAtReceptor> = Box::new(from_server_mechanism.new_space_at_receptor());
+				//b
+				from_server_mechanism.new_space_at_receptor()
 			}
 			else
 			{
@@ -576,6 +609,9 @@ impl Basic
 			buffer_size,
 			transmission_port_status,
 			reception_port_space,
+			//transmission_mechanism,
+			//to_server_mechanism,
+			from_server_mechanism,
 			output_buffer_size,
 			output_buffers,
 			selected_input,

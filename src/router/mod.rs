@@ -317,18 +317,44 @@ impl<E:StatusAtEmissor+'static,R:SpaceAtReceptor+'static,T:TransmissionMechanism
 }
 
 // TODO: became more general
-pub struct TransmissionMechanismBuilderArgument
+#[derive(Debug)]
+pub struct TransmissionMechanismBuilderArgument<'a>
 {
+	//cv: &'a ConfigurationValue,
+	name: &'a str,
 	virtual_channels: usize,
 	buffer_size: usize,
-	flit_size: usize,
+	size_to_send: usize,
 }
 
 /// Creates a transmition mechanism from ...
 pub fn new_transmission_mechanism(arg:TransmissionMechanismBuilderArgument) -> Box<dyn AbstractTransmissionMechanism>
 {
-	// TODO: became more general
-	Box::new(SimpleVirtualChannels::new(arg.virtual_channels, arg.buffer_size, arg.flit_size))
+	// if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv
+	// {
+	// 	//if let Some(builder) = arg.plugs.??.get(cv_name)
+	// 	//{
+	// 	//	return builder(arg);
+	// 	//}
+	// 	match cv_name.as_ref()
+	// 	{
+	// 		"SimpleVirtualChannels" => Box::new(SimpleVirtualChannels::new(arg.virtual_channels, arg.buffer_size, arg.size_to_send)),
+	// 		"TransmissionToServer" => Box::new(TransmissionToServer),
+	// 		"TransmissionFromServer" => Box::new(TransmissionFromServer::new(arg.virtual_channels, arg.buffer_size, arg.size_to_send)),
+	// 		_ => panic!("Unknown transission mechanism {}",cv_name),
+	// 	}
+	// }
+	// else
+	// {
+	// 	panic!("Trying to create a traffic from a non-Object");
+	// }
+	match arg.name
+	{
+		"SimpleVirtualChannels" => Box::new(SimpleVirtualChannels::new(arg.virtual_channels, arg.buffer_size, arg.size_to_send)),
+		"TransmissionToServer" => Box::new(TransmissionToServer() ),
+		"TransmissionFromServer" => Box::new(TransmissionFromServer::new(arg.virtual_channels, arg.buffer_size, arg.size_to_send)),
+		x => panic!("Unknown transission mechanism {}",x),
+	}
 }
 
 
