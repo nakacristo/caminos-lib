@@ -374,6 +374,8 @@ pub struct Server
 	stored_packets: VecDeque<PacketRef>,
 	///The phits of a packet being sent.
 	stored_phits: VecDeque<Rc<Phit>>,
+	/// If there is a packet currently being trasmitted, then the virtual channel requested if any.
+	outcoming_virtual_channel: Option<usize>,
 	///For each message we store the number of consumed phits, until the whole message is consumed.
 	consumed_phits: BTreeMap<*const Message,usize>,
 	///Statistics local to the server.
@@ -750,6 +752,7 @@ impl<'a> Simulation<'a>
 				stored_messages:VecDeque::new(),
 				stored_packets:VecDeque::new(),
 				stored_phits:VecDeque::new(),
+				outcoming_virtual_channel: None,
 				consumed_phits: BTreeMap::new(),
 				statistics: ServerStatistics::new(statistics_temporal_step),
 			}
@@ -1050,19 +1053,41 @@ impl<'a> Simulation<'a>
 				{
 					//Do not extract the phit until we know whether we can transmit it.
 					let phit=server.stored_phits.front().expect("There are not phits");
-					if server.router_status.can_transmit(phit,0)
+					if let None = server.outcoming_virtual_channel
 					{
-						let phit=server.stored_phits.pop_front().expect("There are not phits");
-						let event=Event::PhitToLocation{
-							phit,
-							previous: Location::ServerPort(iserver),
-							new: Location::RouterPort{router_index:index,router_port:port},
-						};
-						//self.statistics.created_phits+=1;
-						self.statistics.track_created_phit(self.cycle);
-						server.statistics.track_created_phit(self.cycle);
-						self.event_queue.enqueue_begin(event,self.link_classes[link_class].delay);
-						server.router_status.notify_outcoming_phit(0,self.cycle);
+						// Try to assign one
+						assert!(phit.is_begin(),"Not VC assigned for server--router while transmitting a middle phit.");
+						let status = &server.router_status;
+						for vc in  0..status.num_virtual_channels()
+						{
+							if status.can_transmit(phit,vc)
+							{
+								server.outcoming_virtual_channel = Some(vc);
+								break;
+							}
+						}
+					}
+					if let Some(vc) = server.outcoming_virtual_channel
+					{
+						if server.router_status.can_transmit(phit,vc)
+						{
+							let phit=server.stored_phits.pop_front().expect("There are not phits");
+							*phit.virtual_channel.borrow_mut() = Some(vc);
+							if phit.is_end()
+							{
+								server.outcoming_virtual_channel = None;
+							}
+							let event=Event::PhitToLocation{
+								phit,
+								previous: Location::ServerPort(iserver),
+								new: Location::RouterPort{router_index:index,router_port:port},
+							};
+							//self.statistics.created_phits+=1;
+							self.statistics.track_created_phit(self.cycle);
+							server.statistics.track_created_phit(self.cycle);
+							self.event_queue.enqueue_begin(event,self.link_classes[link_class].delay);
+							server.router_status.notify_outcoming_phit(0,self.cycle);
+						}
 					}
 				}
 			}

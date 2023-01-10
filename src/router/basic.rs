@@ -555,9 +555,10 @@ impl Basic
 			(0..virtual_channels).map(|_|0).collect()
 		).collect();
 		let transmission_mechanism = transmission_mechanism.unwrap_or_else(||"SimpleVirtualChannels".to_string());
-		let from_server_mechanism = from_server_mechanism.unwrap_or_else(||"TransmissionFromServer".to_string());
+		//let from_server_mechanism = from_server_mechanism.unwrap_or_else(||"TransmissionFromServer".to_string());
+		let from_server_mechanism = from_server_mechanism.unwrap_or_else(||"SimpleVirtualChannels".to_string());
 		let to_server_mechanism = to_server_mechanism.unwrap_or_else(||"TransmissionToServer".to_string());
-		//let transmission_mechanism = SimpleVirtualChannels::new(virtual_channels,buffer_size,flit_size);
+		//let transmission_mechanism = super::SimpleVirtualChannels::new(virtual_channels,buffer_size,flit_size);
 		let transmission_builder_argument = TransmissionMechanismBuilderArgument{name:"",virtual_channels,buffer_size,size_to_send:flit_size};
 		let transmission_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{name:&transmission_mechanism,..transmission_builder_argument});
 		let to_server_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{name:&to_server_mechanism,..transmission_builder_argument});

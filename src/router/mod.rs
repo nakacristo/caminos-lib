@@ -316,7 +316,7 @@ impl<E:StatusAtEmissor+'static,R:SpaceAtReceptor+'static,T:TransmissionMechanism
 	}
 }
 
-// TODO: became more general
+/// Helper structure to build a transmission mechanism.
 #[derive(Debug)]
 pub struct TransmissionMechanismBuilderArgument<'a>
 {
@@ -327,7 +327,7 @@ pub struct TransmissionMechanismBuilderArgument<'a>
 	size_to_send: usize,
 }
 
-/// Creates a transmition mechanism from ...
+/// Creates a transmition mechanism.
 pub fn new_transmission_mechanism(arg:TransmissionMechanismBuilderArgument) -> Box<dyn AbstractTransmissionMechanism>
 {
 	// if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv
@@ -358,13 +358,6 @@ pub fn new_transmission_mechanism(arg:TransmissionMechanismBuilderArgument) -> B
 }
 
 
-//struct AckPhitFromVirtualChannel
-//{
-//	virtual_channel: usize,
-//}
-//
-//impl AcknowledgeMessage for AckPhitFromVirtualChannel {}
-
 ///A simple status consisting of a credit counter per virtual channel.
 #[derive(Quantifiable)]
 struct CreditCounterVector
@@ -384,7 +377,6 @@ impl StatusAtEmissor for CreditCounterVector
 		self.neighbour_credits.len()
 	}
 
-	//fn acknowledge(&mut self, virtual_channel:usize)
 	fn acknowledge(&mut self, message:AcknowledgeMessage)
 	{
 		//self.neighbour_credits[virtual_channel]+=1;

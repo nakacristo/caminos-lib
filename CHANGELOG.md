@@ -2,6 +2,10 @@
 
 ## next [0.5.2 or greater]
 
+### 2023-01-10
+Servers now select a virtual channel to send a packet to the router.
+Basic router server-router mechanism now defaults to SimpleVirtualChannels.
+
 ### 2023-01-09
 Some rework on TransmissionMechanism, including removing the generic parameter from `Router::Basic<TM>`.
 Allow servers to have different StatusAtEmissor.
