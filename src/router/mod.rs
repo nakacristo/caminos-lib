@@ -352,7 +352,7 @@ pub fn new_transmission_mechanism(arg:TransmissionMechanismBuilderArgument) -> B
 	{
 		"SimpleVirtualChannels" => Box::new(SimpleVirtualChannels::new(arg.virtual_channels, arg.buffer_size, arg.size_to_send)),
 		"TransmissionToServer" => Box::new(TransmissionToServer() ),
-		"TransmissionFromServer" => Box::new(TransmissionFromServer::new(arg.virtual_channels, arg.buffer_size, arg.size_to_send)),
+		"TransmissionFromOblivious" => Box::new(TransmissionFromOblivious::new(arg.virtual_channels, arg.buffer_size, arg.size_to_send)),
 		x => panic!("Unknown transission mechanism {}",x),
 	}
 }
@@ -736,8 +736,9 @@ impl StatusAtEmissor for StatusAtServer
 	}
 }
 
-///A mechanism to receive phits from a server.
-pub struct TransmissionFromServer
+/// A mechanism to receive phits from a very simple component that does not keep track of things such as virtual channels.
+/// Previously, it was called TransmissionFromServer, but servers are not necessarily oblivious in this respect.
+pub struct TransmissionFromOblivious
 {
 	///Number of buffers in the receptor.
 	buffer_amount: usize,
@@ -747,11 +748,11 @@ pub struct TransmissionFromServer
 	size_to_send: usize,
 }
 
-impl TransmissionFromServer
+impl TransmissionFromOblivious
 {
-	pub fn new(buffer_amount:usize, buffer_size:usize, size_to_send:usize) -> TransmissionFromServer
+	pub fn new(buffer_amount:usize, buffer_size:usize, size_to_send:usize) -> TransmissionFromOblivious
 	{
-		TransmissionFromServer{
+		TransmissionFromOblivious{
 			buffer_amount,
 			buffer_size,
 			size_to_send,
@@ -855,7 +856,7 @@ impl SpaceAtReceptor for AgnosticParallelBuffers
 }
 
 
-impl TransmissionMechanism for TransmissionFromServer
+impl TransmissionMechanism for TransmissionFromOblivious
 {
 	type StatusAtEmissor = StatusAtServer;
 	type SpaceAtReceptor = AgnosticParallelBuffers;

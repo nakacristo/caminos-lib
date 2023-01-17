@@ -3,7 +3,7 @@ use std::rc::{Rc,Weak};
 use std::ops::Deref;
 use std::mem::size_of;
 use ::rand::{Rng,rngs::StdRng};
-use super::{Router,TransmissionMechanism,TransmissionMechanismBuilderArgument,new_transmission_mechanism,StatusAtEmissor,SpaceAtReceptor,TransmissionFromServer,AugmentedBuffer,AcknowledgeMessage};
+use super::{Router,AbstractTransmissionMechanism,TransmissionMechanismBuilderArgument,new_transmission_mechanism,StatusAtEmissor,SpaceAtReceptor,AugmentedBuffer,AcknowledgeMessage};
 use crate::allocator::{Allocator,VCARequest,AllocatorBuilderArgument, new_allocator};
 use crate::config_parser::ConfigurationValue;
 use crate::router::RouterBuilderArgument;
@@ -52,6 +52,9 @@ pub struct InputOutputMonocycle
 	transmission_port_status: Vec<Box<dyn StatusAtEmissor>>,
 	/// `reception_port_space[port] = space`
 	reception_port_space: Vec<Box<dyn SpaceAtReceptor>>,
+	/// The server to router mechanism employed.
+	/// This will be used to build the status at the servers.
+	from_server_mechanism: Box<dyn AbstractTransmissionMechanism>,
 	///if greater than 0 then the size of each of them, else BAD!
 	output_buffer_size: usize,
 	///The outut buffers indexed as `[output_port][output_vc]`.
@@ -264,8 +267,7 @@ impl Router for InputOutputMonocycle
 	{
 		if let (Location::ServerPort(_server),_link_class)=topology.neighbour(self.router_index,port)
 		{
-			let from_server_mechanism = TransmissionFromServer::new(self.num_virtual_channels(),self.buffer_size,self.flit_size);
-			Box::new(from_server_mechanism.new_status_at_emissor())
+			self.from_server_mechanism.new_status_at_emissor()
 		}
 		else
 		{
@@ -459,6 +461,7 @@ impl InputOutputMonocycle
 			buffer_size,
 			transmission_port_status,
 			reception_port_space,
+			from_server_mechanism,
 			output_buffer_size,
 			output_buffers,
 			selected_input,
