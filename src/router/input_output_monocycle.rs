@@ -3,7 +3,7 @@ use std::rc::{Rc,Weak};
 use std::ops::Deref;
 use std::mem::size_of;
 use ::rand::{Rng,rngs::StdRng};
-use super::{Router,TransmissionMechanism,StatusAtEmissor,SpaceAtReceptor,TransmissionToServer,TransmissionFromServer,SimpleVirtualChannels,AugmentedBuffer,AcknowledgeMessage};
+use super::{Router,TransmissionMechanism,TransmissionMechanismBuilderArgument,new_transmission_mechanism,StatusAtEmissor,SpaceAtReceptor,TransmissionFromServer,AugmentedBuffer,AcknowledgeMessage};
 use crate::allocator::{Allocator,VCARequest,AllocatorBuilderArgument, new_allocator};
 use crate::config_parser::ConfigurationValue;
 use crate::router::RouterBuilderArgument;
@@ -24,11 +24,10 @@ enum OutputArbiter
 		port_token: Vec<usize>,
 	},
 }
-//pub struct BasicModular<TM:TransmissionMechanism>
-pub struct InputOutputMonocycle<TM:TransmissionMechanism>
+pub struct InputOutputMonocycle
 {
     ///Weak pointer to itself, see <https://users.rust-lang.org/t/making-a-rc-refcell-trait2-from-rc-refcell-trait1/16086/3>
-	self_rc: Weak<RefCell<InputOutputMonocycle<TM>>>,
+	self_rc: Weak<RefCell<InputOutputMonocycle>>,
 	///If there is an event pending
 	event_pending: bool,
 	///The cycle number of the last time InputOutputMonocycle::process was called. Only for debugging/assertion purposes.
@@ -85,7 +84,7 @@ pub struct InputOutputMonocycle<TM:TransmissionMechanism>
 	statistics_reception_space_occupation_per_vc: Vec<f64>,
 }
 
-impl<TM:'static+TransmissionMechanism> Router for InputOutputMonocycle<TM>
+impl Router for InputOutputMonocycle
 {
     fn insert(&mut self, phit:Rc<Phit>, port:usize, rng: &RefCell<StdRng>)
     {
@@ -275,9 +274,9 @@ impl<TM:'static+TransmissionMechanism> Router for InputOutputMonocycle<TM>
 }
 
 
-impl InputOutputMonocycle<SimpleVirtualChannels>
+impl InputOutputMonocycle
 {
-	pub fn new(arg:RouterBuilderArgument) -> Rc<RefCell<InputOutputMonocycle<SimpleVirtualChannels>>>
+	pub fn new(arg:RouterBuilderArgument) -> Rc<RefCell<InputOutputMonocycle>>
 	{
 		let RouterBuilderArgument{
 			router_index,
@@ -300,6 +299,9 @@ impl InputOutputMonocycle<SimpleVirtualChannels>
 //		let mut output_priorize_lowest_label=None;
 		let mut output_buffer_size=None;
 		let mut allocator_value=None;
+		let mut transmission_mechanism=None;
+		let mut to_server_mechanism=None;
+		let mut from_server_mechanism=None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
 		{
 			if cv_name!="InputOutputMonocycle"
@@ -368,6 +370,21 @@ impl InputOutputMonocycle<SimpleVirtualChannels>
 						_ => panic!("bad value for output_priorize_lowest_label"),
 					};
 */
+					"transmission_mechanism" => match value
+					{
+						&ConfigurationValue::Literal(ref s) => transmission_mechanism = Some(s.to_string()),
+						_ => panic!("bad value for transmission_mechanism"),
+					},
+					"to_server_mechanism" => match value
+					{
+						&ConfigurationValue::Literal(ref s) => to_server_mechanism = Some(s.to_string()),
+						_ => panic!("bad value for to_server_mechanism"),
+					},
+					"from_server_mechanism" => match value
+					{
+						&ConfigurationValue::Literal(ref s) => from_server_mechanism = Some(s.to_string()),
+						_ => panic!("bad value for from_server_mechanism"),
+					},
 					"allocator" => allocator_value=Some(value.clone()),
 					_ => panic!("Nothing to do with field {} in InputOutputMonocycle",name),
 				}
@@ -405,29 +422,34 @@ impl InputOutputMonocycle<SimpleVirtualChannels>
 		let time_at_input_head=(0..input_ports).map(|_|
 			(0..virtual_channels).map(|_|0).collect()
 		).collect();
-		let transmission_mechanism = SimpleVirtualChannels::new(virtual_channels,buffer_size,flit_size);
-		let to_server_mechanism = TransmissionToServer();
-		let from_server_mechanism = TransmissionFromServer::new(virtual_channels,buffer_size,flit_size);
+		let transmission_mechanism = transmission_mechanism.unwrap_or_else(||"SimpleVirtualChannels".to_string());
+		//let from_server_mechanism = from_server_mechanism.unwrap_or_else(||"TransmissionFromServer".to_string());
+		let from_server_mechanism = from_server_mechanism.unwrap_or_else(||"SimpleVirtualChannels".to_string());
+		let to_server_mechanism = to_server_mechanism.unwrap_or_else(||"TransmissionToServer".to_string());
+		//let transmission_mechanism = super::SimpleVirtualChannels::new(virtual_channels,buffer_size,flit_size);
+		let transmission_builder_argument = TransmissionMechanismBuilderArgument{name:"",virtual_channels,buffer_size,size_to_send:flit_size};
+		let transmission_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{name:&transmission_mechanism,..transmission_builder_argument});
+		let to_server_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{name:&to_server_mechanism,..transmission_builder_argument});
+		//let from_server_mechanism = TransmissionFromServer::new(virtual_channels,buffer_size,flit_size);
+		let from_server_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{name:&from_server_mechanism,..transmission_builder_argument});
 		let transmission_port_status:Vec<Box<dyn StatusAtEmissor>> = (0..input_ports).map(|p|
 			if let (Location::ServerPort(_server),_link_class)=topology.neighbour(router_index,p)
 			{
-				let b:Box<dyn StatusAtEmissor> = Box::new(to_server_mechanism.new_status_at_emissor());
-				b
+				to_server_mechanism.new_status_at_emissor()
 			}
 			else
 			{
-				Box::new(transmission_mechanism.new_status_at_emissor())
+				transmission_mechanism.new_status_at_emissor()
 			}
 		).collect();
 		let reception_port_space = (0..input_ports).map(|p|
 			if let (Location::ServerPort(_server),_link_class)=topology.neighbour(router_index,p)
 			{
-				let b:Box<dyn SpaceAtReceptor> = Box::new(from_server_mechanism.new_space_at_receptor());
-				b
+				from_server_mechanism.new_space_at_receptor()
 			}
 			else
 			{
-				Box::new(transmission_mechanism.new_space_at_receptor())
+				transmission_mechanism.new_space_at_receptor()
 			}
 		).collect();
 		let output_buffers= if output_buffer_size==0 {
@@ -470,7 +492,7 @@ impl InputOutputMonocycle<SimpleVirtualChannels>
 	}
 }
 
-impl<TM:TransmissionMechanism> InputOutputMonocycle<TM>
+impl InputOutputMonocycle
 {
 	///Whether a phit in an input buffer can advance.
 	///bubble_in_use should be true only for leading phits that require the additional space.
@@ -496,7 +518,7 @@ impl<TM:TransmissionMechanism> InputOutputMonocycle<TM>
 }
 
 
-impl<TM:'static+TransmissionMechanism> Eventful for InputOutputMonocycle<TM>
+impl Eventful for InputOutputMonocycle
 {
 	///main routine of the router. Do all things that must be done in a cycle, if any.
 	fn process(&mut self, simulation:&Simulation) -> Vec<EventGeneration>
@@ -1023,13 +1045,13 @@ impl<TM:'static+TransmissionMechanism> Eventful for InputOutputMonocycle<TM>
 	}
 }
 
-impl<TM:TransmissionMechanism> Quantifiable for InputOutputMonocycle<TM>
+impl Quantifiable for InputOutputMonocycle
 {
 	fn total_memory(&self) -> usize
 	{
 		//FIXME: redo
 		//return size_of::<InputOutputMonocycle<TM>>() + self.virtual_ports.total_memory() + self.port_token.total_memory();
-		return size_of::<InputOutputMonocycle<TM>>();
+		return size_of::<InputOutputMonocycle>();
 	}
 	fn print_memory_breakdown(&self)
 	{

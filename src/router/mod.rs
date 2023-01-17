@@ -87,7 +87,7 @@ pub fn new_router(arg:RouterBuilderArgument) -> Rc<RefCell<dyn Router>>
 		{
 			//"Basic" => Basic::<SimpleVirtualChannels>::new(arg.router_index, arg.cv, arg.plugs, arg.topology, arg.maximum_packet_size),
 			"Basic" => Basic::new(arg),
-			"InputOutputMonocycle" => InputOutputMonocycle::<SimpleVirtualChannels>::new(arg),
+			"InputOutputMonocycle" => InputOutputMonocycle::new(arg),
 			_ => panic!("Unknown router {}",cv_name),
 		}
 	}

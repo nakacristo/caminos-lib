@@ -2,6 +2,9 @@
 
 ## next [0.5.2 or greater]
 
+### 2023-01-17
+Made the same changes on InputOutputMonocycle.
+
 ### 2023-01-10
 Servers now select a virtual channel to send a packet to the router.
 Basic router server-router mechanism now defaults to SimpleVirtualChannels.
