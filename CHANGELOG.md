@@ -4,6 +4,7 @@
 
 ### 2023-01-17
 Made the same changes on InputOutputMonocycle.
+Use `match_object_panic`to build the routers Basic and InputOutputMonocycle.
 
 ### 2023-01-10
 Servers now select a virtual channel to send a packet to the router.

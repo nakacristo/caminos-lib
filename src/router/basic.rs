@@ -15,6 +15,7 @@ use crate::{Phit,Packet,Simulation};
 use crate::quantify::Quantifiable;
 use crate::packet::PacketRef;
 //use crate::Plugs;
+use crate::match_object_panic;
 
 
 ///Strategy for the arbitration of the output port.
@@ -433,106 +434,90 @@ impl Basic
 		let mut transmission_mechanism=None;
 		let mut to_server_mechanism=None;
 		let mut from_server_mechanism=None;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
-		{
-			if cv_name!="Basic"
+		match_object_panic!(cv,"Basic",value,
+			"virtual_channels" => match value
 			{
-				panic!("A Basic must be created from a `Basic` object not `{}`",cv_name);
+				&ConfigurationValue::Number(f) => virtual_channels=Some(f as usize),
+				_ => panic!("bad value for virtual_channels"),
+			},
+			//"routing" => routing=Some(new_routing(value)),
+			//"virtual_channel_policy" => virtual_channel_policy=Some(new_virtual_channel_policy(value)),
+			"virtual_channel_policies" => match value
+			{
+				//&ConfigurationValue::Array(ref a) => virtual_channel_policies=Some(a.iter().map(|cv|new_virtual_channel_policy(cv,plugs)).collect()),
+				&ConfigurationValue::Array(ref a) => virtual_channel_policies=Some(a.iter().map(
+					|cv|new_virtual_channel_policy(VCPolicyBuilderArgument{
+					cv,
+					plugs
+				})).collect()),
+				_ => panic!("bad value for permute"),
 			}
-			for &(ref name,ref value) in cv_pairs
+			"delay" => (),//FIXME: yet undecided if/how to implement this.
+			"buffer_size" => match value
 			{
-				match name.as_ref()
+				&ConfigurationValue::Number(f) => buffer_size=Some(f as usize),
+				_ => panic!("bad value for buffer_size"),
+			},
+			"output_buffer_size" => match value
+			{
+				&ConfigurationValue::Number(f) => output_buffer_size=Some(f as usize),
+				_ => panic!("bad value for buffer_size"),
+			},
+			"bubble" => match value
+			{
+				&ConfigurationValue::True => bubble=Some(true),
+				&ConfigurationValue::False => bubble=Some(false),
+				_ => panic!("bad value for bubble"),
+			},
+			"flit_size" => match value
+			{
+				&ConfigurationValue::Number(f) => flit_size=Some(f as usize),
+				_ => panic!("bad value for flit_size"),
+			},
+			"intransit_priority" => match value
+			{
+				&ConfigurationValue::True => intransit_priority=Some(true),
+				&ConfigurationValue::False => intransit_priority=Some(false),
+				_ => panic!("bad value for intransit_priority"),
+			},
+			"allow_request_busy_port" => match value
+			{
+				&ConfigurationValue::True => allow_request_busy_port=Some(true),
+				&ConfigurationValue::False => allow_request_busy_port=Some(false),
+				_ => panic!("bad value for allow_request_busy_port"),
+			},
+			"output_priorize_lowest_label" =>
+			{
+				eprintln!("WARNING: the name output_priorize_lowest_label is deprecated. Now the correct name is output_prioritize_lowest_label");
+				match value
 				{
-					"virtual_channels" => match value
-					{
-						&ConfigurationValue::Number(f) => virtual_channels=Some(f as usize),
-						_ => panic!("bad value for virtual_channels"),
-					},
-					//"routing" => routing=Some(new_routing(value)),
-					//"virtual_channel_policy" => virtual_channel_policy=Some(new_virtual_channel_policy(value)),
-					"virtual_channel_policies" => match value
-					{
-						//&ConfigurationValue::Array(ref a) => virtual_channel_policies=Some(a.iter().map(|cv|new_virtual_channel_policy(cv,plugs)).collect()),
-						&ConfigurationValue::Array(ref a) => virtual_channel_policies=Some(a.iter().map(
-							|cv|new_virtual_channel_policy(VCPolicyBuilderArgument{
-							cv,
-							plugs
-						})).collect()),
-						_ => panic!("bad value for permute"),
-					}
-					"delay" => (),//FIXME: yet undecided if/how to implement this.
-					"buffer_size" => match value
-					{
-						&ConfigurationValue::Number(f) => buffer_size=Some(f as usize),
-						_ => panic!("bad value for buffer_size"),
-					},
-					"output_buffer_size" => match value
-					{
-						&ConfigurationValue::Number(f) => output_buffer_size=Some(f as usize),
-						_ => panic!("bad value for buffer_size"),
-					},
-					"bubble" => match value
-					{
-						&ConfigurationValue::True => bubble=Some(true),
-						&ConfigurationValue::False => bubble=Some(false),
-						_ => panic!("bad value for bubble"),
-					},
-					"flit_size" => match value
-					{
-						&ConfigurationValue::Number(f) => flit_size=Some(f as usize),
-						_ => panic!("bad value for flit_size"),
-					},
-					"intransit_priority" => match value
-					{
-						&ConfigurationValue::True => intransit_priority=Some(true),
-						&ConfigurationValue::False => intransit_priority=Some(false),
-						_ => panic!("bad value for intransit_priority"),
-					},
-					"allow_request_busy_port" => match value
-					{
-						&ConfigurationValue::True => allow_request_busy_port=Some(true),
-						&ConfigurationValue::False => allow_request_busy_port=Some(false),
-						_ => panic!("bad value for allow_request_busy_port"),
-					},
-					"output_priorize_lowest_label" =>
-					{
-						eprintln!("WARNING: the name output_priorize_lowest_label is deprecated. Now the correct name is output_prioritize_lowest_label");
-						match value
-						{
-							&ConfigurationValue::True => output_prioritize_lowest_label=Some(true),
-							&ConfigurationValue::False => output_prioritize_lowest_label=Some(false),
-							_ => panic!("bad value for output_prioritize_lowest_label"),
-						}
-					},
-					"output_prioritize_lowest_label" => match value
-					{
-						&ConfigurationValue::True => output_prioritize_lowest_label=Some(true),
-						&ConfigurationValue::False => output_prioritize_lowest_label=Some(false),
-						_ => panic!("bad value for output_prioritize_lowest_label"),
-					},
-					"transmission_mechanism" => match value
-					{
-						&ConfigurationValue::Literal(ref s) => transmission_mechanism = Some(s.to_string()),
-						_ => panic!("bad value for transmission_mechanism"),
-					},
-					"to_server_mechanism" => match value
-					{
-						&ConfigurationValue::Literal(ref s) => to_server_mechanism = Some(s.to_string()),
-						_ => panic!("bad value for to_server_mechanism"),
-					},
-					"from_server_mechanism" => match value
-					{
-						&ConfigurationValue::Literal(ref s) => from_server_mechanism = Some(s.to_string()),
-						_ => panic!("bad value for from_server_mechanism"),
-					},
-					_ => panic!("Nothing to do with field {} in Basic",name),
+					&ConfigurationValue::True => output_prioritize_lowest_label=Some(true),
+					&ConfigurationValue::False => output_prioritize_lowest_label=Some(false),
+					_ => panic!("bad value for output_prioritize_lowest_label"),
 				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Basic from a non-Object");
-		}
+			},
+			"output_prioritize_lowest_label" => match value
+			{
+				&ConfigurationValue::True => output_prioritize_lowest_label=Some(true),
+				&ConfigurationValue::False => output_prioritize_lowest_label=Some(false),
+				_ => panic!("bad value for output_prioritize_lowest_label"),
+			},
+			"transmission_mechanism" => match value
+			{
+				&ConfigurationValue::Literal(ref s) => transmission_mechanism = Some(s.to_string()),
+				_ => panic!("bad value for transmission_mechanism"),
+			},
+			"to_server_mechanism" => match value
+			{
+				&ConfigurationValue::Literal(ref s) => to_server_mechanism = Some(s.to_string()),
+				_ => panic!("bad value for to_server_mechanism"),
+			},
+			"from_server_mechanism" => match value
+			{
+				&ConfigurationValue::Literal(ref s) => from_server_mechanism = Some(s.to_string()),
+				_ => panic!("bad value for from_server_mechanism"),
+			},
+		);
 		//let sides=sides.expect("There were no sides");
 		let virtual_channels=virtual_channels.expect("There were no virtual_channels");
 		let virtual_channel_policies=virtual_channel_policies.expect("There were no virtual_channel_policies");
