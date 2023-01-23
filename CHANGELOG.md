@@ -4,6 +4,7 @@
 
 ### 2023-01-23
 Improved the test of FixedRandom.
+Added a test in the config module.
 
 ### 2023-01-19
 Added some test for FixedRandom.

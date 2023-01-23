@@ -1887,3 +1887,22 @@ impl ConfigurationValue
 //}
 
 
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn config_functions()
+	{
+		use std::path::PathBuf;
+		let context = ConfigurationValue::None;
+		let path = PathBuf::from(".");
+		let v1 = Expr::Number(1.0);
+		let v2 = Expr::Number(2.0);
+		match evaluate(&Expr::FunctionCall("add".to_string(),vec![("first".to_string(),v1),("second".to_string(),v2)]),&context,&path)
+		{
+			Ok( ConfigurationValue::Number(x) ) => assert_eq!(x,3.0),
+			_ => assert!(false),
+		}
+	}
+}
+

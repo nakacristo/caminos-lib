@@ -19,6 +19,10 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 
 <details>
 
+## [0.5.0] to [0.X]
+* Removed unnecessary generic parameter TM from routers Basic and InputOutputMonocycle. They now may select [TransmissionMechanism]s to employ.
+* Renamed TransmissionFromServer into TransmissionFromOblivious.
+
 ## [0.4.0] to [0.5.0]
 
 * Added the function `server_state` to the `Traffic` trait.
