@@ -2,6 +2,12 @@
 
 ## next [0.5.2 or greater]
 
+### 2023-01-23
+Improved the test of FixedRandom.
+
+### 2023-01-19
+Added some test for FixedRandom.
+
 ### 2023-01-17
 Made the same changes on InputOutputMonocycle.
 Use `match_object_panic`to build the routers Basic and InputOutputMonocycle.

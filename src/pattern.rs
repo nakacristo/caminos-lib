@@ -1384,3 +1384,61 @@ impl FixedRandom
 	}
 }
 
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rand::SeedableRng;
+	#[test]
+	fn fixed_random_self()
+	{
+		let plugs = Plugs::default();
+		let cv = ConfigurationValue::Object("FixedRandom".to_string(),vec![("allow_self".to_string(),ConfigurationValue::True)]);
+		let rng=RefCell::new(StdRng::seed_from_u64(10u64));
+		use crate::topology::{new_topology,TopologyBuilderArgument};
+		// TODO: topology::dummy?
+		let topo_cv = ConfigurationValue::Object("Hamming".to_string(),vec![("sides".to_string(),ConfigurationValue::Array(vec![])), ("servers_per_router".to_string(),ConfigurationValue::Number(1.0))]);
+		let dummy_topology = new_topology(TopologyBuilderArgument{cv:&topo_cv,plugs:&plugs,rng:&rng});
+		
+		for size in [1000]
+		{
+			let mut count = 0;
+			let sizef = size as f64;
+			let sample_size = 100;
+			let expected_unique = sizef* ( (sizef-1.0)/sizef ).powf(sizef-1.0) * sample_size as f64;
+			let mut unique_count = 0;
+			for _ in 0..sample_size
+			{
+				let arg = PatternBuilderArgument{ cv:&cv, plugs:&plugs };
+				let mut with_self = FixedRandom::new(arg);
+				with_self.initialize(size,size,&*dummy_topology,&rng);
+				let mut dests = vec![0;size];
+				for origin in 0..size
+				{
+					let destination = with_self.get_destination(origin,&*dummy_topology,&rng);
+					if destination==origin
+					{
+						count+=1;
+					}
+					dests[destination]+=1;
+				}
+				unique_count += dests.iter().filter(|&&x|x==1).count();
+			}
+			assert!( count>=sample_size-1,"too few self messages {}, expecting {}",count,sample_size);
+			assert!( count<=sample_size+1,"too many self messages {}, expecting {}",count,sample_size);
+			assert!( (unique_count as f64) >= expected_unique*0.99 ,"too few unique destinations {}, expecting {}",unique_count,expected_unique);
+			assert!( (unique_count as f64) <= expected_unique*1.01 ,"too many unique destinations {}, expecting {}",unique_count,expected_unique);
+		}
+		
+		let cv = ConfigurationValue::Object("FixedRandom".to_string(),vec![("allow_self".to_string(),ConfigurationValue::False)]);
+		for logsize in 1..10
+		{
+			let arg = PatternBuilderArgument{ cv:&cv, plugs:&plugs };
+			let size = 2usize.pow(logsize);
+			let mut without_self = FixedRandom::new(arg);
+			without_self.initialize(size,size,&*dummy_topology,&rng);
+			let count = (0..size).filter( |&origin| origin==without_self.get_destination(origin,&*dummy_topology,&rng) ).count();
+			assert!(count==0, "Got {} selfs at size {}.", count, size );
+		}
+	}
+}
+
