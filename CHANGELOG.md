@@ -1,6 +1,9 @@
 # Change Log
 
-## next [0.5.2 or greater]
+## [0.5.2]
+
+### 2023-01-26
+Publish 0.5.2.
 
 ### 2023-01-23
 Improved the test of FixedRandom.
