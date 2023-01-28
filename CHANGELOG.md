@@ -1,5 +1,10 @@
 # Change Log
 
+## next [0.5.3] or greater
+
+## 2023-01-28
+Documentation fix.
+
 ## [0.5.2]
 
 ### 2023-01-26

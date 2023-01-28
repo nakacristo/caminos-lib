@@ -179,7 +179,7 @@ Configuration
 		},
 		//The last class always correspond to the links between server and router
 		LinkClass { delay: 1},
-		//In a dragonfly topology we would have 0=server, 1=routers from same group, 2=routers from different groups.
+		//In a dragonfly topology we would have 0=routers from same group, 1=routers from different groups, and 2=from server
 	],
 	launch_configurations: [
 		//We may put here options to send to the SLURM system.
