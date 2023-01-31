@@ -4,6 +4,7 @@
 
 ## 2023-01-31
 Documentation fix.
+New meta-pattern IndependentRegions.
 
 ## 2023-01-28
 Documentation fix.

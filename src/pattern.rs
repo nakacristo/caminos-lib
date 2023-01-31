@@ -204,6 +204,20 @@ RandomMix{
 }
 ```
 
+### IndependentRegions
+Partition the nodes in independent regions, each with its own pattern. Source and target sizes must be equal.
+```ignore
+IndependentRegions{
+	// An array with the patterns for each region.
+	patterns: [Uniform, Hotspots{destinations:[0]}],
+	// An array with the size of each region. They must add up to the total size.
+	sizes: [100, 50],
+	// Alternatively, use relative_sizes. the pattern will be initialized with sizes proportional to these.
+	// You must use exactly one of either `sizes` or `relative_sizes`.
+	// relative_sizes: [88, 11],
+}
+```
+
 */
 pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 {
@@ -239,6 +253,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"GroupShufflingDestinations" => Box::new(GroupShufflingDestinations::new(arg)),
 			"UniformDistance" => Box::new(UniformDistance::new(arg)),
 			"FixedRandom" => Box::new(FixedRandom::new(arg)),
+			"IndependentRegions" => Box::new(IndependentRegions::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -1441,4 +1456,101 @@ mod tests {
 		}
 	}
 }
+
+
+/// Partition the nodes in independent regions, each with its own pattern. Source and target sizes must be equal.
+/// ```ignore
+/// IndependentRegions{
+/// 	// An array with the patterns for each region.
+/// 	patterns: [Uniform, Hotspots{destinations:[0]}],
+/// 	// An array with the size of each region. They must add up to the total size.
+/// 	sizes: [100, 50],
+/// 	// Alternatively, use relative_sizes. the pattern will be initialized with sizes proportional to these.
+/// 	// You must use exactly one of either `sizes` or `relative_sizes`.
+/// 	// relative_sizes: [88, 11],
+/// }
+/// ```
+#[derive(Quantifiable)]
+#[derive(Debug)]
+struct IndependentRegions
+{
+	/// The actual size of each region. An empty vector if not given nor initialized.
+	/// If not empty it must sum up to the total size and have as many elements as the `patterns` field.
+	sizes: Vec<usize>,
+	/// The pattern to be employed in each region.
+	patterns: Vec<Box<dyn Pattern>>,
+	/// If not empty, it is used to build the actual `sizes`.
+	relative_sizes: Vec<f64>,
+}
+
+impl Pattern for IndependentRegions
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
+	{
+		assert!(source_size==target_size, "source_size and target_size must be equal in IndependentRegions.");
+		if !self.relative_sizes.is_empty()
+		{
+			assert!(self.sizes.is_empty(),"Cannot set both sizes and relative_sizes in IndependentRegions.");
+			let relative_total: f64 = self.relative_sizes.iter().sum();
+			let scale : f64 = source_size as f64 / relative_total;
+			let expected_sizes : Vec<f64> = self.relative_sizes.iter().map(|x|x*scale).collect();
+			self.sizes = expected_sizes.iter().map(|x|x.round() as usize).collect();
+			//TODO: Is this guaranteed to sum correctly??
+		}
+		assert!(self.sizes.iter().sum::<usize>()==source_size,"IndependentRegions sizes {:?} do not add up to the source_size {}",self.sizes,source_size);
+		for region_index in 0..self.patterns.len()
+		{
+			let size = self.sizes[region_index];
+			self.patterns[region_index].initialize(size,size,topology,rng);
+		}
+	}
+	fn get_destination(&self, mut origin:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	{
+		let mut region_index = 0;
+		let mut region_offset = 0;
+		while origin >= self.sizes[region_index]
+		{
+			origin -= self.sizes[region_index];
+			region_offset += self.sizes[region_index];
+			region_index += 1;
+		}
+		let destination = self.patterns[region_index].get_destination(origin,topology,rng);
+		destination + region_offset
+	}
+}
+
+impl IndependentRegions
+{
+	fn new(arg:PatternBuilderArgument) -> IndependentRegions
+	{
+		let mut patterns : Option<Vec<_>> = None;
+		let mut sizes = None;
+		let mut relative_sizes = None;
+		match_object_panic!(arg.cv,"IndependentRegions",value,
+			"patterns" => patterns = Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|v|new_pattern(PatternBuilderArgument{cv:v,..arg})).collect()),
+			"sizes" => sizes = Some(value.as_array()
+				.expect("bad value for sizes").iter()
+				.map(|v|v.as_f64().expect("bad value in sizes") as usize).collect()),
+			"relative_sizes" => relative_sizes = Some(value.as_array()
+				.expect("bad value for relative_sizes").iter()
+				.map(|v|v.as_f64().expect("bad value in relative_sizes")).collect()),
+		);
+		let patterns = patterns.expect("There was no patterns.");
+		assert!( matches!(sizes,None) || matches!(relative_sizes,None), "Cannot set both sizes and relative_sizes." );
+		assert!( !matches!(sizes,None) || !matches!(relative_sizes,None), "Must set one of sizes or relative_sizes." );
+		let sizes = sizes.unwrap_or_else(||Vec::new());
+		let relative_sizes = relative_sizes.unwrap_or_else(||Vec::new());
+		assert!(patterns.len()==sizes.len().max(relative_sizes.len()),"Different number of entries in IndependentRegions.");
+		IndependentRegions{
+			patterns,
+			sizes,
+			relative_sizes,
+		}
+	}
+}
+
+
+
+
 
