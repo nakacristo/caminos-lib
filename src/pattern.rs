@@ -198,8 +198,8 @@ Pow{
 Probabilistically mix a list of patterns.
 ```ignore
 RandomMix{
-	patterns: [Hotspots{extra_random_destination:10}, Uniform],
-	weight: [5,95],
+	patterns: [Hotspots{extra_random_destinations:10}, Uniform],
+	weights: [5,95],
 	legend_name: "0.05 chance of sending to the hotspots",
 }
 ```

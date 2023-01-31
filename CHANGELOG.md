@@ -2,6 +2,9 @@
 
 ## next [0.5.3] or greater
 
+## 2023-01-31
+Documentation fix.
+
 ## 2023-01-28
 Documentation fix.
 
