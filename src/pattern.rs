@@ -1483,6 +1483,25 @@ struct IndependentRegions
 	relative_sizes: Vec<f64>,
 }
 
+/**
+Build an integer vector with elements proportional to the given `weights` and with a total `target_sum`.
+Based on https://stackoverflow.com/questions/16226991/allocate-an-array-of-integers-proportionally-compensating-for-rounding-errors
+**/
+pub fn proportional_vec_with_sum(weights:&Vec<f64>, target_sum:usize) -> Vec<usize>
+{
+	let mut result : Vec<usize> = Vec::with_capacity(weights.len());
+	let mut total_weight : f64 = weights.iter().sum();
+	let mut target_sum : f64 = target_sum as f64;
+	for &w in weights
+	{
+		let rounded : f64 = ( w*target_sum/total_weight ).round();
+		result.push(rounded as usize);
+		total_weight -= w;
+		target_sum -= rounded;
+	}
+	result
+}
+
 impl Pattern for IndependentRegions
 {
 	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
@@ -1491,11 +1510,13 @@ impl Pattern for IndependentRegions
 		if !self.relative_sizes.is_empty()
 		{
 			assert!(self.sizes.is_empty(),"Cannot set both sizes and relative_sizes in IndependentRegions.");
-			let relative_total: f64 = self.relative_sizes.iter().sum();
-			let scale : f64 = source_size as f64 / relative_total;
-			let expected_sizes : Vec<f64> = self.relative_sizes.iter().map(|x|x*scale).collect();
-			self.sizes = expected_sizes.iter().map(|x|x.round() as usize).collect();
+			// Just doing this do not work. Consider [37,37,74] for 150, which gives [38,38,75].
+			//let relative_total: f64 = self.relative_sizes.iter().sum();
+			//let scale : f64 = source_size as f64 / relative_total;
+			//let expected_sizes : Vec<f64> = self.relative_sizes.iter().map(|x|x*scale).collect();
+			//self.sizes = expected_sizes.iter().map(|x|x.round() as usize).collect();
 			//TODO: Is this guaranteed to sum correctly??
+			self.sizes = proportional_vec_with_sum(&self.relative_sizes,source_size);
 		}
 		assert!(self.sizes.iter().sum::<usize>()==source_size,"IndependentRegions sizes {:?} do not add up to the source_size {}",self.sizes,source_size);
 		for region_index in 0..self.patterns.len()
