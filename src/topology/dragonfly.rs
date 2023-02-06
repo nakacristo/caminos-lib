@@ -30,7 +30,7 @@ pub struct CanonicDragonfly
 	group_size: usize,
 	/// Number of groups = a*h+1. Dally called it `g`.
 	number_of_groups: usize,
-	///distance_matrix.get(i,j) = distance from router i to router j
+	/// `distance_matrix.get(i,j)` = distance from router i to router j.
 	distance_matrix:Matrix<u8>,
 }
 
@@ -181,10 +181,17 @@ impl CanonicDragonfly
 		topo.distance_matrix=distance_matrix.map(|x|*x as u8);
 		topo
 	}
+	/**
+		Unpack a switch index into `(group_offset, group_index)` coordinates.
+		With `group_offset` beings the position of the switch in the group and `group_index` the index of the group.
+	**/
 	fn unpack(&self, router_index: usize) -> (usize,usize)
 	{
 		(router_index%self.group_size,router_index/self.group_size)
 	}
+	/**
+		Pack coordinates `(group_offset, group_index)` into a whole switch index.
+	**/
 	fn pack(&self, coordinates:(usize,usize)) -> usize
 	{
 		coordinates.0+coordinates.1*self.group_size

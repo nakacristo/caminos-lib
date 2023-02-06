@@ -4,6 +4,8 @@
 
 ## 2023-02-06
 Added Quantifiable to StdRng to ease adding local seeds.
+Work on the Dragonfly+ (Megafly).
+Some improvements on Dragonfly documentation.
 
 ## 2023-02-03
 Fix the alternative of `relative_sizes` in the pattern IndependentRegions.
