@@ -2,9 +2,13 @@
 
 ## next [0.5.3] or greater
 
+## 2023-02-06
+Added Quantifiable to StdRng to ease adding local seeds.
+
 ## 2023-02-03
 Fix the alternative of `relative_sizes` in the pattern IndependentRegions.
 Auxiliar function `pattern::proportional_vec_with_sum`.
+Added file megafly.rs.
 
 ## 2023-01-31
 Documentation fix.

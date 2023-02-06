@@ -298,6 +298,15 @@ impl<T:Quantifiable+?Sized> Quantifiable for RefCell<T>
 	}
 }
 
+/// TODO: calculate something here.
+impl Quantifiable for rand::rngs::StdRng
+{
+	fn total_memory(&self) -> usize { 0 }
+	fn print_memory_breakdown(&self) { }
+	fn forecast_total_memory(&self) -> usize { 0 }
+}
+
+
 impl Quantifiable for dyn std::any::Any
 {
 	fn total_memory(&self) -> usize

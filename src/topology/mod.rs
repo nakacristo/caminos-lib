@@ -13,6 +13,7 @@ pub mod dragonfly;
 pub mod projective;
 pub mod slimfly;
 pub mod multistage;
+pub mod megafly;
 
 use std::cell::{RefCell};
 use std::fs::File;
@@ -30,6 +31,14 @@ use crate::config_parser::ConfigurationValue;
 use crate::matrix::Matrix;
 use crate::quantify::Quantifiable;
 use crate::Plugs;
+
+/// Some things most uses of the topology module will use.
+pub mod prelude
+{
+	pub use super::{Topology,Location,cartesian::CartesianData};
+	pub use std::cell::{RefCell};
+	pub use ::rand::rngs::StdRng;
+}
 
 ///A location where a phit can be inserted.
 ///None is used for disconnected ports, for example in the `Mesh` topology.
