@@ -49,6 +49,11 @@ impl<T> Matrix<T>
 			num_columns: self.num_columns,
 		}
 	}
+	/// Iterate over elements outside the diagonal.
+	pub fn outside_diagonal(&self) -> OutsideDiagonal<T>
+	{
+		OutsideDiagonal{ matrix: self, row:0, column:0 }
+	}
 }
 
 impl<T:Quantifiable> Quantifiable for Matrix<T>
@@ -66,4 +71,45 @@ impl<T:Quantifiable> Quantifiable for Matrix<T>
 		unimplemented!();
 	}
 }
+
+impl<T> IntoIterator for Matrix<T>
+{
+	type Item = T;
+	type IntoIter = <Vec<T> as IntoIterator>::IntoIter;
+	fn into_iter(self) -> <Self as IntoIterator>::IntoIter
+	{
+		self.data.into_iter()
+	}
+}
+
+pub struct OutsideDiagonal<'a, T>
+{
+	matrix: &'a Matrix<T>,
+	row: usize,
+	column: usize,
+}
+
+impl<'a,T> Iterator for OutsideDiagonal<'a,T>
+{
+	type Item = &'a T;
+	fn next(&mut self) -> Option<<Self as Iterator>::Item>
+	{
+		self.column+=1;
+		while self.column==self.row
+		{
+			self.column+=1;
+		}
+		if self.column>=self.matrix.get_columns()
+		{
+			self.column = 0;
+			self.row += 1;
+		}
+		if self.row < self.matrix.get_rows() {
+			Some(self.matrix.get(self.row,self.column))
+		} else {
+			None
+		}
+	}
+}
+
 

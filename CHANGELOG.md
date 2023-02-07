@@ -2,6 +2,11 @@
 
 ## next [0.5.3] or greater
 
+## 2023-02-07
+Added some iterators to Matrix.
+Adding global arrangements to Dragonfly and Dragonfly+.
+Megafly is now operative.
+
 ## 2023-02-06
 Added Quantifiable to StdRng to ease adding local seeds.
 Work on the Dragonfly+ (Megafly).

@@ -35,7 +35,7 @@ use crate::Plugs;
 /// Some things most uses of the topology module will use.
 pub mod prelude
 {
-	pub use super::{Topology,Location,cartesian::CartesianData};
+	pub use super::{Topology,Location,cartesian::CartesianData,TopologyBuilderArgument};
 	pub use std::cell::{RefCell};
 	pub use ::rand::rngs::StdRng;
 }
@@ -825,6 +825,7 @@ pub fn new_topology(arg:TopologyBuilderArgument) -> Box<dyn Topology>
 			"LeviProjective" => Box::new(LeviProjective::new(arg)),
 			"SlimFly" => Box::new(SlimFly::new(arg)),
 			"MultiStage" | "XGFT" | "OFT" | "RFC" => Box::new(MultiStage::new(arg)),
+			"Megafly" => Box::new(megafly::Megafly::new(arg)),
 			_ => panic!("Unknown topology {}",cv_name),
 		}
 	}

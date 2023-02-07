@@ -3,11 +3,20 @@
 use quantifiable_derive::Quantifiable;//the derive macro
 use super::prelude::*;
 use crate::matrix::Matrix;
+use super::dragonfly::{Arrangement,ArrangementPoint,ArrangementSize,Palmtree};
+use crate::config_parser::ConfigurationValue;
+use crate::match_object_panic;
 
 /**
 Implementation of the so called Megafly or Dragonfly+ interconnection network topology.
 It is an indirect network with two levels of switches. The switches in the first level can be called leaf switches and are the switches with servers attached. The switches in the second level can be called spine and are connected to both first-level switches and to other second-level switches.
 The network is divided in blocks. inside each block the connection between the first level and the second level switches follows a fat-tree connectivity, this is, a complete-bipartite graph. The links between second level switches connect switches of different block, with exactly one such link between each pair of block.
+
+
+The routes suggested by Shpiner et al. are
++ High priority L-G-L.
++ Medium priority L-G-G-L.
++ Low priority L-G-L-L-G-L. Like Valiant, but not necessarily decided at source.
 
 REFS Megafly, Dragonfly+
 
@@ -37,6 +46,8 @@ pub struct Megafly
 	global_ports_per_spine: usize,
 	/// Number of groups in the whole network. Each group with `group_size` leaf switches and spine switches.
 	number_of_groups: usize,
+	/// Configuration of the global links.
+	global_arrangement: Box<dyn Arrangement>,
 	///`distance_matrix.get(i,j)` = distance from router i to router j.
 	distance_matrix:Matrix<u8>,
 }
@@ -64,11 +75,64 @@ impl Topology for Megafly
 		// 0 <= level <= 1
 		// 0 <= group_index < number_of_groups
 		// 0 <= group_offset < group_size
-		todo!()
+		let (router_local,router_global,level_index)=self.unpack(router_index);
+		//println!("router_index={router_index} router_local={router_local} router_global={router_global} level={level_index}");
+		match level_index
+		{
+			0 => {
+				if port < self.group_size
+				{
+					// Upwards link
+					// just swap the local position with the port.
+					(Location::RouterPort{router_index:self.pack((port,router_global,1)),router_port:router_local},0)
+				}
+				else
+				{
+					// Link to servers
+					let port_offset = port - self.group_size;
+					(Location::ServerPort(router_index*self.servers_per_leaf + port_offset),2)
+				}
+			},
+			1 => {
+				if port < self.group_size
+				{
+					// Downwards link
+					// just swap the local position with the port.
+					(Location::RouterPort{router_index:self.pack((port,router_global,0)),router_port:router_local},0)
+				}
+				else
+				{
+					// Global link
+					let port_offset = port - self.group_size;
+					let point = ArrangementPoint {
+						group_index: router_global,
+						group_offset: router_local,
+						port_index: port_offset,
+					};
+					let size = ArrangementSize{
+						number_of_groups: self.number_of_groups,
+						group_size: self.group_size,
+						number_of_ports: self.global_ports_per_spine,
+					};
+					assert!(size.contains(point), "arrangement point {:?} is not in range. size is {:?}",point,size);
+					let target_point = self.global_arrangement.map(size,point);
+					let target_global = target_point.group_index;
+					let target_local = target_point.group_offset;
+					let target_port = self.group_size + target_point.port_index;
+					//println!("{},{} g{} -> {},{} g{}",router_local,router_global,port_offset,target_local,target_global,target_port+1-self.group_size);
+					(Location::RouterPort{router_index:self.pack((target_local,target_global,1)),router_port:target_port},1)
+				}
+			},
+			_ => unreachable!("level must be 0 or 1"),
+		}
 	}
 	fn server_neighbour(&self, server_index:usize) -> (Location,usize)
 	{
-		todo!()
+		let degree = self.group_size;//ports before servers.
+		(Location::RouterPort{
+			router_index: server_index/self.servers_per_leaf,
+			router_port: degree + server_index%self.servers_per_leaf,
+		},2)
 	}
 	fn diameter(&self) -> usize
 	{
@@ -89,19 +153,31 @@ impl Topology for Megafly
 	}
 	fn maximum_degree(&self) -> usize
 	{
-		todo!()
+		self.group_size + self.global_ports_per_spine
 	}
 	fn minimum_degree(&self) -> usize
 	{
-		todo!()
+		self.group_size
 	}
-	fn degree(&self, _router_index: usize) -> usize
+	fn degree(&self, router_index: usize) -> usize
 	{
-		todo!()
+		let (_router_local,_router_global,level_index)=self.unpack(router_index);
+		match level_index
+		{
+			0 => self.group_size,
+			1 => self.group_size + self.global_ports_per_spine,
+			_ => unreachable!(),
+		}
 	}
-	fn ports(&self, _router_index: usize) -> usize
+	fn ports(&self, router_index: usize) -> usize
 	{
-		todo!()
+		let (_router_local,_router_global,level_index)=self.unpack(router_index);
+		match level_index
+		{
+			0 => self.group_size + self.servers_per_leaf,
+			1 => self.group_size + self.global_ports_per_spine,
+			_ => unreachable!(),
+		}
 	}
 	fn cartesian_data(&self) -> Option<&CartesianData>
 	{
@@ -124,22 +200,52 @@ impl Topology for Megafly
 
 impl Megafly
 {
+	pub fn new(arg:TopologyBuilderArgument) -> Megafly
+	{
+		let mut global_ports_per_spine=None;
+		let mut servers_per_leaf=None;
+		let mut group_size=None;
+		let mut number_of_groups=None;
+		match_object_panic!(arg.cv,"Megafly",value,
+			"global_ports_per_spine" => global_ports_per_spine=Some(value.as_f64().expect("bad value for global_ports_per_spine")as usize),
+			"servers_per_leaf" => servers_per_leaf=Some(value.as_f64().expect("bad value for servers_per_leaf")as usize),
+			"group_size" => group_size=Some(value.as_f64().expect("bad value for group_size")as usize),
+			"number_of_groups" => number_of_groups=Some(value.as_f64().expect("bad value for number_of_groups")as usize),
+		);
+		let global_ports_per_spine=global_ports_per_spine.expect("There were no global_ports_per_spine");
+		let servers_per_leaf=servers_per_leaf.expect("There were no servers_per_leaf");
+		let group_size=group_size.expect("There were no group_size");
+		let number_of_groups=number_of_groups.expect("There were no number_of_groups");
+		//let group_size = 2*global_ports_per_spine;
+		//let number_of_groups = group_size*global_ports_per_spine + 1;
+		let mut topo=Megafly{
+			global_ports_per_spine,
+			servers_per_leaf,
+			global_arrangement: Box::new(Palmtree),
+			group_size,
+			number_of_groups,
+			distance_matrix:Matrix::constant(0,0,0),
+		};
+		let (distance_matrix,_amount_matrix)=topo.compute_amount_shortest_paths();
+		topo.distance_matrix=distance_matrix.map(|x|*x as u8);
+		topo
+	}
 	/**
-		Unpack a switch index into `(group_offset, group_index, level)` coordinates.
-		With `group_offset` beings the position of the switch in the group and `group_index` the index of the group.
-		`level=0` for leaf switches and `level=1` for spine switches.
+	 Unpack a switch index into `(group_offset, group_index, level)` coordinates.
+	 With `group_offset` beings the position of the switch in the group and `group_index` the index of the group.
+	 `level=0` for leaf switches and `level=1` for spine switches.
 	**/
 	fn unpack(&self, router_index: usize) -> (usize,usize,usize)
 	{
 		let size = self.number_of_groups * self.group_size;
 		let level_index = router_index / size;
-		let level_offset = level_index % size;
+		let level_offset = router_index % size;
 		let group_index = level_offset / self.group_size;
 		let group_offset = level_offset % self.group_size;
 		( group_offset, group_index, level_index )
 	}
 	/**
-		Pack coordinates `(group_offset, group_index, level)` into a whole switch index.
+	 Pack coordinates `(group_offset, group_index, level)` into a whole switch index.
 	**/
 	fn pack(&self, coordinates:(usize,usize,usize)) -> usize
 	{
