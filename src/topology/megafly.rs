@@ -3,7 +3,7 @@
 use quantifiable_derive::Quantifiable;//the derive macro
 use super::prelude::*;
 use crate::matrix::Matrix;
-use super::dragonfly::{Arrangement,ArrangementPoint,ArrangementSize,Palmtree};
+use super::dragonfly::{Arrangement,ArrangementPoint,ArrangementSize,Palmtree,new_arrangement};
 use crate::config_parser::ConfigurationValue;
 use crate::match_object_panic;
 
@@ -109,13 +109,8 @@ impl Topology for Megafly
 						group_offset: router_local,
 						port_index: port_offset,
 					};
-					let size = ArrangementSize{
-						number_of_groups: self.number_of_groups,
-						group_size: self.group_size,
-						number_of_ports: self.global_ports_per_spine,
-					};
-					assert!(size.contains(point), "arrangement point {:?} is not in range. size is {:?}",point,size);
-					let target_point = self.global_arrangement.map(size,point);
+					//assert!(size.contains(point), "arrangement point {:?} is not in range. size is {:?}",point,size);
+					let target_point = self.global_arrangement.map(point);
 					let target_global = target_point.group_index;
 					let target_local = target_point.group_offset;
 					let target_port = self.group_size + target_point.port_index;
@@ -206,22 +201,30 @@ impl Megafly
 		let mut servers_per_leaf=None;
 		let mut group_size=None;
 		let mut number_of_groups=None;
+		let mut global_arrangement=None;
 		match_object_panic!(arg.cv,"Megafly",value,
 			"global_ports_per_spine" => global_ports_per_spine=Some(value.as_f64().expect("bad value for global_ports_per_spine")as usize),
 			"servers_per_leaf" => servers_per_leaf=Some(value.as_f64().expect("bad value for servers_per_leaf")as usize),
 			"group_size" => group_size=Some(value.as_f64().expect("bad value for group_size")as usize),
 			"number_of_groups" => number_of_groups=Some(value.as_f64().expect("bad value for number_of_groups")as usize),
+			"global_arrangement" => global_arrangement=Some(new_arrangement(value.into())),
 		);
 		let global_ports_per_spine=global_ports_per_spine.expect("There were no global_ports_per_spine");
 		let servers_per_leaf=servers_per_leaf.expect("There were no servers_per_leaf");
 		let group_size=group_size.expect("There were no group_size");
 		let number_of_groups=number_of_groups.expect("There were no number_of_groups");
+		let mut global_arrangement = global_arrangement.unwrap_or_else(||Box::new(Palmtree::default()));
+		global_arrangement.initialize(ArrangementSize{
+			number_of_groups,
+			group_size,
+			number_of_ports: global_ports_per_spine,
+		},arg.rng);
 		//let group_size = 2*global_ports_per_spine;
 		//let number_of_groups = group_size*global_ports_per_spine + 1;
 		let mut topo=Megafly{
 			global_ports_per_spine,
 			servers_per_leaf,
-			global_arrangement: Box::new(Palmtree),
+			global_arrangement,
 			group_size,
 			number_of_groups,
 			distance_matrix:Matrix::constant(0,0,0),

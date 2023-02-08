@@ -820,7 +820,7 @@ pub fn new_topology(arg:TopologyBuilderArgument) -> Box<dyn Topology>
 			"Torus" => Box::new(Torus::new(arg.cv)),
 			"RandomRegularGraph" | "File" => Box::new(NeighboursLists::new_cfg(arg.cv,arg.rng)),
 			"Hamming" => Box::new(Hamming::new(arg.cv)),
-			"CanonicDragonfly" => Box::new(CanonicDragonfly::new(arg.cv)),
+			"CanonicDragonfly" => Box::new(CanonicDragonfly::new(arg)),
 			"Projective" => Box::new(Projective::new(arg)),
 			"LeviProjective" => Box::new(LeviProjective::new(arg)),
 			"SlimFly" => Box::new(SlimFly::new(arg)),

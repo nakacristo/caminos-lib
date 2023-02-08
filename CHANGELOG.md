@@ -2,6 +2,11 @@
 
 ## next [0.5.3] or greater
 
+## 2023-02-08
+Added a method `Arrangement::initialize`.
+Added `global_arrangement` configuration option to both Dragonfly and Megafly.
+implemented Random arrangement for Dragonfly and Megafly.
+
 ## 2023-02-07
 Added some iterators to Matrix.
 Adding global arrangements to Dragonfly and Dragonfly+.
