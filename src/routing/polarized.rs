@@ -111,7 +111,7 @@ impl Routing for Polarized
 		let weight:i32 = b as i32 - a as i32;
 		for port_index in 0..num_ports
 		{
-			if let (Location::RouterPort{router_index,router_port:_},link_class)=topology.neighbour(current_router,port_index)
+			if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,port_index)
 			{
 				let new_a=topology.distance(source_router,router_index);
 				let new_b=topology.distance(router_index,target_router);
