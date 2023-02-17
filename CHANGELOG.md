@@ -2,6 +2,16 @@
 
 ## next [0.5.3] or greater
 
+## 2023-02-17
+Comment out the `strong_link_classes` that was added to Polarized, as resulted not being useful.
+
+## 2023-02-15
+Documentation typo.
+
+## 2023-02-14
+Fixed a test.
+Added `strong_link_classes` field and option to Polarized routing.
+
 ## 2023-02-08
 Added a method `Arrangement::initialize`.
 Added `global_arrangement` configuration option to both Dragonfly and Megafly.

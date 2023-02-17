@@ -443,7 +443,7 @@ impl Sum
 
 ///Traffic which is another shifted by some amount of servers
 ///First check whether a transformation at the `Pattern` level is enough.
-///The server `index+shit` will be seen as just `index` by the inner traffic.
+///The server `index+shift` will be seen as just `index` by the inner traffic.
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Shifted

@@ -13,6 +13,7 @@ use std::cell::RefCell;
 use std::any::Any;
 
 use crate::routing::*;
+use crate::match_object_panic;
 
 /**
 The Polarized routing algorithm.
@@ -29,6 +30,7 @@ Polarized{
 	/// Note that mmany/most topologies benefit from using routes that have a few edges with no change to the weight.
 	/// Therefore one should expect too few routes when using this option.
 	/// Strong polarized routes have maximum length of at most 2*diameter.
+	/// Has a default value of false.
 	strong: false,
 	/// Whether to raise a panic when there are no candidates. default to true.
 	/// It is to be set to false when employing in conjunction with another routing when Polarized return an empty set of routes.
@@ -51,6 +53,9 @@ pub struct Polarized
 	/// Note that mmany/most topologies benefit from using routes that have a few edges with no change to the weight.
 	/// Therefore one should expect too few routes when using this option.
 	strong: bool,
+	// /// Similar to `strong`. A `true` value in `strong_link_classes[c]` indicates links that are considered as candidates only when the weight
+	// /// function strictly increases. If the class is out of range then it is considered false.
+	// strong_link_classes: Vec<bool>,
 	///Whether to raise a panic when there are no candidates. default to true.
 	panic_on_empty: bool,
 	enable_statistics: bool,
@@ -106,12 +111,14 @@ impl Routing for Polarized
 		let weight:i32 = b as i32 - a as i32;
 		for port_index in 0..num_ports
 		{
-			if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,port_index)
+			if let (Location::RouterPort{router_index,router_port:_},link_class)=topology.neighbour(current_router,port_index)
 			{
 				let new_a=topology.distance(source_router,router_index);
 				let new_b=topology.distance(router_index,target_router);
 				let new_weight:i32 = new_b as i32 - new_a as i32;
-				let condition = new_weight<weight || ( !self.strong && new_weight==weight && if a<b {a<new_a} else {new_b<b});
+				let condition = new_weight<weight || ( !self.strong
+					//&& self.strong_link_classes.get(link_class).map_or(true,|s|!*s)
+					&& new_weight==weight && if a<b {a<new_a} else {new_b<b} );
 				if condition
 				{
 					let label=if self.include_labels {new_weight-weight} else {0};//label in {-2,-1,0}. It is shifted later.
@@ -249,62 +256,74 @@ impl Polarized
 	{
 		let mut include_labels = None;
 		let mut strong = None;
+		//let mut strong_link_classes = None;
 		let mut panic_on_empty = true;
 		let mut enable_statistics = false;
-		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
-		{
-			if cv_name!="Polarized"
-			{
-				panic!("A Polarized must be created from a `Polarized` object not `{}`",cv_name);
-			}
-			for &(ref name,ref value) in cv_pairs
-			{
-				//match name.as_ref()
-				match AsRef::<str>::as_ref(&name)
-				{
-					//"full_probability" => match value
-					//{
-					//	&ConfigurationValue::Number(f) => full_probability=Some(f as f32),
-					//	_ => panic!("bad value for full_probability"),
-					//}
-					"include_labels" => match value
-					{
-						&ConfigurationValue::True => include_labels=Some(true),
-						&ConfigurationValue::False => include_labels=Some(false),
-						_ => panic!("bad value for include_labels"),
-					}
-					"strong" => match value
-					{
-						&ConfigurationValue::True => strong=Some(true),
-						&ConfigurationValue::False => strong=Some(false),
-						_ => panic!("bad value for strong"),
-					}
-					"panic_on_empty" => match value
-					{
-						&ConfigurationValue::True => panic_on_empty=true,
-						&ConfigurationValue::False => panic_on_empty=false,
-						_ => panic!("bad value for panic_on_empty"),
-					}
-					"enable_statistics" => match value
-					{
-						&ConfigurationValue::True => enable_statistics=true,
-						&ConfigurationValue::False => enable_statistics=false,
-						_ => panic!("bad value for enable_statistics"),
-					}
-					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in Polarized",name),
-				}
-			}
-		}
-		else
-		{
-			panic!("Trying to create a Polarized from a non-Object");
-		}
+		match_object_panic!(arg.cv,"Polarized", value,
+			"include_labels" => include_labels=Some(value.as_bool().expect("bad value for include_labels")),
+			"strong" => strong=Some(value.as_bool().expect("bad value for strong")),
+			//"strong_link_classes" => strong_link_classes=Some(value.as_array().expect("bad value for strong_link_classes").iter()
+			//	.map(|item|item.as_bool().expect("bad value for strong_link_classes")
+			//).collect()),
+			"panic_on_empty" => panic_on_empty=value.as_bool().expect("bad value for panic_on_empty"),
+			"enable_statistics" => enable_statistics=value.as_bool().expect("bad value for enable_statistics"),
+		);
+		//if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		//{
+		//	if cv_name!="Polarized"
+		//	{
+		//		panic!("A Polarized must be created from a `Polarized` object not `{}`",cv_name);
+		//	}
+		//	for &(ref name,ref value) in cv_pairs
+		//	{
+		//		//match name.as_ref()
+		//		match AsRef::<str>::as_ref(&name)
+		//		{
+		//			//"full_probability" => match value
+		//			//{
+		//			//	&ConfigurationValue::Number(f) => full_probability=Some(f as f32),
+		//			//	_ => panic!("bad value for full_probability"),
+		//			//}
+		//			"include_labels" => match value
+		//			{
+		//				&ConfigurationValue::True => include_labels=Some(true),
+		//				&ConfigurationValue::False => include_labels=Some(false),
+		//				_ => panic!("bad value for include_labels"),
+		//			}
+		//			"strong" => match value
+		//			{
+		//				&ConfigurationValue::True => strong=Some(true),
+		//				&ConfigurationValue::False => strong=Some(false),
+		//				_ => panic!("bad value for strong"),
+		//			}
+		//			"panic_on_empty" => match value
+		//			{
+		//				&ConfigurationValue::True => panic_on_empty=true,
+		//				&ConfigurationValue::False => panic_on_empty=false,
+		//				_ => panic!("bad value for panic_on_empty"),
+		//			}
+		//			"enable_statistics" => match value
+		//			{
+		//				&ConfigurationValue::True => enable_statistics=true,
+		//				&ConfigurationValue::False => enable_statistics=false,
+		//				_ => panic!("bad value for enable_statistics"),
+		//			}
+		//			"legend_name" => (),
+		//			_ => panic!("Nothing to do with field {} in Polarized",name),
+		//		}
+		//	}
+		//}
+		//else
+		//{
+		//	panic!("Trying to create a Polarized from a non-Object");
+		//}
 		let include_labels=include_labels.expect("There were no include_labels");
-		let strong=strong.expect("There were no strong");
+		let strong=strong.unwrap_or_else(||false);
+		//let strong_link_classes = strong_link_classes.unwrap_or_else(||Vec::new());
 		Polarized{
 			include_labels,
 			strong,
+			//strong_link_classes,
 			panic_on_empty,
 			enable_statistics,
 			empty_count: if enable_statistics {Some(RefCell::new(0))} else {None},

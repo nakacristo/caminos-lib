@@ -7,9 +7,13 @@ see [`new_routing`](fn.new_routing.html) for documentation on the configuration 
 
 */
 
+/// Contains Shortest, Valiant, Mindless, WeighedShortest.
 pub mod basic;
+/// Contains Sum, Stubborn, EachLengthSourceAdaptiveRouting
 pub mod extra;
+/// Contains ChannelsPerHop, ChannelsPerHopPerLinkClass, ChannelMap, AscendantChannelsWithLinkClass
 pub mod channel_operations;
+/// Contains UpDown, UpDownStar.
 pub mod updown;
 pub mod polarized;
 

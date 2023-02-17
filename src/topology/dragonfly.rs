@@ -438,15 +438,17 @@ pub fn new_arrangement(arg:ArrangementBuilderArgument) -> Box<dyn Arrangement>
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rand::SeedableRng;
 	#[test]
 	fn palmtree_valid()
 	{
 		let mut palmtree = Palmtree::default();
+		let rng = RefCell::new(StdRng::seed_from_u64(0));
 		//let size = ArrangementSize { number_of_groups: 10, group_size: 5, number_of_ports: 3 };
 		for (group_size,number_of_ports) in [(5,3), (8,4)]
 		{
 			let size = ArrangementSize { number_of_groups: group_size*number_of_ports+1, group_size, number_of_ports };
-			palmtree.initialize(size);
+			palmtree.initialize(size,&rng);
 			assert!( palmtree.is_valid(), "invalid arrangement {:?}", size );
 			let gtdm = palmtree.global_trunking_distribution();
 			assert!( *gtdm.outside_diagonal().min().unwrap() >0 , "some groups not connected {:?}",size);
