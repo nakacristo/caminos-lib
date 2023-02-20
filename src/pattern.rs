@@ -19,6 +19,12 @@ use crate::topology::{Topology,Location};
 use crate::quantify::Quantifiable;
 use crate::{Plugs,match_object_panic};
 
+/// Some things most uses of the pattern module will use.
+pub mod prelude
+{
+	pub use super::{Pattern,new_pattern,PatternBuilderArgument};
+}
+
 ///A `Pattern` describes how a set of entities decides destinations into another set of entities.
 ///The entities are initially servers, but after some operators it may mean router, rows/columns, or other agrupations.
 ///The source and target set may be or not be the same. Or even be of different size.

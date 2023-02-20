@@ -4,6 +4,10 @@
 
 ## 2023-02-20
 Merge some things from alex branch, with minor changes.
+Default `Topology::coordinated_routing_record` to unimplemented.
+Default `Topology::is_direction_change` to false.
+Added a prelude submodule to pattern.
+New meta-topology RemappedServersTopology.
 
 ## 2023-02-17
 Comment out the `strong_link_classes` that was added to Polarized, as resulted not being useful.

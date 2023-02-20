@@ -7,6 +7,7 @@ see [`new_topology`](fn.new_topology.html) for documentation on the configuratio
 
 */
 
+pub mod operations;
 pub mod cartesian;
 pub mod neighbourslists;
 pub mod dragonfly;
@@ -35,7 +36,7 @@ use crate::Plugs;
 /// Some things most uses of the topology module will use.
 pub mod prelude
 {
-	pub use super::{Topology,Location,cartesian::CartesianData,TopologyBuilderArgument};
+	pub use super::{Topology,Location,cartesian::CartesianData,TopologyBuilderArgument,new_topology};
 	pub use std::cell::{RefCell};
 	pub use ::rand::rngs::StdRng;
 }
@@ -129,11 +130,14 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 	
 	///Specific for some toologies, but must be checkable for anyone
 	fn cartesian_data(&self) -> Option<&CartesianData>;
-	///Specific for some toologies, but must be checkable for anyone
-	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], rng:Option<&RefCell<StdRng>>)->Vec<i32>;
+	///Specific for some topologies, but must be checkable for anyone
+	fn coordinated_routing_record(&self, _coordinates_a:&[usize], _coordinates_b:&[usize], _rng:Option<&RefCell<StdRng>>)->Vec<i32>
+	{
+		unimplemented!()
+	}
 	///Specific for some toologies, but must be checkable for anyone
 	/// Indicates if going from input_port to output_port implies a direction change. Used for the bubble routing.
-	fn is_direction_change(&self, router_index:usize, input_port: usize, output_port: usize) -> bool;
+	fn is_direction_change(&self, _router_index:usize, _input_port: usize, _output_port: usize) -> bool { false }
 	///For topologies containing the so called up/down paths. Other topologies should return always `None`.
 	///If the return is `Some((u,d))` it means there is an initial up sub-path of length `u` followed by a down sub-path of length `d` starting at `origin` and ending at `destination`. A return value of `None` means there is no up/down path from `origin` to `destination`.
 	///Some general guidelines, although it is not clear if they must hold always:
@@ -826,6 +830,7 @@ pub fn new_topology(arg:TopologyBuilderArgument) -> Box<dyn Topology>
 			"SlimFly" => Box::new(SlimFly::new(arg)),
 			"MultiStage" | "XGFT" | "OFT" | "RFC" => Box::new(MultiStage::new(arg)),
 			"Megafly" => Box::new(megafly::Megafly::new(arg)),
+			"RemappedServers" => Box::new(operations::RemappedServersTopology::new(arg)),
 			_ => panic!("Unknown topology {}",cv_name),
 		}
 	}
