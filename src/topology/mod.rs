@@ -809,6 +809,22 @@ RFC{
 }
 ```
 
+### Operations
+
+## RemappedServersTopology
+
+Transforms the server indices of a base topology. This does not change the indices of routers. The pattern is called once
+to generate a map from the base servers to the used indices. This resulting map must be a permutation and it would panic otherwise.
+The pattern may be the Identity for no change. A RandomPermutation is a shuffle of the server identifiers.
+
+Example configuration:
+```
+RemappedServersTopology{
+	topology: Mesh{sides:[4,4],servers_per_router:1},
+	pattern: RandomPermutation,
+}
+```
+
 */
 pub fn new_topology(arg:TopologyBuilderArgument) -> Box<dyn Topology>
 {
