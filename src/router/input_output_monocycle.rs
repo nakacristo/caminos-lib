@@ -77,7 +77,7 @@ pub struct InputOutputMonocycle
 	///The allocator for the croosbar.
 	crossbar_allocator: Box<dyn Allocator>,
 	///Use the labels provided by the routing to sort the petitions in the output arbiter.
-//	output_priorize_lowest_label: bool, // USE RandomPriorityAllocator instead of this parameter.
+	//output_priorize_lowest_label: bool, // USE RandomPriorityAllocator instead of this parameter.
 
 	//statistics:
 	///The first cycle included in the statistics.

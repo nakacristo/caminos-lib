@@ -2,6 +2,9 @@
 
 ## next [0.5.3] or greater
 
+## 2023-02-20
+Merge some things from alex branch, with minor changes.
+
 ## 2023-02-17
 Comment out the `strong_link_classes` that was added to Polarized, as resulted not being useful.
 

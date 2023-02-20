@@ -300,7 +300,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"MapEntryVC" => Box::new(MapEntryVC::new(arg)),
 			"MapMessageSize" => Box::new(MapMessageSize::new(arg)),
 			"Chain" => Box::new(Chain::new(arg)),
-			_ => panic!("Unknown traffic {}",cv_name),
+			_ => panic!("Unknown policy {}",cv_name),
 		}
 	}
 	else

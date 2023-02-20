@@ -7,7 +7,7 @@ see [`new_pattern`](fn.new_pattern.html) for documentation on the configuration 
 */
 
 use std::cell::{RefCell};
-use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom};
+use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom,SeedableRng};
 use std::fs::File;
 use std::io::{BufRead,BufReader};
 use std::ops::DerefMut;
@@ -1358,6 +1358,7 @@ pub struct FixedRandom
 {
 	map: Vec<usize>,
 	allow_self: bool,
+	opt_rng: Option<StdRng>,
 }
 
 impl Pattern for FixedRandom
@@ -1365,7 +1366,8 @@ impl Pattern for FixedRandom
 	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
 		self.map.reserve(source_size);
-		let mut rng = rng.borrow_mut();
+		let mut borrowed = rng.borrow_mut();
+		let rng= self.opt_rng.as_mut().unwrap_or(borrowed.deref_mut()); //
 		for source in 0..source_size
 		{
 			// To avoid selecting self we substract 1 from the total. If the random falls in the latter half we add it again.
@@ -1389,12 +1391,17 @@ impl FixedRandom
 	fn new(arg:PatternBuilderArgument) -> FixedRandom
 	{
 		let mut allow_self = false;
+		let mut opt_rng = None; 
 		match_object_panic!(arg.cv,"FixedRandom",value,
+			"seed" => opt_rng = Some( StdRng::seed_from_u64(
+				value.as_f64().expect("bad value for seed") as u64
+			)),
 			"allow_self" => allow_self=value.as_bool().expect("bad value for allow_self"),
 		);
 		FixedRandom{
 			map: vec![],//to be intializated
 			allow_self,
+			opt_rng,
 		}
 	}
 }
