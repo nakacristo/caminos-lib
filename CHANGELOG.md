@@ -1,6 +1,9 @@
 # Change Log
 
-## next [0.5.3] or greater
+## next [0.5.3]
+
+## 2023-02-21
+Publish 0.5.3.
 
 ## 2023-02-20
 Merge some things from alex branch, with minor changes.
