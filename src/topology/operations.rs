@@ -11,7 +11,7 @@ use quantifiable_derive::Quantifiable;//the derive macro
 Transforms the server indices of a base topology. This does not change the indices of routers.
 
 Example configuration:
-```
+```ignore
 RemappedServersTopology{
 	topology: Mesh{sides:[4,4],servers_per_router:1},
 	pattern: RandomPermutation,

@@ -99,6 +99,26 @@ UniformDistance{
 }
 ```
 
+### RestrictedMiddleUniform
+A pattern in which the destinations are randomly sampled from the destinations for which there are some middle router satisfying
+some criteria. Note this is only a pattern, the actual packet route does not have to go throught such middle router.
+It has the same implicit concentration scaling as UniformDistance, allowing building a pattern over a multiple of the number of switches.
+
+Example configuration:
+```ignore
+RestrictedMiddleUniform{
+	/// An optional integer value to allow only middle routers whose index is greater or equal to it.
+	minimum_index: 100,
+	/// An optional integer value to allow only middle routers whose index is lower or equal to it.
+	// maximum_index: 100,
+	/// Optionally, give a vector with the possible values of the distance from the source to the middle.
+	distances_to_source: [1],
+	/// Optionally, give a vector with the possible values of the distance from the middle to the destination.
+	distances_to_destination: [1],
+	/// Optionally, a vector with distances from source to destination, ignoring middle.
+	distances_source_to_destination: [2],
+}
+```
 
 ## Permutations and maps.
 Each element has a unique destination and a unique element from which it is a destination.
@@ -260,6 +280,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"UniformDistance" => Box::new(UniformDistance::new(arg)),
 			"FixedRandom" => Box::new(FixedRandom::new(arg)),
 			"IndependentRegions" => Box::new(IndependentRegions::new(arg)),
+			"RestrictedMiddleUniform" => Box::new(RestrictedMiddleUniform::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -1585,6 +1606,150 @@ impl IndependentRegions
 }
 
 
+
+/**
+A pattern in which the destinations are randomly sampled from the destinations for which there are some middle router satisfying
+some criteria. Note this is only a pattern, the actual packet route does not have to go throught such middle router.
+It has the same implicit concentration scaling as UniformDistance, allowing building a pattern over a multiple of the number of switches.
+
+Example configuration:
+```ignore
+RestrictedMiddleUniform{
+	/// An optional integer value to allow only middle routers whose index is greater or equal to it.
+	minimum_index: 100,
+	/// An optional integer value to allow only middle routers whose index is lower or equal to it.
+	// maximum_index: 100,
+	/// Optionally, give a vector with the possible values of the distance from the source to the middle.
+	distances_to_source: [1],
+	/// Optionally, give a vector with the possible values of the distance from the middle to the destination.
+	distances_to_destination: [1],
+	/// Optionally, a vector with distances from source to destination, ignoring middle.
+	distances_source_to_destination: [2],
+}
+```
+**/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct RestrictedMiddleUniform
+{
+	minimum_index: Option<usize>,
+	maximum_index: Option<usize>,
+	distances_to_source: Option<Vec<usize>>,
+	distances_to_destination: Option<Vec<usize>>,
+	distances_source_to_destination: Option<Vec<usize>>,
+	/// sources/destinations mapped to each router. An implicit product to ease the normal case.
+	concentration: usize,
+	///`pool[i]` contains the routers at `distance` from the router `i`. 
+	pool: Vec<Vec<usize>>,
+}
+
+impl Pattern for RestrictedMiddleUniform
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, _rng: &RefCell<StdRng>)
+	{
+		let n=topology.num_routers();
+		//assert!(n==source_size && n==target_size,"The RestrictedMiddleUniform pattern needs source_size({})==target_size({})==num_routers({})",source_size,target_size,n);
+		assert!(source_size==target_size,"The RestrictedMiddleUniform pattern needs source_size({})==target_size({})",source_size,target_size);
+		assert!(source_size%n == 0,"The RestrictedMiddleUniform pattern needs the number of routers({}) to be a divisor of source_size({})",n,source_size);
+		self.concentration = source_size/n;
+		self.pool.reserve(n);
+		let middle_min = self.minimum_index.unwrap_or(0);
+		let middle_max = self.maximum_index.unwrap_or_else(||n-1);
+		for source in 0..n
+		{
+			// --- There are two main ways to proceed:
+			// --- to run over the n^2 pairs of source/destination, filtering out by middle.
+			// --- to run first over possible middle switches and then over destinations. But with this destinations appear for several middles and have to be cleaned up. This way could be more efficient for small distances if employing the neighbour function.
+			//let mut found: Vec<usize> = (middle_min..=middle_max).flat_map(|&middle|{
+			//	// First check criteria between source and middle
+			//	if let Some(ref dists) = self.distances_to_source
+			//	{
+			//		let d = topology.distance(source,middle);
+			//		if !dists.contains(&d) { return vec![]; }
+			//	}
+			//	// Now look for the destinations satisfying all the criteria.
+			//	(0..n).filter(|destination|{
+			//		let mut good = true;
+			//		if let Some(ref dists) = self.distances_to_destination
+			//		{
+			//			let d = topology.distance(middle,destination);
+			//			if !dists.contains(&d) { good=false; }
+			//		}
+			//		// we would add other criteria checks here.
+			//		good
+			//	}).collect()
+			//}).collect();
+			let mut found: Vec<usize> = (0..n).filter(|&destination|{
+				for middle in middle_min..=middle_max
+				{
+					if let Some(ref dists) = self.distances_to_source
+					{
+						let d = topology.distance(source,middle);
+						if !dists.contains(&d) { continue; }
+					}
+					if let Some(ref dists) = self.distances_to_destination
+					{
+						let d = topology.distance(middle,destination);
+						if !dists.contains(&d) { continue; }
+					}
+					if let Some(ref dists) = self.distances_source_to_destination
+					{
+						let d = topology.distance(source,destination);
+						if !dists.contains(&d) { continue; }
+					}
+					return true;
+				}
+				false
+			}).collect();
+			assert!(!found.is_empty(),"RestrictedMiddleUniform: Empty set of destinations for switch {}",source);
+			found.shrink_to_fit();
+			self.pool.push(found);
+		}
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	{
+		let pool = &self.pool[origin/self.concentration];
+		let r=rng.borrow_mut().gen_range(0..pool.len());
+		pool[r]*self.concentration + (origin%self.concentration)
+	}
+}
+
+impl RestrictedMiddleUniform
+{
+	fn new(arg:PatternBuilderArgument) -> RestrictedMiddleUniform
+	{
+		let mut minimum_index = None;
+		let mut maximum_index = None;
+		let mut distances_to_source = None;
+		let mut distances_to_destination = None;
+		let mut distances_source_to_destination = None;
+		match_object_panic!(arg.cv,"RestrictedMiddleUniform",value,
+			"minimum_index" => minimum_index=Some(value.as_f64().expect("bad value for minimum_index") as usize),
+			"maximum_index" => maximum_index=Some(value.as_f64().expect("bad value for maximum_index") as usize),
+			"distances_to_source" => distances_to_source=Some(
+				value.as_array().expect("bad value for distances_to_source").iter().map(
+				|x|x.as_f64().expect("bad value for distances_to_source") as usize
+			).collect()),
+			"distances_to_destination" => distances_to_destination=Some(
+				value.as_array().expect("bad value for distances_to_destination").iter().map(
+				|x|x.as_f64().expect("bad value for distances_to_destination") as usize
+			).collect()),
+			"distances_source_to_destination" => distances_source_to_destination=Some(
+				value.as_array().expect("bad value for distances_source_to_destination").iter().map(
+				|x|x.as_f64().expect("bad value for distances_source_to_destination") as usize
+			).collect()),
+		);
+		RestrictedMiddleUniform{
+			minimum_index,
+			maximum_index,
+			distances_to_source,
+			distances_to_destination,
+			distances_source_to_destination,
+			concentration:0,//to be filled on initialization
+			pool: vec![],//to be filled oninitialization
+		}
+	}
+}
 
 
 

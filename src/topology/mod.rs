@@ -818,7 +818,7 @@ to generate a map from the base servers to the used indices. This resulting map 
 The pattern may be the Identity for no change. A RandomPermutation is a shuffle of the server identifiers.
 
 Example configuration:
-```
+```ignore
 RemappedServersTopology{
 	topology: Mesh{sides:[4,4],servers_per_router:1},
 	pattern: RandomPermutation,

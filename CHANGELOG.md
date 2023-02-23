@@ -1,52 +1,57 @@
 # Change Log
 
-## next [0.5.3]
+## next [0.5.4]
 
-## 2023-02-21
+### 2023-02-23
+New pattern RestrictedMiddleUniform.
+
+## [0.5.3]
+
+### 2023-02-21
 Publish 0.5.3.
 
-## 2023-02-20
+### 2023-02-20
 Merge some things from alex branch, with minor changes.
 Default `Topology::coordinated_routing_record` to unimplemented.
 Default `Topology::is_direction_change` to false.
 Added a prelude submodule to pattern.
 New meta-topology RemappedServersTopology.
 
-## 2023-02-17
+### 2023-02-17
 Comment out the `strong_link_classes` that was added to Polarized, as resulted not being useful.
 
-## 2023-02-15
+### 2023-02-15
 Documentation typo.
 
-## 2023-02-14
+### 2023-02-14
 Fixed a test.
 Added `strong_link_classes` field and option to Polarized routing.
 
-## 2023-02-08
+### 2023-02-08
 Added a method `Arrangement::initialize`.
 Added `global_arrangement` configuration option to both Dragonfly and Megafly.
 implemented Random arrangement for Dragonfly and Megafly.
 
-## 2023-02-07
+### 2023-02-07
 Added some iterators to Matrix.
 Adding global arrangements to Dragonfly and Dragonfly+.
 Megafly is now operative.
 
-## 2023-02-06
+### 2023-02-06
 Added Quantifiable to StdRng to ease adding local seeds.
 Work on the Dragonfly+ (Megafly).
 Some improvements on Dragonfly documentation.
 
-## 2023-02-03
+### 2023-02-03
 Fix the alternative of `relative_sizes` in the pattern IndependentRegions.
 Auxiliar function `pattern::proportional_vec_with_sum`.
 Added file megafly.rs.
 
-## 2023-01-31
+### 2023-01-31
 Documentation fix.
 New meta-pattern IndependentRegions.
 
-## 2023-01-28
+### 2023-01-28
 Documentation fix.
 
 ## [0.5.2]
