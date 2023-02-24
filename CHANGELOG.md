@@ -5,6 +5,7 @@
 ### 2023-02-24
 Merged a little from alex into multistage.
 Added else clause to RestrictedMiddleUniform.
+Fixed plot-point-eating bug.
 
 ### 2023-02-23
 New pattern RestrictedMiddleUniform.

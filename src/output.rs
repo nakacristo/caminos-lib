@@ -1036,7 +1036,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 	//while index<averaged.len()
 	//let mut figure_index=0;
 	let mut all_git_ids: HashSet<String> = HashSet::new();
-	let mut offsets:Vec<usize>=(0..kind.len()).collect();//to keep track of the offset as progressing in selectors.
+	let mut offsets:Vec<usize>=vec![0;kind.len()];//to keep track of the offset as progressing in selectors.
 	let tmp_path=root.join("tikz_tmp");
 	// latex_jobs=[(X,Y)], where Y should be regenerated if X changes.
 	let mut latex_jobs : Vec<(PathBuf,PathBuf,String)> = vec![];

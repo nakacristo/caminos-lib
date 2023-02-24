@@ -809,9 +809,9 @@ RFC{
 }
 ```
 
-### Operations
+## Operations
 
-## RemappedServersTopology
+### RemappedServersTopology
 
 Transforms the server indices of a base topology. This does not change the indices of routers. The pattern is called once
 to generate a map from the base servers to the used indices. This resulting map must be a permutation and it would panic otherwise.
