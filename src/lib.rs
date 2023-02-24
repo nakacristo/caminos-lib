@@ -625,6 +625,8 @@ pub struct Simulation<'a>
 	pub launch_configurations: Vec<ConfigurationValue>,
 	///Plugged functions to build traffics, routers, etc.
 	pub plugs: &'a Plugs,
+	///Number of cycles to wait between reports of memory usage.
+	pub memory_report_period: Option<usize>,
 }
 
 impl<'a> Simulation<'a>
@@ -646,6 +648,7 @@ impl<'a> Simulation<'a>
 		let mut statistics_packet_percentiles: Vec<u8> = vec![];
 		let mut statistics_packet_definitions:Vec< (Vec<Expr>,Vec<Expr>) > = vec![];
 		let mut server_queue_size = None;
+		let mut memory_report_period = None;
 		match_object_panic!(cv,"Configuration",value,
 			"random_seed" => seed=Some(value.as_f64().expect("bad value for random_seed") as usize),
 			"warmup" => warmup=Some(value.as_f64().expect("bad value for warmup") as usize),
@@ -696,6 +699,7 @@ impl<'a> Simulation<'a>
 				}).collect(),
 				_ => panic!("bad value for statistics_packet_definitions"),
 			}
+			"memory_report_period" => memory_report_period=Some(value.as_f64().expect("bad value for memory_report_period") as usize),
 		);
 		let seed=seed.expect("There were no random_seed");
 		let warmup=warmup.expect("There were no warmup");
@@ -790,6 +794,7 @@ impl<'a> Simulation<'a>
 			statistics,
 			launch_configurations,
 			plugs,
+			memory_report_period,
 		}
 	}
 	///Run the simulations until it finishes.
@@ -1102,17 +1107,19 @@ impl<'a> Simulation<'a>
 			}
 		}
 		//println!("Done generation");
-		//if self.cycle%1000==999
-		//{
-		//	self.print_memory_breakdown();
-		//}
 		self.event_queue.advance();
 		self.cycle+=1;
 		if self.cycle%1000==0
 		{
 			//println!("Statistics up to cycle {}: {:?}",self.cycle,self.statistics);
 			self.statistics.print(self.cycle,&self.network);
-			//self.print_memory_breakdown();
+		}
+		if let Some(period) = self.memory_report_period
+		{
+			if self.cycle % period == 0
+			{
+				self.print_memory_breakdown();
+			}
 		}
 	}
 	///Write the result of the simulation somewhere, typically to a 'result' file in a 'run*' directory.
@@ -1342,7 +1349,7 @@ impl<'a> Quantifiable for Simulation<'a>
 	}
 	fn print_memory_breakdown(&self)
 	{
-		println!("\nBegin memory report");
+		println!("\nBegin memory report at cycle {}",self.cycle);
 		println!("self : {}",size_of::<Self>());
 		//println!("phits on statistics : {}",self.statistics.created_phits-self.statistics.consumed_phits);
 		println!("phit : {}",size_of::<Phit>());
