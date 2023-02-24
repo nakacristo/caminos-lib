@@ -96,7 +96,7 @@ impl ServerStatistics
 			m.consumed_messages+=1;
 		}
 	}
-	/// Called each time the server consumes a phit.
+	/// Called each time the server creates a phit.
 	pub fn track_created_phit(&mut self, cycle:usize)
 	{
 		self.current_measurement.created_phits+=1;

@@ -1096,7 +1096,7 @@ impl<'a> Simulation<'a>
 							self.statistics.track_created_phit(self.cycle);
 							server.statistics.track_created_phit(self.cycle);
 							self.event_queue.enqueue_begin(event,self.link_classes[link_class].delay);
-							server.router_status.notify_outcoming_phit(0,self.cycle);
+							server.router_status.notify_outcoming_phit(vc,self.cycle);
 						}
 					}
 				}

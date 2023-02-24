@@ -7,6 +7,7 @@ Merged a little from alex into multistage.
 Added else clause to RestrictedMiddleUniform.
 Fixed plot-point-eating bug.
 Added configuration option `memory_report_period`.
+Fixed vc of injection.
 
 ### 2023-02-23
 New pattern RestrictedMiddleUniform.
