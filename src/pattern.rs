@@ -117,6 +117,8 @@ RestrictedMiddleUniform{
 	distances_to_destination: [1],
 	/// Optionally, a vector with distances from source to destination, ignoring middle.
 	distances_source_to_destination: [2],
+	/// Optionally, set a pattern for those sources with no legal destination.
+	else: Uniform,
 }
 ```
 
@@ -1625,6 +1627,8 @@ RestrictedMiddleUniform{
 	distances_to_destination: [1],
 	/// Optionally, a vector with distances from source to destination, ignoring middle.
 	distances_source_to_destination: [2],
+	/// Optionally, set a pattern for those sources with no legal destination.
+	else: Uniform,
 }
 ```
 **/
@@ -1637,6 +1641,7 @@ pub struct RestrictedMiddleUniform
 	distances_to_source: Option<Vec<usize>>,
 	distances_to_destination: Option<Vec<usize>>,
 	distances_source_to_destination: Option<Vec<usize>>,
+	else_pattern: Option<Box<dyn Pattern>>,
 	/// sources/destinations mapped to each router. An implicit product to ease the normal case.
 	concentration: usize,
 	///`pool[i]` contains the routers at `distance` from the router `i`. 
@@ -1645,7 +1650,7 @@ pub struct RestrictedMiddleUniform
 
 impl Pattern for RestrictedMiddleUniform
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
 		let n=topology.num_routers();
 		//assert!(n==source_size && n==target_size,"The RestrictedMiddleUniform pattern needs source_size({})==target_size({})==num_routers({})",source_size,target_size,n);
@@ -1701,16 +1706,26 @@ impl Pattern for RestrictedMiddleUniform
 				}
 				false
 			}).collect();
-			assert!(!found.is_empty(),"RestrictedMiddleUniform: Empty set of destinations for switch {}",source);
+			if self.else_pattern.is_none(){
+				assert!(!found.is_empty(),"RestrictedMiddleUniform: Empty set of destinations for switch {} and there is no else clause set.",source);
+			}
 			found.shrink_to_fit();
 			self.pool.push(found);
 		}
+		if let Some(ref mut pat) = self.else_pattern
+		{
+			pat.initialize(source_size,target_size,topology,rng);
+		}
 	}
-	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
 	{
 		let pool = &self.pool[origin/self.concentration];
-		let r=rng.borrow_mut().gen_range(0..pool.len());
-		pool[r]*self.concentration + (origin%self.concentration)
+		if pool.is_empty() {
+			self.else_pattern.as_ref().expect("else clause should be set").get_destination(origin,topology,rng)
+		} else {
+			let r=rng.borrow_mut().gen_range(0..pool.len());
+			pool[r]*self.concentration + (origin%self.concentration)
+		}
 	}
 }
 
@@ -1723,6 +1738,7 @@ impl RestrictedMiddleUniform
 		let mut distances_to_source = None;
 		let mut distances_to_destination = None;
 		let mut distances_source_to_destination = None;
+		let mut else_pattern = None;
 		match_object_panic!(arg.cv,"RestrictedMiddleUniform",value,
 			"minimum_index" => minimum_index=Some(value.as_f64().expect("bad value for minimum_index") as usize),
 			"maximum_index" => maximum_index=Some(value.as_f64().expect("bad value for maximum_index") as usize),
@@ -1738,6 +1754,7 @@ impl RestrictedMiddleUniform
 				value.as_array().expect("bad value for distances_source_to_destination").iter().map(
 				|x|x.as_f64().expect("bad value for distances_source_to_destination") as usize
 			).collect()),
+			"else" => else_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
 		);
 		RestrictedMiddleUniform{
 			minimum_index,
@@ -1745,6 +1762,7 @@ impl RestrictedMiddleUniform
 			distances_to_source,
 			distances_to_destination,
 			distances_source_to_destination,
+			else_pattern,
 			concentration:0,//to be filled on initialization
 			pool: vec![],//to be filled oninitialization
 		}

@@ -2,6 +2,10 @@
 
 ## next [0.5.4]
 
+### 2023-02-24
+Merged a little from alex into multistage.
+Added else clause to RestrictedMiddleUniform.
+
 ### 2023-02-23
 New pattern RestrictedMiddleUniform.
 
