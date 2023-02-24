@@ -686,12 +686,12 @@ impl WidenedStage
 pub struct MultiStage
 {
 	//defining:
-	stages: Vec<Box<dyn Stage>>,
-	servers_per_leaf: usize,
+	pub stages: Vec<Box<dyn Stage>>,
+	pub servers_per_leaf: usize,
 	//computed:
-	routers_per_level: Vec<usize>,
+	pub routers_per_level: Vec<usize>,
 	total_routers: usize,
-	group_sizes: Vec<usize>,
+	pub group_sizes: Vec<usize>,
 	//up_distances: Vec<Vec<Option<usize>>>,
 	//up_down_distances: Vec<Vec<Option<usize>>>,
 	//up_down_distances: Vec<Vec<Option<(usize,usize)>>>,
@@ -751,7 +751,19 @@ impl Topology for MultiStage
 	}
 	fn diameter(&self) -> usize
 	{
-		todo!()
+		let mut diameter = 0;
+		for i in 0..self.routers_per_level[0]
+		{
+			for z in 0..self.routers_per_level[0]
+			{
+				let distance = *self.flat_distance_matrix.get(i,z);
+				if diameter < distance
+				{
+					diameter = distance;
+				}
+			}
+		}
+		diameter.into()
 	}
 	fn distance(&self,origin:usize,destination:usize) -> usize
 	{
@@ -760,9 +772,20 @@ impl Topology for MultiStage
 		//self.up_down_distances[origin][destination].unwrap_or_else(||panic!("there is no up/down path among those routers: {} to {}",origin,destination))
 		(*self.flat_distance_matrix.get(origin,destination)).into()
 	}
-	fn amount_shortest_paths(&self,_origin:usize,_destination:usize) -> usize
+	fn amount_shortest_paths(&self, origin:usize, destination:usize) -> usize
 	{
-		todo!()
+		//todo!()
+		let minimal_distance = (*self).distance(origin, destination);
+		let mut n_paths = 0;
+
+		for i in 0..self.total_routers
+		{
+			if (*self).distance(i, destination) < minimal_distance && (*self).distance(i, origin) == 1
+			{
+				n_paths += 1;
+			}
+		}
+		n_paths
 	}
 	fn average_amount_shortest_paths(&self) -> f32
 	{
@@ -953,7 +976,7 @@ impl MultiStage
 	///Unpacks a router giving the level (by index) and its position in that stage.
 	///Only valid when routers_per_level has been already computed.
 	///It is the inverse of `pack`.
-	fn unpack(&self, router:usize) -> (usize,usize)
+	pub fn unpack(&self, router:usize) -> (usize,usize)
 	{
 		let mut level_index=0;
 		let mut offset=router;
@@ -966,7 +989,7 @@ impl MultiStage
 	}
 	///Return the router index giving its level (distance to a leaf) and offset (poisition in such level).
 	///It is the inverse of `unpack`.
-	fn pack(&self, level_index:usize, offset:usize) -> usize
+	pub fn pack(&self, level_index:usize, offset:usize) -> usize
 	{
 		offset + self.routers_per_level.iter().take(level_index).sum::<usize>()
 	}
