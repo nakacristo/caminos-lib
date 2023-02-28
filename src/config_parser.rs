@@ -3,7 +3,8 @@ use std::cmp::Ordering;
 use self::gramatica::{Associativity,EarleyKind,State,Parser,ParsingTablesTrait,ParsingError};
 use std::rc::Rc;
 use std::fmt::{Display,Formatter,Error};
-#[derive(Clone,Debug,PartialEq,PartialOrd)]
+use crate::Quantifiable;
+#[derive(Clone,Debug,PartialEq,PartialOrd,Quantifiable)]
 pub enum ConfigurationValue{
 Literal(String),
 Number(f64),
@@ -72,7 +73,7 @@ self.write(f,0)}
 
 }
 
-#[derive(Clone,Debug,PartialEq,PartialOrd)]
+#[derive(Clone,Debug,PartialEq,PartialOrd,Quantifiable)]
 pub enum Expr{
 Equality(Rc<Expr>,Rc<Expr>),
 Literal(String),

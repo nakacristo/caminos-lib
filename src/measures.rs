@@ -142,7 +142,7 @@ impl ServerStatistics
 
 
 ///Statistics captured for each link.
-#[derive(Debug)]
+#[derive(Debug,Quantifiable)]
 pub struct LinkStatistics
 {
 	pub phit_arrivals: usize,
@@ -163,7 +163,7 @@ impl LinkStatistics
 }
 
 ///default() generates an empty measurement, invoked on each reset. `begin_cycle` must be set on resets.
-#[derive(Debug,Default)]
+#[derive(Debug,Default,Quantifiable)]
 pub struct StatisticMeasurement
 {
 	///The number of the first cycle included in the statistics.
@@ -247,7 +247,7 @@ pub fn jain<I:Iterator<Item=f64>>(iter:I) -> f64
 }
 
 
-#[derive(Debug)]
+#[derive(Debug,Quantifiable)]
 pub struct StatisticPacketMeasurement
 {
 	///The cycle in which the packet was consumed, including its tail phit.
@@ -259,7 +259,7 @@ pub struct StatisticPacketMeasurement
 }
 
 ///All the global statistics captured.
-#[derive(Debug)]
+#[derive(Debug,Quantifiable)]
 pub struct Statistics
 {
 	//The stored path is used for some calls to `config::evaluate`.
@@ -539,7 +539,7 @@ impl Statistics
 }
 
 ///The available statistical columns. Each column has a string for the header and a way to compute what to print each period.
-#[derive(Debug)]
+#[derive(Debug,Quantifiable)]
 #[allow(dead_code)]
 enum ReportColumnKind
 {
@@ -576,7 +576,7 @@ impl ReportColumnKind
 }
 
 ///A statistical column with extra formatting information.
-#[derive(Debug)]
+#[derive(Debug,Quantifiable)]
 pub struct ReportColumn
 {
 	kind: ReportColumnKind,

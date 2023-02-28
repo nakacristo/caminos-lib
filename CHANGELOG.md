@@ -1,5 +1,11 @@
 # Change Log
 
+## next  [0.5.5]
+
+### 2023-02-28
+Added kernel info to memory report.
+Added Quantifiable to more types.
+
 ## [0.5.4]
 
 ### 2023-02-24

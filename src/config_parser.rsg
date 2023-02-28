@@ -7,9 +7,9 @@ use self::gramatica::{Associativity,EarleyKind,State,Parser,ParsingTablesTrait,P
 
 use std::rc::Rc;
 use std::fmt::{Display,Formatter,Error};
+use crate::Quantifiable;
 
-#[derive(Clone,Debug,PartialEq,PartialOrd)]
-//FIXME: we need support in `gramatica` for `pub`.
+#[derive(Clone,Debug,PartialEq,PartialOrd,Quantifiable)]
 pub enum ConfigurationValue
 {
 	Literal(String),
@@ -85,7 +85,7 @@ impl Display for ConfigurationValue
 	}
 }
 
-#[derive(Clone,Debug,PartialEq,PartialOrd)]
+#[derive(Clone,Debug,PartialEq,PartialOrd,Quantifiable)]
 pub enum Expr
 {
 	Equality(Rc<Expr>,Rc<Expr>),

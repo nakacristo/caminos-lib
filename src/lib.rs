@@ -1350,21 +1350,38 @@ impl<'a> Quantifiable for Simulation<'a>
 	fn print_memory_breakdown(&self)
 	{
 		println!("\nBegin memory report at cycle {}",self.cycle);
-		println!("self : {}",size_of::<Self>());
+		println!("Kernel report:");
+		if let Ok(linux_process) = procfs::process::Process::myself()
+		{
+			let status = linux_process.status().expect("failed to get status of the self process");
+			if let Some(peak_memory)=status.vmhwm
+			{
+				// received in kibibytes
+				println!("\tpeak resident size (high water mark): {}",quantify::human_bytes(peak_memory as usize * 1024));
+			}
+			let stat = linux_process.stat().expect("failed to get stat of the self process");
+			let tps = procfs::ticks_per_second().expect("could not get the number of ticks per second.") as f64;
+			println!("\tuser time in seconds: {}",stat.utime as f64/tps);
+			println!("\tsystem time in seconds: {}",stat.stime as f64/tps);
+		}
+		println!("Size in bytes of each small structure:");
+		println!("\tself : {}",size_of::<Self>());
 		//println!("phits on statistics : {}",self.statistics.created_phits-self.statistics.consumed_phits);
-		println!("phit : {}",size_of::<Phit>());
-		println!("packet : {}",size_of::<Packet>());
-		println!("message : {}",size_of::<Message>());
+		println!("\tphit : {}",size_of::<Phit>());
+		println!("\tpacket : {}",size_of::<Packet>());
+		println!("\tmessage : {}",size_of::<Message>());
 		//println!("topology : {}",size_of::<dyn Topology>());
 		//println!("router : {}",size_of::<dyn Router>());
-		println!("server : {}",size_of::<Server>());
-		println!("event : {}",size_of::<Event>());
+		println!("\tserver : {}",size_of::<Server>());
+		println!("\tevent : {}",size_of::<Event>());
 		//self.event_queue.print_memory();
-		println!("network total : {}",quantify::human_bytes(self.network.total_memory()));
-		println!("traffic total : {}",quantify::human_bytes(self.traffic.total_memory()));
-		println!("event_queue total : {}",quantify::human_bytes(self.event_queue.total_memory()));
-		//println!("topology total : {}",quantify::human_bytes(self.network.topology.total_memory()));
-		println!("End memory report\n");
+		println!("Tracked memory:");
+		println!("\tnetwork total : {}",quantify::human_bytes(self.network.total_memory()));
+		println!("\ttraffic total : {}",quantify::human_bytes(self.traffic.total_memory()));
+		println!("\tevent_queue total : {}",quantify::human_bytes(self.event_queue.total_memory()));
+		//println!("\trouting total : {}",quantify::human_bytes(self.routing.total_memory()));
+		println!("\tstatistics total : {}",quantify::human_bytes(self.statistics.total_memory()));
+		println!("End of memory report\n");
 	}
 	fn forecast_total_memory(&self) -> usize
 	{
