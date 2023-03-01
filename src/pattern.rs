@@ -90,11 +90,17 @@ GroupShufflingDestinations{
 
 ### UniformDistance
 
-Each message gets its destination uniformly random among the servers attached to neighbour routers.
+Each message gets its destination sampled uniformly at random among the servers attached to neighbour routers.
+It may build a pattern either of servers or switches, controlled through the `switch_level` configuration flag.
+This pattern autoscales if requested a size multiple of the network size.
 
+Example configuration:
 ```ignore
 UniformDistance{
+	///The distance at which the destination must be from the source.
 	distance: 1,
+	/// Optionally build the pattern at the switches. This should be irrelevant at direct network with the same number of servers per switch.
+	//switch_level: true,
 	legend_name: "uniform among neighbours",
 }
 ```
