@@ -2,6 +2,9 @@
 
 ## next  [0.5.5]
 
+### 2023-03-01
+Updated the UniformDistance and RestrictedMiddleUniform to be sensible on indirect networks.
+
 ### 2023-02-28
 Added kernel info to memory report.
 Added Quantifiable to more types.

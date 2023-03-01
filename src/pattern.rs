@@ -1324,13 +1324,31 @@ impl GroupShufflingDestinations
 }
 
 
+/**
+Each message gets its destination sampled uniformly at random among the servers attached to neighbour routers.
+It may build a pattern either of servers or switches, controlled through the `switch_level` configuration flag.
+This pattern autoscales if requested a size multiple of the network size.
+
+Example configuration:
+```ignore
+UniformDistance{
+	///The distance at which the destination must be from the source.
+	distance: 1,
+	/// Optionally build the pattern at the switches. This should be irrelevant at direct network with the same number of servers per switch.
+	//switch_level: true,
+	legend_name: "uniform among neighbours",
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct UniformDistance
 {
 	///Distance to which destinations must chosen.
 	distance: usize,
-	///sources/destinations mapped to each router.
+	///Whether the pattern is defined at the switches, or otherwise, at the servers.
+	switch_level: bool,
+	///sources/destinations mapped to each router/server (depending on `switch_level`).
 	concentration: usize,
 	///`pool[i]` contains the routers at `distance` from the router `i`. 
 	pool: Vec<Vec<usize>>,
@@ -1340,15 +1358,35 @@ impl Pattern for UniformDistance
 {
 	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, _rng: &RefCell<StdRng>)
 	{
-		let n=topology.num_routers();
+		let n= if self.switch_level { topology.num_routers() } else { topology.num_servers() };
 		//assert!(n==source_size && n==target_size,"The UniformDistance pattern needs source_size({})==target_size({})==num_routers({})",source_size,target_size,n);
 		assert!(source_size==target_size,"The UniformDistance pattern needs source_size({})==target_size({})",source_size,target_size);
-		assert!(source_size%n == 0,"The UniformDistance pattern needs the number of routers({}) to be a divisor of source_size({})",n,source_size);
+		assert!(source_size%n == 0,"The UniformDistance pattern needs the number of {}({}) to be a divisor of source_size({})",if self.switch_level { "routers" } else { "servers" },n,source_size);
 		self.concentration = source_size/n;
 		self.pool.reserve(n);
 		for i in 0..n
 		{
-			let mut found: Vec<usize> = (0..n).filter(|&j|topology.distance(i,j)==self.distance).collect();
+			let source = if self.switch_level { i } else {
+				match topology.server_neighbour(i).0 {
+					Location::RouterPort{
+						router_index,
+						router_port:_,
+					} => router_index,
+					_ => panic!("unconnected server"),
+				}
+			};
+			let mut found: Vec<usize> = (0..n).filter(|&j|{
+				let destination = if self.switch_level { j } else {
+					match topology.server_neighbour(j).0 {
+						Location::RouterPort{
+							router_index,
+							router_port:_,
+						} => router_index,
+						_ => panic!("unconnected server"),
+					}
+				};
+				topology.distance(source,destination)==self.distance
+			}).collect();
 			found.shrink_to_fit();
 			self.pool.push(found);
 		}
@@ -1366,12 +1404,15 @@ impl UniformDistance
 	fn new(arg:PatternBuilderArgument) -> UniformDistance
 	{
 		let mut distance =  None;
+		let mut switch_level =  false;
 		match_object_panic!(arg.cv,"UniformDistance",value,
 			"distance" => distance=Some(value.as_f64().expect("bad value for distance") as usize),
+			"switch_level" => switch_level = value.as_bool().expect("bad value for switch_level"),
 		);
 		let distance = distance.expect("There were no distance");
 		UniformDistance{
 			distance,
+			switch_level,
 			concentration:0,//to be filled on initialization
 			pool: vec![],//to be filled oninitialization
 		}
@@ -1642,6 +1683,8 @@ pub struct RestrictedMiddleUniform
 	distances_to_destination: Option<Vec<usize>>,
 	distances_source_to_destination: Option<Vec<usize>>,
 	else_pattern: Option<Box<dyn Pattern>>,
+	///Whether the pattern is defined at the switches, or otherwise, at the servers.
+	switch_level: bool,
 	/// sources/destinations mapped to each router. An implicit product to ease the normal case.
 	concentration: usize,
 	///`pool[i]` contains the routers at `distance` from the router `i`. 
@@ -1652,16 +1695,25 @@ impl Pattern for RestrictedMiddleUniform
 {
 	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
 	{
-		let n=topology.num_routers();
+		let n= if self.switch_level { topology.num_routers() } else { topology.num_servers() };
 		//assert!(n==source_size && n==target_size,"The RestrictedMiddleUniform pattern needs source_size({})==target_size({})==num_routers({})",source_size,target_size,n);
 		assert!(source_size==target_size,"The RestrictedMiddleUniform pattern needs source_size({})==target_size({})",source_size,target_size);
-		assert!(source_size%n == 0,"The RestrictedMiddleUniform pattern needs the number of routers({}) to be a divisor of source_size({})",n,source_size);
+		assert!(source_size%n == 0,"The RestrictedMiddleUniform pattern needs the number of {}({}) to be a divisor of source_size({})",if self.switch_level { "routers" } else { "servers" },n,source_size);
 		self.concentration = source_size/n;
 		self.pool.reserve(n);
 		let middle_min = self.minimum_index.unwrap_or(0);
-		let middle_max = self.maximum_index.unwrap_or_else(||n-1);
+		let middle_max = self.maximum_index.unwrap_or_else(||topology.num_routers()-1);
 		for source in 0..n
 		{
+			let source_switch = if self.switch_level { source } else {
+				match topology.server_neighbour(source).0 {
+					Location::RouterPort{
+						router_index,
+						router_port:_,
+					} => router_index,
+					_ => panic!("unconnected server"),
+				}
+			};
 			// --- There are two main ways to proceed:
 			// --- to run over the n^2 pairs of source/destination, filtering out by middle.
 			// --- to run first over possible middle switches and then over destinations. But with this destinations appear for several middles and have to be cleaned up. This way could be more efficient for small distances if employing the neighbour function.
@@ -1685,21 +1737,30 @@ impl Pattern for RestrictedMiddleUniform
 			//	}).collect()
 			//}).collect();
 			let mut found: Vec<usize> = (0..n).filter(|&destination|{
+				let destination_switch = if self.switch_level { destination } else {
+					match topology.server_neighbour(destination).0 {
+						Location::RouterPort{
+							router_index,
+							router_port:_,
+						} => router_index,
+						_ => panic!("unconnected server"),
+					}
+				};
 				for middle in middle_min..=middle_max
 				{
 					if let Some(ref dists) = self.distances_to_source
 					{
-						let d = topology.distance(source,middle);
+						let d = topology.distance(source_switch,middle);
 						if !dists.contains(&d) { continue; }
 					}
 					if let Some(ref dists) = self.distances_to_destination
 					{
-						let d = topology.distance(middle,destination);
+						let d = topology.distance(middle,destination_switch);
 						if !dists.contains(&d) { continue; }
 					}
 					if let Some(ref dists) = self.distances_source_to_destination
 					{
-						let d = topology.distance(source,destination);
+						let d = topology.distance(source_switch,destination_switch);
 						if !dists.contains(&d) { continue; }
 					}
 					return true;
@@ -1707,7 +1768,7 @@ impl Pattern for RestrictedMiddleUniform
 				false
 			}).collect();
 			if self.else_pattern.is_none(){
-				assert!(!found.is_empty(),"RestrictedMiddleUniform: Empty set of destinations for switch {} and there is no else clause set.",source);
+				assert!(!found.is_empty(),"RestrictedMiddleUniform: Empty set of destinations for switch {} and there is no else clause set.",source_switch);
 			}
 			found.shrink_to_fit();
 			self.pool.push(found);
@@ -1739,6 +1800,7 @@ impl RestrictedMiddleUniform
 		let mut distances_to_destination = None;
 		let mut distances_source_to_destination = None;
 		let mut else_pattern = None;
+		let mut switch_level =  false;
 		match_object_panic!(arg.cv,"RestrictedMiddleUniform",value,
 			"minimum_index" => minimum_index=Some(value.as_f64().expect("bad value for minimum_index") as usize),
 			"maximum_index" => maximum_index=Some(value.as_f64().expect("bad value for maximum_index") as usize),
@@ -1755,6 +1817,7 @@ impl RestrictedMiddleUniform
 				|x|x.as_f64().expect("bad value for distances_source_to_destination") as usize
 			).collect()),
 			"else" => else_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+			"switch_level" => switch_level = value.as_bool().expect("bad value for switch_level"),
 		);
 		RestrictedMiddleUniform{
 			minimum_index,
@@ -1763,6 +1826,7 @@ impl RestrictedMiddleUniform
 			distances_to_destination,
 			distances_source_to_destination,
 			else_pattern,
+			switch_level,
 			concentration:0,//to be filled on initialization
 			pool: vec![],//to be filled oninitialization
 		}
