@@ -268,6 +268,25 @@ MapHop
 }
 ```
 
+### VOQ
+
+Employ a different VC (or policy) to each destination.
+
+Example configuration:
+```ignore
+VOQ{
+	/// Optionally set a number of VCs to use in this policy. By default it uses a VC per destination node.
+	/// Packets to destination `dest` will use VC number `(dest % num_classes) + start_virtual_channel`.
+	//num_classes: 4,
+	/// Optionally, use the index of the destination switch instead of the destinaton server.
+	switch_level: true,
+	/// Optionally, give specific policies for matching indices instead of just just such index as VC.
+	/// If this example had `num_classes=2`, then it would use the Identity policy for even destinations and the Hops policy for odd destinations.
+	/// It can be though as having a default of infinte array full of ArgumentVC whose argument equal to the array index.
+	// policies_override: [Identity,Hops],
+}
+```
+
 */
 pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn VirtualChannelPolicy>
 {
@@ -300,6 +319,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"MapEntryVC" => Box::new(MapEntryVC::new(arg)),
 			"MapMessageSize" => Box::new(MapMessageSize::new(arg)),
 			"Chain" => Box::new(Chain::new(arg)),
+			"VOQ" => Box::new(VOQ::new(arg)),
 			_ => panic!("Unknown policy {}",cv_name),
 		}
 	}
@@ -1786,4 +1806,114 @@ impl Chain
 		}
 	}
 }
+
+
+/**
+Employ a different VC (or policy) to each destination.
+
+Example configuration:
+```ignore
+VOQ{
+	/// Optionally set a number of VCs to use in this policy. By default it uses a VC per destination node.
+	/// Packets to destination `dest` will use VC number `(dest % num_classes) + start_virtual_channel`.
+	//num_classes: 4,
+	/// Optionally, use the index of the destination switch instead of the destinaton server.
+	switch_level: true,
+	/// Optionally, give specific policies for matching indices instead of just just such index as VC.
+	/// If this example had `num_classes=2`, then it would use the Identity policy for even destinations and the Hops policy for odd destinations.
+	/// It can be though as having a default of infinte array full of ArgumentVC whose argument equal to the array index.
+	// policies_override: [Identity,Hops],
+}
+```
+**/
+#[derive(Debug)]
+pub struct VOQ
+{
+	/// Optionally set a number of VCs to use in this policy. By default it uses a VC per destination node.
+	/// Packets to destination `dest` will use VC number `(dest % num_classes) + start_virtual_channel`.
+	num_classes: Option<usize>,
+	/// Whether to index by target switch instead of target server.
+	switch_level: bool,
+	/// The channel to be use for the destination 0.
+	start_virtual_channel: usize,
+	/// Whether to use use a specific policy for matching indices instead of just just such index as VC.
+	/// For example with `num_classes=2` it will use one policy for even destinations and other for odd destinations.
+	policies_override: Vec<Box<dyn VirtualChannelPolicy>>,
+}
+
+impl VirtualChannelPolicy for VOQ
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	{
+		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy VOQ");
+		if router.get_index().expect("we need routers with index") == info.target_router_index
+		{
+			//do nothing
+			candidates
+		}
+		else
+		{
+			let destination = if self.switch_level { info.target_router_index  } else { info.phit.packet.message.destination };
+			let index = match self.num_classes
+			{
+				None => destination,
+				Some(n) => destination % n,
+			};
+			if index < self.policies_override.len() {
+				self.policies_override[index].filter(candidates,router,info,topology,rng)
+			} else {
+				let vc = index + self.start_virtual_channel;
+				candidates.into_iter().filter(
+					|&CandidateEgress{port:_,virtual_channel,label:_,estimated_remaining_hops:_,..}| vc==virtual_channel
+				).collect::<Vec<_>>()
+			}
+		}
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+}
+
+impl VOQ
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> VOQ
+	{
+		let mut num_classes = None;
+		let mut switch_level = false;
+		let mut start_virtual_channel = 0;
+		let mut policies_override=vec![];
+		match_object_panic!(arg.cv,"VOQ",value,
+			"num_classes" => num_classes = Some(value.as_usize().expect("bad value for num_classes")),
+			"switch_level" => switch_level = value.as_bool().expect("bad value for switch_level"),
+			"start_virtual_channel" => start_virtual_channel = value.as_usize().expect("bad value for start_virtual_channel"),
+			"policies_override" => policies_override=value.as_array().expect("bad value for policies_override").iter()
+				.map(|v|new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg})).collect(),
+		);
+		VOQ{
+			num_classes,
+			switch_level,
+			start_virtual_channel,
+			policies_override,
+		}
+	}
+}
+
+
+
+
+
+
+
 

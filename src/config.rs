@@ -1720,6 +1720,26 @@ impl ConfigurationValue
 			_ => Err(error!(ill_formed_configuration, self.clone() )),
 		}
 	}
+	pub fn as_usize(&self) -> Result<usize,Error>
+	{
+		match self
+		{
+			&ConfigurationValue::Number(x) =>{
+				let res =  x as usize;
+				// Casting from a float to an integer will round the float towards zero
+				// overflows and underflows will saturate
+				// Casting from an integer to float will produce the closest possible float
+				let y = res as f64;
+				let tolerance = 1e-5;
+				if x-y > tolerance || x-y < -tolerance {
+					Err(error!(ill_formed_configuration, self.clone()))
+				} else {
+					Ok( res )
+				}
+			},
+			_ => Err(error!(ill_formed_configuration, self.clone() )),
+		}
+	}
 	pub fn as_array(&self) -> Result<&Vec<ConfigurationValue>,Error>
 	{
 		match self

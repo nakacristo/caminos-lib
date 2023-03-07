@@ -2,6 +2,10 @@
 
 ## next  [0.5.5]
 
+### 2023-03-02
+Added `ConfigurationValue::as_usize`.
+New policy VOQ.
+
 ### 2023-03-01
 Updated the UniformDistance and RestrictedMiddleUniform to be sensible on indirect networks.
 
