@@ -24,7 +24,7 @@ use std::io::{Write};
 use quantifiable_derive::Quantifiable;//the derive macro
 use self::cartesian::{Mesh,Torus,CartesianData,Hamming};
 use self::neighbourslists::NeighboursLists;
-use self::dragonfly::CanonicDragonfly;
+use self::dragonfly::Dragonfly;
 use self::projective::{Projective,LeviProjective};
 use self::slimfly::SlimFly;
 use self::multistage::MultiStage;
@@ -712,7 +712,7 @@ File{
 ## Dragonfly networks.
 The `global_ports_per_router` was denotated `h` in their original article. It is only included the case with groups of size `a=2h` and `g=ah+1` groups. The number of servers per router can be varied, but recommended to the same value as `global_ports_per_router`. Only the palm-tree arrangment of global links is currently supported.
 ```ignore
-CanonicDragonfly{
+Dragonfly{
 	global_ports_per_router: 4,
 	servers_per_router: 4,
 	legend_name: "h=4 dragonfly with palm-tree global arrangement",
@@ -840,7 +840,7 @@ pub fn new_topology(arg:TopologyBuilderArgument) -> Box<dyn Topology>
 			"Torus" => Box::new(Torus::new(arg.cv)),
 			"RandomRegularGraph" | "File" => Box::new(NeighboursLists::new_cfg(arg.cv,arg.rng)),
 			"Hamming" => Box::new(Hamming::new(arg.cv)),
-			"CanonicDragonfly" => Box::new(CanonicDragonfly::new(arg)),
+			"Dragonfly" | "CanonicDragonfly" => Box::new(Dragonfly::new(arg)),
 			"Projective" => Box::new(Projective::new(arg)),
 			"LeviProjective" => Box::new(LeviProjective::new(arg)),
 			"SlimFly" => Box::new(SlimFly::new(arg)),

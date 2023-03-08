@@ -9,16 +9,33 @@ use crate::matrix::Matrix;
 use crate::quantify::Quantifiable;
 use crate::match_object_panic;
 
-///Builds a dragonfly topology with canonic dimensions and palm-tree arrangement of global links.
-///The canonic dimensions means
-///* to have as many global links as links to servers in each router,
-///* to have in each group the double number of routers than links to a server in a router,
-///* to have a unique global link joining each pair of groups,
-///* and to have a unique local link joining each pair of router in the same group.
-///For the palm-tree arrangement we refer to the doctoral thesis of Marina García.
+/**
+Builds a dragonfly topology, this is, a hierarchical topology where each group is fully-connected (a complete graph) and each pair of groups is connected at least with a global link.
+ There are several possible arrangements for the global links, by default it uses the palm-tree arrangement.
+The canonic dimensions (the CanonicDragonfly name has been deprecated) are
+* to have as many global links as links to servers in each router,
+* to have in each group the double number of routers than links to a server in a router (this point is taken by default if not given),
+* to have a unique global link joining each pair of groups,
+* and to have a unique local link joining each pair of router in the same group.
+For the palm-tree arrangement we refer to the doctoral thesis of Marina García.
+
+Example configuration:
+```ignore
+Dragonfly{
+	/// Number of ports per router that connect to routers in a different group. Dally called it `h`
+	global_ports_per_router: 4,
+	/// Number of servers per router. Dally called it `p`. Typically p=h.
+	servers_per_router: 4,
+	/// Configuration of the global links.
+	global_arrangement: Random,
+	/// Number of routers in a group. Dally called it `a`. a-1 local ports. Defaults to the canonic dragonfly, i.e.,  a=2h.
+	//group_size: 8,
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
-pub struct CanonicDragonfly
+pub struct Dragonfly
 {
 	/// Number of ports per router that connect to routers in a different group. Dally called it `h`
 	global_ports_per_router: usize,
@@ -26,18 +43,18 @@ pub struct CanonicDragonfly
 	servers_per_router: usize,
 	/// Configuration of the global links.
 	global_arrangement: Box<dyn Arrangement>,
+	/// Number of routers in a group. Dally called it `a`. a-1 local ports. In a canonic dragonfly a=2h.
+	group_size: usize,
 
 	// cached values:
 
-	/// Number of routers in a group. Dally called it `a`. a-1 local ports. In a canonic dragonfly a=2h.
-	group_size: usize,
 	/// Number of groups = a*h+1. Dally called it `g`.
 	number_of_groups: usize,
 	/// `distance_matrix.get(i,j)` = distance from router i to router j.
 	distance_matrix:Matrix<u8>,
 }
 
-impl Topology for CanonicDragonfly
+impl Topology for Dragonfly
 {
 	fn num_routers(&self) -> usize
 	{
@@ -145,21 +162,23 @@ impl Topology for CanonicDragonfly
 	}
 }
 
-impl CanonicDragonfly
+impl Dragonfly
 {
-	pub fn new(arg:TopologyBuilderArgument) -> CanonicDragonfly
+	pub fn new(arg:TopologyBuilderArgument) -> Dragonfly
 	{
 		let mut global_ports_per_router=None;
 		let mut servers_per_router=None;
 		let mut global_arrangement=None;
-		match_object_panic!(arg.cv,"CanonicDragonfly",value,
+		let mut group_size=None;
+		match_object_panic!(arg.cv,["Dragonfly", "CanonicDragonfly"],value,
 			"global_ports_per_router" => global_ports_per_router=Some(value.as_f64().expect("bad value for global_ports_per_router")as usize),
 			"servers_per_router" => servers_per_router=Some(value.as_f64().expect("bad value for servers_per_router")as usize),
 			"global_arrangement" => global_arrangement=Some(new_arrangement(value.into())),
+			"group_size" => group_size=Some(value.as_usize().expect("bad value for group_size")),
 		);
 		let global_ports_per_router=global_ports_per_router.expect("There were no global_ports_per_router");
 		let servers_per_router=servers_per_router.expect("There were no servers_per_router");
-		let group_size = 2*global_ports_per_router;
+		let group_size = group_size.unwrap_or_else(||2*global_ports_per_router);
 		let number_of_groups = group_size*global_ports_per_router + 1;
 		let mut global_arrangement = global_arrangement.unwrap_or_else(||Box::new(Palmtree::default()));
 		global_arrangement.initialize(ArrangementSize{
@@ -167,7 +186,7 @@ impl CanonicDragonfly
 			group_size,
 			number_of_ports: global_ports_per_router,
 		},arg.rng);
-		let mut topo=CanonicDragonfly{
+		let mut topo=Dragonfly{
 			global_ports_per_router,
 			servers_per_router,
 			global_arrangement,

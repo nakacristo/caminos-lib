@@ -1636,12 +1636,19 @@ pub fn config_relaxed_cmp(a:&ConfigurationValue, b:&ConfigurationValue) -> bool
 macro_rules! match_object{
 	//($cv:expr, $name:literal, $valueid:ident, $($key:literal => $arm:tt)* ) => {{
 	($cv:expr, $name:literal, $valueid:ident, $($arm:tt)* ) => {{
+		match_object!($cv,[$name],$valueid,$($arm)*)
+	}};
+	($cv:expr, $names:expr, $valueid:ident, $($arm:tt)* ) => {{
 		//Error::$kind( source_location!(), $($args),* )
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs) = $cv
 		{
-			if cv_name!= $name
+			if !$names.iter().any(|&x|x==cv_name)
 			{
-				panic!("A {} must be created from a `{}` object not `{}`",$name,$name,cv_name);
+				if $names.len()==1 {
+					panic!("A {} must be created from a `{}` object not `{}`",$names[0],$names[0],cv_name);
+				} else {
+					panic!("Trying to create either of `{:?}` object from `{}`",$names,cv_name);
+				}
 			}
 			for &(ref name,ref $valueid) in cv_pairs
 			{
@@ -1652,14 +1659,14 @@ macro_rules! match_object{
 					$( $arm )*
 					"legend_name" => (),
 					//_ => panic!("Nothing to do with field {} in {}",name,$name),
-					_ => return Err(error!(ill_formed_configuration,$cv.clone()).with_message(format!("Nothing to do with field {} in {}",name,$name))),
+					_ => return Err(error!(ill_formed_configuration,$cv.clone()).with_message(format!("Nothing to do with field {} in {}",name,$names.get(0).unwrap_or_else(||&"None")))),
 				}
 			}
 		}
 		else
 		{
 			//panic!("Trying to create a {} from a non-Object",$name);
-			return Err(error!(ill_formed_configuration,$cv.clone()).with_message(format!("Trying to create a {} from a non-Object",$name)));
+			return Err(error!(ill_formed_configuration,$cv.clone()).with_message(format!("Trying to create a {} from a non-Object",$names.get(0).unwrap_or_else(||&"None"))));
 		}
 	}};
 }
@@ -1667,14 +1674,21 @@ macro_rules! match_object{
 #[macro_export]
 macro_rules! match_object_panic{
 	($cv:expr, $name:literal, $valueid:ident ) => {{
-		match_object_panic!($cv,$name,$valueid,)
+		match_object_panic!($cv,[$name],$valueid,)
 	}};
 	($cv:expr, $name:literal, $valueid:ident, $($arm:tt)* ) => {{
+		match_object_panic!($cv,[$name],$valueid,$($arm)*)
+	}};
+	($cv:expr, $names:expr, $valueid:ident, $($arm:tt)* ) => {{
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs) = $cv
 		{
-			if cv_name!= $name
+			if !$names.iter().any(|&x|x==cv_name)
 			{
-				panic!("A {} must be created from a `{}` object not `{}`",$name,$name,cv_name);
+				if $names.len()==1 {
+					panic!("A {} must be created from a `{}` object not `{}`",$names[0],$names[0],cv_name);
+				} else {
+					panic!("Trying to create either of `{:?}` object from `{}`",$names,cv_name);
+				}
 			}
 			for &(ref name,ref $valueid) in cv_pairs
 			{
@@ -1682,13 +1696,13 @@ macro_rules! match_object_panic{
 				{
 					$( $arm )*
 					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in {}",name,$name),
+					_ => panic!("Nothing to do with field {} in {}",name,$names[0]),
 				}
 			}
 		}
 		else
 		{
-			panic!("Trying to create a {} from a non-Object",$name);
+			panic!("Trying to create a {} from a non-Object",$names[0]);
 		}
 	}};
 }

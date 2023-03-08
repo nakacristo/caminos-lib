@@ -2,6 +2,10 @@
 
 ## next  [0.5.5]
 
+### 2023-03-08
+CanonicDragonfly renamed as just Dragonfly.
+Allow aliases in macros `match_object` and `match_object_panic`.
+
 ### 2023-03-02
 Added `ConfigurationValue::as_usize`.
 New policy VOQ.
