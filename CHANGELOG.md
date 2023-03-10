@@ -2,6 +2,15 @@
 
 ## next  [0.5.5]
 
+### 2023-03-10
+Finished Dragonfly2ColorsRouting.
+
+### 2023-03-09
+Added a prelude to routing.
+Added Dragonfly2ColorsRouting.
+Topologies now may expose a `dragonfly_size`.
+Allow to vary `number_of_groups` in dragonfly topology.
+
 ### 2023-03-08
 CanonicDragonfly renamed as just Dragonfly.
 Allow aliases in macros `match_object` and `match_object_panic`.

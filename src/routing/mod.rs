@@ -36,6 +36,11 @@ pub use self::channel_operations::*;
 pub use self::updown::*;
 pub use self::polarized::Polarized;
 
+pub mod prelude
+{
+	pub use super::{Routing,RoutingInfo,RoutingNextCandidates,CandidateEgress,RoutingBuilderArgument};
+}
+
 ///Information stored in the packet for the `Routing` algorithms to operate.
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -416,6 +421,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"ChannelsPerHopPerLinkClass" => Box::new(ChannelsPerHopPerLinkClass::new(arg)),
 			"AscendantChannelsWithLinkClass" => Box::new(AscendantChannelsWithLinkClass::new(arg)),
 			"ChannelMap" => Box::new(ChannelMap::new(arg)),
+			"Dragonfly2Colors" => Box::new(crate::topology::dragonfly::Dragonfly2ColorsRouting::new(arg)),
 			_ => panic!("Unknown Routing {}",cv_name),
 		}
 	}

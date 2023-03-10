@@ -30,6 +30,8 @@ Dragonfly{
 	global_arrangement: Random,
 	/// Number of routers in a group. Dally called it `a`. a-1 local ports. Defaults to the canonic dragonfly, i.e.,  a=2h.
 	//group_size: 8,
+	/// Number of groups. Denoted by `g` in Dally's paper. Defaults to the canonic dragonfly value of `g = a*h+1`.
+	//number_of_groups: 10,
 }
 ```
 **/
@@ -45,11 +47,11 @@ pub struct Dragonfly
 	global_arrangement: Box<dyn Arrangement>,
 	/// Number of routers in a group. Dally called it `a`. a-1 local ports. In a canonic dragonfly a=2h.
 	group_size: usize,
+	/// Number of groups. Denoted by `g` in Dally's paper. In a canonic dragonfly `g = a*h+1`.
+	number_of_groups: usize,
 
 	// cached values:
 
-	/// Number of groups = a*h+1. Dally called it `g`.
-	number_of_groups: usize,
 	/// `distance_matrix.get(i,j)` = distance from router i to router j.
 	distance_matrix:Matrix<u8>,
 }
@@ -160,6 +162,13 @@ impl Topology for Dragonfly
 	{
 		None
 	}
+	fn dragonfly_size(&self) -> Option<ArrangementSize> {
+		Some(ArrangementSize{
+			number_of_groups: self.number_of_groups,
+			group_size: self.group_size,
+			number_of_ports: self.global_ports_per_router,
+		})
+	}
 }
 
 impl Dragonfly
@@ -170,16 +179,18 @@ impl Dragonfly
 		let mut servers_per_router=None;
 		let mut global_arrangement=None;
 		let mut group_size=None;
+		let mut number_of_groups = None;
 		match_object_panic!(arg.cv,["Dragonfly", "CanonicDragonfly"],value,
 			"global_ports_per_router" => global_ports_per_router=Some(value.as_f64().expect("bad value for global_ports_per_router")as usize),
 			"servers_per_router" => servers_per_router=Some(value.as_f64().expect("bad value for servers_per_router")as usize),
 			"global_arrangement" => global_arrangement=Some(new_arrangement(value.into())),
 			"group_size" => group_size=Some(value.as_usize().expect("bad value for group_size")),
+			"number_of_groups" => number_of_groups=Some(value.as_usize().expect("bad value for number_of_groups")),
 		);
 		let global_ports_per_router=global_ports_per_router.expect("There were no global_ports_per_router");
 		let servers_per_router=servers_per_router.expect("There were no servers_per_router");
 		let group_size = group_size.unwrap_or_else(||2*global_ports_per_router);
-		let number_of_groups = group_size*global_ports_per_router + 1;
+		let number_of_groups = number_of_groups.unwrap_or_else(||group_size*global_ports_per_router + 1);
 		let mut global_arrangement = global_arrangement.unwrap_or_else(||Box::new(Palmtree::default()));
 		global_arrangement.initialize(ArrangementSize{
 			number_of_groups,
@@ -241,6 +252,16 @@ impl ArrangementSize
 		(0..self.number_of_groups).contains(&point.group_index)
 		&& (0..self.group_size).contains(&point.group_offset)
 		&& (0..self.number_of_ports).contains(&point.port_index)
+	}
+	/// Like the method in [Dragonfly].
+	fn unpack(&self, router_index: usize) -> (usize,usize)
+	{
+		(router_index%self.group_size,router_index/self.group_size)
+	}
+	/// Like the method in [Dragonfly].
+	fn pack(&self, coordinates:(usize,usize)) -> usize
+	{
+		coordinates.0+coordinates.1*self.group_size
 	}
 }
 
@@ -313,15 +334,22 @@ impl Arrangement for Palmtree
 	}
 	fn map( &self, input:ArrangementPoint ) -> ArrangementPoint
 	{
-		let target_group_index = (
-			input.group_index
-			+ self.size.number_of_groups//to ensure being positive
-			- (input.group_offset*self.size.number_of_ports+input.port_index+1)
-		) % self.size.number_of_groups;
-		let target_group_offset=(
-			((self.size.number_of_groups+target_group_index-input.group_index)%self.size.number_of_groups) - 1
-		) / self.size.number_of_ports;
+		// old for just canonical sizes
+		//let target_group_index = (
+		//	input.group_index
+		//	+ self.size.number_of_groups//to ensure being positive
+		//	- (input.group_offset*self.size.number_of_ports+input.port_index+1)
+		//) % self.size.number_of_groups;
+		//let target_group_offset=(
+		//	((self.size.number_of_groups+target_group_index-input.group_index)%self.size.number_of_groups) - 1
+		//) / self.size.number_of_ports;
+		// extended, for other sizes. tested by extended_palmtree
+		let target_group_offset = self.size.group_size - input.group_offset - 1;
 		let target_port = self.size.number_of_ports-1-input.port_index;
+		let target_group_index = (
+			input.group_index+1+
+				((target_group_offset)*self.size.number_of_ports+target_port) % (self.size.number_of_groups-1)
+		) % self.size.number_of_groups;
 		ArrangementPoint{
 			group_index: target_group_index,
 			group_offset: target_group_offset,
@@ -454,6 +482,155 @@ pub fn new_arrangement(arg:ArrangementBuilderArgument) -> Box<dyn Arrangement>
 	}
 }
 
+
+use crate::routing::prelude::*;
+
+/**
+With the switches colored in {0,1} with a global arrangement such that global links connect only switches of the same color, the global link is labelled by that color.
+The local links are labelled being either +0 or +1: +0 for links connecting switches of same color and +1 for links connecting switches of different color.
+This routing employs routes lgl, where some hops may be skipped.
+If source and destination have different color then use L+0, G0, L+1. If they have same color then
+- L+0, G0, L+0 when the group of source has lower offest than the destination group.
+- L+1, G1, L+1 when the group of source has greater offset than the destination group.
+- If they are in the same group is just a local link of either kind.
+This routing does not require virtual channels.
+**/
+#[derive(Debug)]
+pub struct Dragonfly2ColorsRouting
+{
+}
+
+impl Routing for Dragonfly2ColorsRouting
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
+	{
+		let (target_location,_link_class)=topology.server_neighbour(target_server);
+		let target_router=match target_location
+		{
+			Location::RouterPort{router_index,router_port:_} =>router_index,
+			_ => panic!("The server is not attached to a router"),
+		};
+		if target_router==current_router
+		{
+			for i in 0..topology.ports(current_router)
+			{
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router,i)
+				{
+					if server==target_server
+					{
+						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true}
+					}
+				}
+			}
+			unreachable!();
+		}
+		//let distance=topology.distance(current_router,target_router);
+		//if distance==1
+		let arrangement_size = topology.dragonfly_size().expect("This topology has not a dragonfly arrangement.");
+		let (current_local,current_global)=arrangement_size.unpack(current_router);
+		let (target_local,target_global)=arrangement_size.unpack(target_router);
+		if current_global==target_global
+		{
+			// We are in the destination group. Use any local link.
+			for i in 0..topology.ports(current_router)
+			{
+				if let (Location::RouterPort{router_index:other_router,..},_link_class)=topology.neighbour(current_router,i)
+				{
+					if other_router == target_router
+					{
+						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true}
+					}
+				}
+			}
+			unreachable!();
+		}
+		if routing_info.hops == 0
+		{
+			let current_color = self.get_color(arrangement_size,current_local);
+			let target_color = self.get_color(arrangement_size,target_local);
+			// The first hop is usually a local one, but it could be a global one if the source is at the bridge.
+			let middle_color = if current_color==target_color && current_global>target_global {1-current_color} else { current_color };
+			let mut bridges = Vec::new();
+			//let bridges = (0..arrangement_size.group_size).filter(|&bridge_local|
+			for bridge_local in 0..arrangement_size.group_size
+			{
+				let bridge_color = self.get_color(arrangement_size,bridge_local);
+				//println!("current={} bridge_local={} bridge_color={}",current_router,bridge_local,bridge_color);
+				if bridge_color != middle_color { continue }
+				let bridge = arrangement_size.pack( (bridge_local,current_global) );
+				//let mut is_bridge = false;
+				for i in 0..topology.ports(bridge)
+				{
+					if let (Location::RouterPort{router_index:other_router,..},_link_class)=topology.neighbour(bridge,i)
+					{
+						let (other_local,other_global)=arrangement_size.unpack(other_router);
+						if other_global == target_global
+						{
+							let other_color = self.get_color(arrangement_size,other_local);
+							assert!(other_color == bridge_color, "global link from {} to {} break the color",bridge,other_router);
+							if bridge == current_router {
+								// If we are in a bridge do not perform local link.
+								// Or maybe we could want to perform a local for balancing considerations??
+								return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true}
+							} else {
+								//is_bridge = true;
+								bridges.push(bridge);
+								break;
+							}
+						}
+					}
+				}
+				//is_bridge
+			}//).collect();
+			assert!( !bridges.is_empty(), "No bridge found from current {} of color {} to target {} of color {} using middle color {}",current_router,current_color,target_router,target_color,middle_color);
+			// Perform a local to any of the found bridges.
+			let mut r = vec![];
+			for i in 0..topology.ports(current_router)
+			{
+				if let (Location::RouterPort{router_index:other_router,..},_link_class)=topology.neighbour(current_router,i)
+				{
+					if bridges.contains(&other_router)
+					{
+						r.extend( (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)) );
+					}
+				}
+			}
+			assert!( !r.is_empty(), "no local links to bridges");
+			return RoutingNextCandidates{candidates:r,idempotent:true};
+		}
+		// If we are not in the target group and we have given one hop then we have to advance a global link.
+		for i in 0..topology.ports(current_router)
+		{
+			if let (Location::RouterPort{router_index:other_router,..},_link_class)=topology.neighbour(current_router,i)
+			{
+				let (_other_local,other_global)=arrangement_size.unpack(other_router);
+				if other_global == target_global
+				{
+					return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true}
+				}
+			}
+		}
+		unreachable!()
+	}
+}
+
+impl Dragonfly2ColorsRouting
+{
+	pub fn new(arg: RoutingBuilderArgument) -> Dragonfly2ColorsRouting
+	{
+		match_object_panic!(arg.cv,"Dragonfly2Colors",_value);
+		Dragonfly2ColorsRouting{}
+	}
+	fn get_color(&self,size:ArrangementSize, switch_local:usize) -> u8
+	{
+		use std::convert::TryInto;
+		// this works for palmtree. It would be better to have generally working code.
+		let x = if switch_local*2 < size.group_size { switch_local } else { size.group_size-1 - switch_local };
+		(x % 2).try_into().unwrap()
+	}
+}
+
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -471,6 +648,51 @@ mod tests {
 			assert!( palmtree.is_valid(), "invalid arrangement {:?}", size );
 			let gtdm = palmtree.global_trunking_distribution();
 			assert!( *gtdm.outside_diagonal().min().unwrap() >0 , "some groups not connected {:?}",size);
+		}
+	}
+	/// Checks whether the new definition matches the old one.
+	#[test]
+	fn extended_palmtree()
+	{
+		fn old_map( size:ArrangementSize, input:ArrangementPoint ) -> ArrangementPoint
+		{
+			let target_group_index = (
+				input.group_index
+				+ size.number_of_groups//to ensure being positive
+				- (input.group_offset*size.number_of_ports+input.port_index+1)
+			) % size.number_of_groups;
+			let target_group_offset=(
+				((size.number_of_groups+target_group_index-input.group_index)%size.number_of_groups) - 1
+			) / size.number_of_ports;
+			let target_port = size.number_of_ports-1-input.port_index;
+			ArrangementPoint{
+				group_index: target_group_index,
+				group_offset: target_group_offset,
+				port_index: target_port,
+			}
+		}
+		for h in 1..10
+		{
+			let a = 2*h;
+			let g = a*h+1;
+			let size = ArrangementSize{ number_of_groups:g, group_size:a, number_of_ports:h};
+			let palmtree = Palmtree{size};
+			for input_group in 0..g
+			{
+				for input_offset in 0..a
+				{
+					for input_port in 0..h
+					{
+						let input = ArrangementPoint{group_index:input_group,group_offset:input_offset,port_index:input_port};
+						let old_target = old_map(size,input);
+						let target = palmtree.map(input);
+						if target != old_target
+						{
+							panic!("The extended palmtree fails at {:?} for {:?}. old={:?} now={:?}",input,size,old_target,target);
+						}
+					}
+				}
+			}
 		}
 	}
 }

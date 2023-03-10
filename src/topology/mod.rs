@@ -150,6 +150,8 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 	/// * In multistage networks `u-d` is the difference on levels and allows for some algebra.
 	///Note that in general `u+d` is not an actual distance, since the triangular inequality does not hold.
 	fn up_down_distance(&self,origin:usize,destination:usize) -> Option<(usize,usize)>;
+	/// Information for Dragonfly-like networks.
+	fn dragonfly_size(&self) -> Option<dragonfly::ArrangementSize> { None }
 
 	///Breadth First Search to compute distances from a router to all others.
 	///It may use weights, but it there are multiple paths with different distances it may give a non-minimal distance, since it is not Dijkstra.
