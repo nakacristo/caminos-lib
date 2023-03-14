@@ -2,6 +2,9 @@
 
 ## next  [0.5.5]
 
+### 2023-03-14
+Added documentation for FileMap.
+
 ### 2023-03-10
 Finished Dragonfly2ColorsRouting.
 

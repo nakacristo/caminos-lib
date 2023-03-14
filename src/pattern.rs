@@ -154,6 +154,7 @@ Each source has an independent unique destination. By the "birtday paradox" we c
 A map read from file. Each elment has a unique destination.
 ```ignore
 FileMap{
+	/// Note this is a string literal.
 	filename: "/path/to/pattern",
 	legend_name: "A pattern in my device",
 }
@@ -527,8 +528,19 @@ impl RandomInvolution
 }
 
 
-///Use a permutation given via a file.
-///See `RandomPermutation`.
+/**
+A map read from file. Each node has a unique destination. See [RandomPermutation] for related matters.
+The file is read at creation and should contain only lines with pairs `source destination`.
+
+Example configuration:
+```ignore
+FileMap{
+	/// Note this is a string literal.
+	filename: "/path/to/pattern",
+	legend_name: "A pattern in my device",
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct FileMap
