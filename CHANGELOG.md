@@ -2,6 +2,9 @@
 
 ## next  [0.5.5]
 
+### 2023-03-20
+Made `Basic::time_at_input_head` work again, hopefuly.
+
 ### 2023-03-14
 Added documentation for FileMap.
 

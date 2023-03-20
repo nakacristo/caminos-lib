@@ -882,6 +882,7 @@ impl Eventful for Basic
 				let entry_vc={
 					phit.virtual_channel.borrow().expect("it should have an associated virtual channel")
 				};
+				self.time_at_input_head[entry_port][entry_vc]+=1;
 				//let (requested_port,requested_vc,label)=
 				match self.selected_output[entry_port][entry_vc]
 				{
@@ -1002,7 +1003,6 @@ impl Eventful for Basic
 				// 		None => request.push( PortRequest{packet:phit.packet.clone(),entry_port,entry_vc,requested_port,requested_vc,label} ),
 				// 	};
 				// }
-				// self.time_at_input_head[entry_port][entry_vc]+=1;
 			}
 		}
 
