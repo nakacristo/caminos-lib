@@ -40,7 +40,7 @@ pub enum Event
 	},
 	//PhitClearAcknowledge{
 	Acknowledge{
-		///Location by which the phit was sent, contaning the transmission status to be informed (such as credit counter).
+		///Location by which the phit was sent, containing the transmission status to be informed (such as credit counter).
 		location: Location,
 		// ///The virtual channel assigned to the phit for this hop
 		// virtual_channel: usize,
