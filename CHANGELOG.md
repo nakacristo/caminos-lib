@@ -2,6 +2,13 @@
 
 ## next  [0.5.5]
 
+### 2023-03-23
+Fix checks in InputOutputMonocycle relative to the crossbar delay.
+
+### 2023-03-22
+Partial implementation of `InputOutputMonocycle::crossbar_delay`.
+Added configuration option `crossbar_delay` to InputOutputMonocycle with a default value of 0.
+
 ### 2023-03-20
 Made `Basic::time_at_input_head` work again, hopefuly.
 

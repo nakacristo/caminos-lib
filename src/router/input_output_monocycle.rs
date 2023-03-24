@@ -43,6 +43,8 @@ pub struct InputOutputMonocycle
 	flit_size: usize,
 	///Size of each input buffer.
 	buffer_size: usize,
+	///Delay in cycles to traverse the crossbar. In pipeline.
+	crossbar_delay: usize,
 	///Give priority to in-transit packets over packets in injection queues.
 	intransit_priority: bool,
 	///To allow to request a port even if some other packet is being transmitted throught it to a different virtual channel (as FSIN does).
@@ -60,6 +62,10 @@ pub struct InputOutputMonocycle
 	///The outut buffers indexed as `[output_port][output_vc]`.
 	///Phits are stored with their `(entry_port,entry_vc)`.
 	output_buffers: Vec<Vec<AugmentedBuffer<(usize,usize)>>>,
+	///Number of phits currently being traversing the crossbar towards the output buffer.
+	///Specifically, `output_buffer_phits_traversing_crossbar[output_port][output_vc]` counts phits that are going to be inserted
+	///into `output_buffers[output_port][output_vc]` at some point.
+	output_buffer_phits_traversing_crossbar: Vec<Vec<usize>>,
 	///If not None then the input port+virtual_channel which is either sending by this port+virtual_channel or writing to this output buffer.
 	///We keep the packet for debugging/check considerations.
 	selected_input: Vec<Vec<Option<(usize,usize)>>>,
@@ -305,6 +311,7 @@ impl InputOutputMonocycle
 		let mut transmission_mechanism=None;
 		let mut to_server_mechanism=None;
 		let mut from_server_mechanism=None;
+		let mut crossbar_delay=0usize;
 		match_object_panic!(cv,"InputOutputMonocycle",value,
 			"virtual_channels" => match value
 			{
@@ -323,7 +330,7 @@ impl InputOutputMonocycle
 				})).collect()),
 				_ => panic!("bad value for permute"),
 			}
-			"delay" => (),//FIXME: yet undecided if/how to implemente this.
+			"crossbar_delay" | "delay" => crossbar_delay = value.as_usize().expect("bad value for crossbar_delay"),
 			"buffer_size" => match value
 			{
 				&ConfigurationValue::Number(f) => buffer_size=Some(f as usize),
@@ -446,6 +453,7 @@ impl InputOutputMonocycle
 				(0..virtual_channels).map(|_|AugmentedBuffer::new()).collect()
 			).collect()
 		};
+		let output_buffer_phits_traversing_crossbar = vec![ vec![ 0 ; virtual_channels ] ; input_ports ];
 		let r=Rc::new(RefCell::new(InputOutputMonocycle{
 			self_rc: Weak::new(),
 			event_pending: false,
@@ -459,11 +467,13 @@ impl InputOutputMonocycle
 			allow_request_busy_port,
 //			output_priorize_lowest_label,
 			buffer_size,
+			crossbar_delay,
 			transmission_port_status,
 			reception_port_space,
 			from_server_mechanism,
 			output_buffer_size,
 			output_buffers,
+			output_buffer_phits_traversing_crossbar,
 			selected_input,
 			selected_output,
 			time_at_input_head,
@@ -486,7 +496,7 @@ impl InputOutputMonocycle
 	///bubble_in_use should be true only for leading phits that require the additional space.
 	fn can_phit_advance(&self, phit:&Rc<Phit>, exit_port:usize, exit_vc:usize, bubble_in_use:bool)->bool
 	{
-        let available_internal_space = self.output_buffer_size-self.output_buffers[exit_port][exit_vc].len();
+        let available_internal_space = self.output_buffer_size-self.output_buffers[exit_port][exit_vc].len() - self.output_buffer_phits_traversing_crossbar[exit_port][exit_vc];
         let mut necessary_credits=1;
         if phit.is_begin()
         {
@@ -845,6 +855,7 @@ impl Eventful for InputOutputMonocycle
                     //Note that it is possible when flit_size<packet_size for the packet to not be in that buffer. The output arbiter can decide to advance other virtual channel.
                     if let Ok((phit,ack_message)) = self.reception_port_space[entry_port].extract(entry_vc)
                     {
+						// For the check with crossbar delay look into PhitToOutput::process.
                         if self.output_buffers[exit_port][exit_vc].len()>=self.output_buffer_size
                         {
                             panic!("Trying to move into a full output buffer.");
@@ -871,7 +882,24 @@ impl Eventful for InputOutputMonocycle
                         {
                             self.selected_output[entry_port][entry_vc]=Some((exit_port,exit_vc));
                         }
-                        self.output_buffers[exit_port][exit_vc].push(phit,(entry_port,entry_vc));
+						if self.crossbar_delay==0 {
+							self.output_buffers[exit_port][exit_vc].push(phit,(entry_port,entry_vc));
+						} else {
+							let event = Rc::<RefCell<internal::PhitToOutput>>::from(internal::PhitToOutputArgument{
+								//router: self.self_rc.upgrade().unwrap(),
+								router: self,
+								exit_port,
+								exit_vc,
+								entry_port,
+								entry_vc,
+								phit,
+							});
+							events.push(EventGeneration{
+								delay: self.crossbar_delay,
+								position:CyclePosition::Begin,
+								event: Event::Generic(event),
+							});
+						}
                     }
                     else
                     {
@@ -1050,4 +1078,112 @@ impl Quantifiable for InputOutputMonocycle
 		unimplemented!();
 	}
 }
+
+/// Some things private to InputOutputMonocycle we want to have clearly separated.
+mod internal
+{
+	use super::*;
+	pub struct PhitToOutput
+	{
+		self_rc: Weak<RefCell<PhitToOutput>>,
+		router: Rc<RefCell<InputOutputMonocycle>>,
+		exit_port: usize,
+		exit_vc: usize,
+		entry_port: usize,
+		entry_vc: usize,
+		phit: Rc<Phit>,
+	}
+	pub struct PhitToOutputArgument<'a>
+	{
+		pub router: &'a mut InputOutputMonocycle,
+		pub exit_port: usize,
+		pub exit_vc: usize,
+		pub entry_port: usize,
+		pub entry_vc: usize,
+		pub phit: Rc<Phit>,
+	}
+	impl<'a> From<PhitToOutputArgument<'a>> for Rc<RefCell<PhitToOutput>>
+	{
+		fn from(arg:PhitToOutputArgument) -> Rc<RefCell<PhitToOutput>>
+		{
+			arg.router.output_buffer_phits_traversing_crossbar[arg.exit_port][arg.exit_vc]+=1;
+			let event = Rc::new(RefCell::new(PhitToOutput{
+				self_rc: Weak::new(),
+				//router: arg.router,
+				router: arg.router.self_rc.upgrade().unwrap(),
+				exit_port: arg.exit_port,
+				exit_vc: arg.exit_vc,
+				entry_port: arg.entry_port,
+				entry_vc: arg.entry_vc,
+				phit: arg.phit,
+			}));
+			event.borrow_mut().self_rc=Rc::<_>::downgrade(&event);
+			event
+		}
+	}
+	//impl PhitToOutput
+	//{
+	//	pub fn new() -> PhitToOutput
+	//	{
+	//		self.output_buffer_phits_traversing_crossbar[exit_port][exit_vc]+=1;
+	//		let event = Rc::new(RefCell::new(internal::PhitToOutput{
+	//			self_rc: Weak::new(),
+	//			router: self.self_rc.upgrade().unwrap(),
+	//			exit_port,
+	//			exit_vc,
+	//			entry_port,
+	//			entry_vc,
+	//			phit,
+	//		}));
+	//		event.borrow_mut().self_rc=Rc::<_>::downgrade(&event);
+	//	}
+	//}
+	impl Eventful for PhitToOutput
+	{
+		fn process(&mut self, _simulation:&Simulation) -> Vec<EventGeneration>
+		{
+			let mut router = self.router.borrow_mut();
+			if router.output_buffers[self.exit_port][self.exit_vc].len()>=router.output_buffer_size
+			{
+				panic!("(PhitToOutput) Trying to move into a full output buffer.");
+			}
+			router.output_buffer_phits_traversing_crossbar[self.exit_port][self.exit_vc]-=1;
+			router.output_buffers[self.exit_port][self.exit_vc].push(self.phit.clone(),(self.entry_port,self.entry_vc));
+			if router.event_pending {
+				vec![]
+			} else {
+				// When a phit moves into an output buffer, ensure the router executes this cycle.
+				router.event_pending=true;
+				vec![EventGeneration{
+					delay:0,
+					position:CyclePosition::End,
+					event:Event::Generic(router.as_eventful().upgrade().expect("missing router")),
+				}]
+			}
+		}
+		///Number of pending events.
+		fn pending_events(&self)->usize
+		{
+			// This event should always be just once.
+			1
+		}
+		///Mark the eventful as having another pending event. It should also be added to some queue.
+		fn add_pending_event(&mut self)
+		{
+			// This event should always be just once.
+		}
+		///Mark the eventful as having no pending events. Perhaps it is not necessary, since it is being done by the `process` method.
+		fn clear_pending_events(&mut self)
+		{
+			// This event should always be just once.
+		}
+		///Extract the eventful from the implementing class. Required since `as Rc<RefCell<Eventful>>` does not work.
+		fn as_eventful(&self)->Weak<RefCell<dyn Eventful>>
+		{
+			self.self_rc.clone()
+		}
+	}
+}
+
+
 

@@ -929,7 +929,16 @@ impl<'a> Simulation<'a>
 					//&Location::ServerPort(server) => TransmissionFromServer::acknowledge(self.network.servers[server].router_status,ack_message),
 					_ => (),
 				},
-				Event::Generic(ref _element) => unimplemented!(),
+				Event::Generic(ref element) =>
+				{
+					// --- generic events at the START of the cycle ---
+					let new_events=element.borrow_mut().process(self);
+					//element.borrow_mut().clear_pending_events();//now done by process itself
+					for ge in new_events.into_iter()
+					{
+						self.event_queue.enqueue(ge);
+					}
+				},
 			};
 			ievent+=1;
 		}
@@ -966,6 +975,7 @@ impl<'a> Simulation<'a>
 				} => panic!("Phit Acknowledgements should not arrive at the end of a cycle"),
 				Event::Generic(ref element) =>
 				{
+					// --- generic events at the END of the cycle ---
 					let new_events=element.borrow_mut().process(self);
 					//element.borrow_mut().clear_pending_events();//now done by process itself
 					for ge in new_events.into_iter()
