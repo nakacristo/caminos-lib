@@ -181,7 +181,7 @@ impl Topology for Mesh
 	{
 		Some(&self.cartesian_data)
 	}
-	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], _rng: Option<&RefCell<StdRng>>)->Vec<i32>
+	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], _rng: Option<&mut StdRng>)->Vec<i32>
 	{
 		//In a Mesh the routing record is just the difference in coordinates.
 		(0..coordinates_a.len()).map(|i|coordinates_b[i] as i32-coordinates_a[i] as i32).collect()
@@ -363,7 +363,7 @@ impl Topology for Torus
 	{
 		Some(&self.cartesian_data)
 	}
-	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], rng: Option<&RefCell<StdRng>>)->Vec<i32>
+	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], mut rng: Option<&mut StdRng>)->Vec<i32>
 	{
 		//In a Torus the routing record is for every difference of coordinates `d`, the minimum among `d` and `side-d` with the appropiate sign.
 		(0..coordinates_a.len()).map(|i|{
@@ -373,10 +373,10 @@ impl Topology for Torus
 			let b=(side + coordinates_a[i] as i32-coordinates_b[i] as i32) % side;
 			if a==b
 			{
-				if let Some(rng)=rng
+				if let Some(ref mut rng)=rng
 				{
-					//let r=rng.borrow_mut().gen_range(0,2);//rand-0.4
-					let r=rng.borrow_mut().gen_range(0..2);//rand-0.8
+					//let r=rng.gen_range(0,2);//rand-0.4
+					let r=rng.gen_range(0..2);//rand-0.8
 					if r==0 { a } else { -b }
 				}
 				else
@@ -565,7 +565,7 @@ impl Topology for Hamming
 	{
 		Some(&self.cartesian_data)
 	}
-	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], _rng: Option<&RefCell<StdRng>>)->Vec<i32>
+	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], _rng: Option<&mut StdRng>)->Vec<i32>
 	{
 		//In Hamming we put the difference as in the mesh, but any number can be advanced in a single hop.
 		(0..coordinates_a.len()).map(|i|coordinates_b[i] as i32-coordinates_a[i] as i32).collect()
@@ -651,7 +651,7 @@ pub struct DOR
 impl Routing for DOR
 {
 	//type info=CartesianRoutingRecord;
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
 	{
 		//let routing_record=&routing_info.routing_record.expect("DOR requires a routing record");
 		let routing_record=if let Some(ref rr)=routing_info.routing_record
@@ -759,7 +759,7 @@ impl Routing for DOR
 		}
 	}
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, toology:&dyn Topology, current_router:usize, target_server:usize)
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -776,7 +776,7 @@ impl Routing for DOR
 		//println!("routing record from {} to {} is {:?}",current_router,target_router,routing_record);
 		routing_info.borrow_mut().routing_record=Some(routing_record);
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, _target_server:usize, _rng: &RefCell<StdRng>)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, _target_server:usize, _rng: &mut StdRng)
 	{
 		//let dimension=current_port/2;
 		//let delta=if current_port%2==0 { -1i32 } else { 1i32 };
@@ -818,10 +818,10 @@ impl Routing for DOR
 			panic!("!!");
 		}
 	}
-	fn initialize(&mut self, _topology:&dyn Topology, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 	}
-	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 	}
 	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
@@ -900,7 +900,7 @@ pub struct ValiantDOR
 
 impl Routing for ValiantDOR
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
 	{
 		//let routing_record=&routing_info.routing_record.expect("ValiantDOR requires a routing record");
 		let mut random_amount=0i32;
@@ -1057,7 +1057,7 @@ impl Routing for ValiantDOR
 		}
 	}
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, toology:&dyn Topology, current_router:usize, target_server:usize)
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -1080,7 +1080,7 @@ impl Routing for ValiantDOR
 			//XXX Should we skip if current[dim]==target[dim]?
 			let dim=self.randomized[offset];
 			let side=cartesian_data.sides[dim];
-		 	let t=rng.borrow_mut().gen_range(0..side);
+		 	let t=rng.gen_range(0..side);
 			up_target[dim]=t;
 			let aux_rr=topology.coordinated_routing_record(&up_current,&up_target,Some(rng));
 			r=aux_rr[dim];
@@ -1095,7 +1095,7 @@ impl Routing for ValiantDOR
 			routing_info.borrow_mut().selections=Some(vec![offset as i32,r]);
 		}
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &RefCell<StdRng>)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &mut StdRng)
 	{
 		//let dimension=current_port/2;
 		//let delta=if current_port%2==0 { -1i32 } else { 1i32 };
@@ -1168,7 +1168,7 @@ impl Routing for ValiantDOR
 						let dim=self.randomized[offset];
 						//XXX Should we skip if current[dim]==target[dim]?
 						let side=cartesian_data.sides[dim];
-						let t=rng.borrow_mut().gen_range(0..side);
+						let t=rng.gen_range(0..side);
 						let mut up_target=cartesian_data.unpack(target_router.unwrap());
 						up_target[dim]=t;
 						let aux_rr=topology.coordinated_routing_record(&up_current,&up_target,Some(rng));
@@ -1195,10 +1195,10 @@ impl Routing for ValiantDOR
 			panic!("!!");
 		}
 	}
-	fn initialize(&mut self, _topology:&dyn Topology, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 	}
-	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 	}
 	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
@@ -1304,7 +1304,7 @@ pub struct O1TURN
 
 impl Routing for O1TURN
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
 	{
 		//let routing_record=&routing_info.routing_record.expect("DOR requires a routing record");
 		let routing_record=if let Some(ref rr)=routing_info.routing_record
@@ -1375,7 +1375,7 @@ impl Routing for O1TURN
 		}
 	}
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, toology:&dyn Topology, current_router:usize, target_server:usize)
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -1392,10 +1392,10 @@ impl Routing for O1TURN
 		//println!("routing record from {} to {} is {:?}",current_router,target_router,routing_record);
 		routing_info.borrow_mut().routing_record=Some(routing_record);
 		routing_info.borrow_mut().selections=Some(vec![{
-			rng.borrow_mut().gen_range(0..2)
+			rng.gen_range(0..2)
 		}]);
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, current_port:usize, _target_server:usize, _rng: &RefCell<StdRng>)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, current_port:usize, _target_server:usize, _rng: &mut StdRng)
 	{
 		let dimension=current_port/2;
 		let delta=if current_port%2==0 { -1i32 } else { 1i32 };
@@ -1409,10 +1409,10 @@ impl Routing for O1TURN
 			None => panic!("trying to update without routing_record"),
 		};
 	}
-	fn initialize(&mut self, _topology:&dyn Topology, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 	}
-	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 	}
 	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
@@ -1501,7 +1501,7 @@ pub struct OmniDimensionalDeroute
 
 impl Routing for OmniDimensionalDeroute
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -1585,11 +1585,11 @@ impl Routing for OmniDimensionalDeroute
 		RoutingNextCandidates{candidates:r,idempotent:true}
 	}
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, toology:&dyn Topology, current_router:usize, target_server:usize)
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _rng: &RefCell<StdRng>)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _rng: &mut StdRng)
 	{
 		routing_info.borrow_mut().selections=Some(vec![self.allowed_deroutes as i32]);
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, _rng: &RefCell<StdRng>)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, _rng: &mut StdRng)
 	{
 		//let cartesian_data=topology.cartesian_data().expect("OmniDimensionalDeroute requires a Cartesian topology");
 		if let (Location::RouterPort{router_index: previous_router,router_port:_},_link_class)=topology.neighbour(current_router,current_port)
@@ -1621,10 +1621,10 @@ impl Routing for OmniDimensionalDeroute
 			}
 		}
 	}
-	fn initialize(&mut self, _topology:&dyn Topology, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 	}
-	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 	}
 	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>

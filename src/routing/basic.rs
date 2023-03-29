@@ -28,7 +28,7 @@ pub struct Shortest
 
 impl Routing for Shortest
 {
-	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
+	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -100,7 +100,7 @@ pub struct Valiant
 
 impl Routing for Valiant
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &mut StdRng) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -185,7 +185,7 @@ impl Routing for Valiant
 		// //println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
 		// r
 	}
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -211,10 +211,10 @@ impl Routing for Valiant
 				panic!("There are not legal middle routers to select in Valiant from router {} towards router {}",current_router,target_router);
 			}
 			//let r = rng.borrow_mut().gen_range(0,available.len());//rand-0.4
-			let r = rng.borrow_mut().gen_range(0..available.len());//rand-0.8
+			let r = rng.gen_range(0..available.len());//rand-0.8
 			available[r]
 		} else {
-			rng.borrow_mut().gen_range(0..n)
+			rng.gen_range(0..n)
 		};
 		let mut bri=routing_info.borrow_mut();
 		bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
@@ -242,7 +242,7 @@ impl Routing for Valiant
 			self.first.initialize_routing_info(&bri.meta.as_ref().unwrap()[0],topology,current_router,middle_server,rng)
 		}
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &RefCell<StdRng>)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &mut StdRng)
 	{
 		let mut bri=routing_info.borrow_mut();
 		let middle = bri.selections.as_ref().map(|s| s[0] as usize);
@@ -273,12 +273,12 @@ impl Routing for Valiant
 			}
 		};
 	}
-	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		self.first.initialize(topology,rng);
 		self.second.initialize(topology,rng);
 	}
-	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&RefCell<StdRng>)
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 		//TODO: recurse over routings
 	}
@@ -332,7 +332,7 @@ pub struct Mindless
 
 impl Routing for Mindless
 {
-	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
+	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -403,7 +403,7 @@ pub struct WeighedShortest
 
 impl Routing for WeighedShortest
 {
-	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
+	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -456,7 +456,7 @@ impl Routing for WeighedShortest
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
 		RoutingNextCandidates{candidates:r,idempotent:true}
 	}
-	fn initialize(&mut self, topology:&dyn Topology, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, _rng: &mut StdRng)
 	{
 		self.distance_matrix=topology.compute_distance_matrix(Some(&self.class_weight));
 	}

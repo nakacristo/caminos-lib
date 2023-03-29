@@ -10,7 +10,6 @@ use std::cell::{RefCell};
 use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom,SeedableRng};
 use std::fs::File;
 use std::io::{BufRead,BufReader};
-use std::ops::DerefMut;
 
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::config_parser::ConfigurationValue;
@@ -37,9 +36,9 @@ pub trait Pattern : Quantifiable + std::fmt::Debug
 	///building a pattern among groups or a pattern among the ruters of a single group.
 	///Even just a pattern of routers instead of a pattern of servers can lead to mistakes.
 	///Read the documentation of the traffic or meta-pattern using the pattern to know what its their input and output.
-	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &RefCell<StdRng>);
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng);
 	///Obtain a destination of a source. This will be called repeteadly as the traffic requires destination for its messages.
-	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)->usize;
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize;
 }
 
 ///The argument to a builder funtion of patterns.
@@ -309,14 +308,14 @@ pub struct Identity
 
 impl Pattern for Identity
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 		if source_size!=target_size
 		{
 			unimplemented!("The Identity pattern requires source_size({})=target_size({})",source_size,target_size);
 		}
 	}
-	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
 		origin
 	}
@@ -360,7 +359,7 @@ pub struct UniformPattern
 
 impl Pattern for UniformPattern
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 		self.size=target_size;
 		if source_size!=target_size
@@ -368,13 +367,13 @@ impl Pattern for UniformPattern
 			unimplemented!("Different sizes are not yet implemented for UniformPattern");
 		}
 	}
-	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
 		//let mut rng = thread_rng();//FIXME use seed
 		loop
 		{
-			//let r=rng.borrow_mut().gen_range(0,self.size);//in rand-0.4
-			let r=rng.borrow_mut().gen_range(0..self.size);//in rand-0.8
+			//let r=rng.gen_range(0,self.size);//in rand-0.4
+			let r=rng.gen_range(0..self.size);//in rand-0.8
 			if r!=origin
 			{
 				return r;
@@ -406,17 +405,16 @@ pub struct RandomPermutation
 
 impl Pattern for RandomPermutation
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, rng: &mut StdRng)
 	{
 		if source_size!=target_size
 		{
 			panic!("In a permutation source_size({}) must be equal to target_size({}).",source_size,target_size);
 		}
 		self.permutation=(0..source_size).collect();
-		//rng.borrow_mut().shuffle(&mut self.permutation);//rand-0.4
-		self.permutation.shuffle(rng.borrow_mut().deref_mut());//rand-0.8
+		self.permutation.shuffle(rng);
 	}
-	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
 		self.permutation[origin]
 	}
@@ -446,14 +444,14 @@ pub struct RandomInvolution
 
 impl Pattern for RandomInvolution
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, rng: &mut StdRng)
 	{
 		if source_size!=target_size
 		{
 			panic!("In a permutation source_size({}) must be equal to target_size({}).",source_size,target_size);
 		}
 		//self.permutation=(0..source_size).collect();
-		//rng.borrow_mut().shuffle(&mut self.permutation);
+		//rng.shuffle(&mut self.permutation);
 		self.permutation=vec![source_size;source_size];
 		//for index in 0..source_size
 		//{
@@ -468,8 +466,8 @@ impl Pattern for RandomInvolution
 		let mut max=2;
 		for _iteration in 0..iterations
 		{
-			let first=rng.borrow_mut().gen_range(0..max);
-			let second=rng.borrow_mut().gen_range(0..max-1);
+			let first=rng.gen_range(0..max);
+			let second=rng.gen_range(0..max-1);
 			let (low,high) = if second>=first
 			{
 				(first,second+1)
@@ -510,7 +508,7 @@ impl Pattern for RandomInvolution
 			max+=2;
 		}
 	}
-	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
 		self.permutation[origin]
 	}
@@ -550,12 +548,12 @@ pub struct FileMap
 
 impl Pattern for FileMap
 {
-	fn initialize(&mut self, _source_size:usize, _target_size:usize, _topology:&dyn Topology, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, _source_size:usize, _target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 		//self.permutation=(0..size).collect();
-		//rng.borrow_mut().shuffle(&mut self.permutation);
+		//rng.shuffle(&mut self.permutation);
 	}
-	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
 		self.permutation[origin]
 	}
@@ -618,7 +616,7 @@ pub struct ProductPattern
 
 impl Pattern for ProductPattern
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		if source_size!=target_size
 		{
@@ -628,7 +626,7 @@ impl Pattern for ProductPattern
 		let global_size=source_size/self.block_size;
 		self.global_pattern.initialize(global_size,global_size,topology,rng);
 	}
-	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
 		let local=origin % self.block_size;
 		let global=origin / self.block_size;
@@ -676,7 +674,7 @@ pub struct ComponentsPattern
 
 impl Pattern for ComponentsPattern
 {
-	fn initialize(&mut self, _source_size:usize, _target_size:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, _source_size:usize, _target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		let mut allowed_components=vec![];
 		for link_class in self.component_classes.iter()
@@ -694,7 +692,7 @@ impl Pattern for ComponentsPattern
 		//}
 		self.global_pattern.initialize(self.components.len(),self.components.len(),topology,rng);
 	}
-	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
 		//let local=origin % self.block_size;
 		//let global=origin / self.block_size;
@@ -722,7 +720,7 @@ impl Pattern for ComponentsPattern
 		}
 		let global_dest=self.global_pattern.get_destination(global,topology,rng);
 		//let local_dest=self.block_pattern.get_destination(local,topology,rng);
-		let r_local=rng.borrow_mut().gen_range(0..self.components[global_dest].len());
+		let r_local=rng.gen_range(0..self.components[global_dest].len());
 		let dest=self.components[global_dest][r_local];
 		let radix=topology.ports(dest);
 		let mut candidate_stack=Vec::with_capacity(radix);
@@ -734,7 +732,7 @@ impl Pattern for ComponentsPattern
 				_ => (),
 			}
 		}
-		let rserver=rng.borrow_mut().gen_range(0..candidate_stack.len());
+		let rserver=rng.gen_range(0..candidate_stack.len());
 		candidate_stack[rserver]
 	}
 }
@@ -789,7 +787,7 @@ pub struct CartesianTransform
 
 impl Pattern for CartesianTransform
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 		if source_size!=target_size
 		{
@@ -800,7 +798,7 @@ impl Pattern for CartesianTransform
 			panic!("Sizes do not agree on CartesianTransform.");
 		}
 	}
-	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
 		let up_origin=self.cartesian_data.unpack(origin);
 		let up_shifted=match self.shift
@@ -884,7 +882,7 @@ struct CartesianTiling
 
 impl Pattern for CartesianTiling
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		let factor: usize = self.repetitions.iter().product();
 		assert!(source_size % factor == 0);
@@ -893,7 +891,7 @@ impl Pattern for CartesianTiling
 		let base_target_size = target_size / factor;
 		self.pattern.initialize(base_source_size,base_target_size,topology,rng);
 	}
-	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
 		let up_origin=self.final_cartesian_data.unpack(origin);
 		let n=up_origin.len();
@@ -951,14 +949,14 @@ pub struct Composition
 
 impl Pattern for Composition
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		for pattern in self.patterns.iter_mut()
 		{
 			pattern.initialize(source_size,target_size,topology,rng);
 		}
 	}
-	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
 		let mut destination=origin;
 		for pattern in self.patterns.iter()
@@ -998,11 +996,11 @@ pub struct Pow
 
 impl Pattern for Pow
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		self.pattern.initialize(source_size,target_size,topology,rng);
 	}
-	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
 		let mut destination=origin;
 		for _ in 0..self.exponent
@@ -1050,7 +1048,7 @@ pub struct CartesianFactor
 
 impl Pattern for CartesianFactor
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 		self.target_size = target_size;
 		if source_size!=self.cartesian_data.size
@@ -1058,7 +1056,7 @@ impl Pattern for CartesianFactor
 			panic!("Sizes do not agree on CartesianFactor.");
 		}
 	}
-	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
 		let up_origin=self.cartesian_data.unpack(origin);
 		let destination = up_origin.iter().zip(self.factors.iter()).map(|(&coord,&f)|coord as f64 * f).sum::<f64>() as usize;
@@ -1101,12 +1099,12 @@ pub struct Hotspots
 
 impl Pattern for Hotspots
 {
-	fn initialize(&mut self, _source_size:usize, target_size:usize, _topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, _source_size:usize, target_size:usize, _topology:&dyn Topology, rng: &mut StdRng)
 	{
 		//XXX Do we want to check the user given destinations against target_size?
 		for _ in 0..self.extra_random_destinations
 		{
-			let r=rng.borrow_mut().gen_range(0..target_size);
+			let r=rng.gen_range(0..target_size);
 			self.destinations.push(r);
 		}
 		if self.destinations.is_empty()
@@ -1114,9 +1112,9 @@ impl Pattern for Hotspots
 			panic!("The Hotspots pattern requires to have at least one destination.");
 		}
 	}
-	fn get_destination(&self, _origin:usize, _topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, _origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
-		let r = rng.borrow_mut().gen_range(0..self.destinations.len());
+		let r = rng.gen_range(0..self.destinations.len());
 		self.destinations[r]
 	}
 }
@@ -1157,7 +1155,7 @@ pub struct RandomMix
 
 impl Pattern for RandomMix
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		if self.patterns.len()!=self.weights.len()
 		{
@@ -1173,9 +1171,9 @@ impl Pattern for RandomMix
 		}
 		self.total_weight=self.weights.iter().sum();
 	}
-	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
-		let mut w = rng.borrow_mut().gen_range(0..self.total_weight);
+		let mut w = rng.gen_range(0..self.total_weight);
 		let mut index = 0;
 		while w>self.weights[index]
 		{
@@ -1222,7 +1220,7 @@ pub struct GloballyShufflingDestinations
 
 impl Pattern for GloballyShufflingDestinations
 {
-	fn initialize(&mut self, _source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, _source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 		self.size=target_size;
 		self.pending=RefCell::new(Vec::with_capacity(self.size));
@@ -1231,7 +1229,7 @@ impl Pattern for GloballyShufflingDestinations
 		//	unimplemented!("Different sizes are not yet implemented for GloballyShufflingDestinations");
 		//}
 	}
-	fn get_destination(&self, _origin:usize, _topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, _origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
 		let mut pending = self.pending.borrow_mut();
 		if pending.is_empty()
@@ -1240,8 +1238,8 @@ impl Pattern for GloballyShufflingDestinations
 			{
 				pending.push(i);
 			}
-			//rng.borrow_mut().shuffle(&mut pending);//rand-0.4
-			pending.shuffle(rng.borrow_mut().deref_mut());//rand-0.8
+			//rng.shuffle(&mut pending);//rand-0.4
+			pending.shuffle(rng);//rand-0.8
 		}
 		pending.pop().unwrap()
 	}
@@ -1275,7 +1273,7 @@ pub struct GroupShufflingDestinations
 
 impl Pattern for GroupShufflingDestinations
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 		self.size = target_size;
 		let number_of_groups = (source_size+self.group_size-1) / self.group_size;// ts/gs rounded up
@@ -1285,7 +1283,7 @@ impl Pattern for GroupShufflingDestinations
 		//	unimplemented!("Different sizes are not yet implemented for GroupShufflingDestinations");
 		//}
 	}
-	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
 		let group = origin / self.group_size;
 		let mut pending = self.pending[group].borrow_mut();
@@ -1295,8 +1293,8 @@ impl Pattern for GroupShufflingDestinations
 			{
 				pending.push(i);
 			}
-			//rng.borrow_mut().shuffle(&mut pending);//rand-0.4
-			pending.shuffle(rng.borrow_mut().deref_mut());//rand-0.8
+			//rng.shuffle(&mut pending);//rand-0.4
+			pending.shuffle(rng);//rand-0.8
 		}
 		pending.pop().unwrap()
 	}
@@ -1374,7 +1372,7 @@ pub struct UniformDistance
 
 impl Pattern for UniformDistance
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, _rng: &mut StdRng)
 	{
 		let n= if self.switch_level { topology.num_routers() } else { topology.num_servers() };
 		//assert!(n==source_size && n==target_size,"The UniformDistance pattern needs source_size({})==target_size({})==num_routers({})",source_size,target_size,n);
@@ -1409,10 +1407,10 @@ impl Pattern for UniformDistance
 			self.pool.push(found);
 		}
 	}
-	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
 		let pool = &self.pool[origin/self.concentration];
-		let r=rng.borrow_mut().gen_range(0..pool.len());
+		let r=rng.gen_range(0..pool.len());
 		pool[r]*self.concentration + (origin%self.concentration)
 	}
 }
@@ -1451,11 +1449,10 @@ pub struct FixedRandom
 
 impl Pattern for FixedRandom
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, rng: &mut StdRng)
 	{
 		self.map.reserve(source_size);
-		let mut borrowed = rng.borrow_mut();
-		let rng= self.opt_rng.as_mut().unwrap_or(borrowed.deref_mut()); //
+		let rng= self.opt_rng.as_mut().unwrap_or(rng);
 		for source in 0..source_size
 		{
 			// To avoid selecting self we substract 1 from the total. If the random falls in the latter half we add it again.
@@ -1468,7 +1465,7 @@ impl Pattern for FixedRandom
 			self.map.push(elem);
 		}
 	}
-	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
 		self.map[origin]
 	}
@@ -1599,7 +1596,7 @@ pub fn proportional_vec_with_sum(weights:&Vec<f64>, target_sum:usize) -> Vec<usi
 
 impl Pattern for IndependentRegions
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		assert!(source_size==target_size, "source_size and target_size must be equal in IndependentRegions.");
 		if !self.relative_sizes.is_empty()
@@ -1620,7 +1617,7 @@ impl Pattern for IndependentRegions
 			self.patterns[region_index].initialize(size,size,topology,rng);
 		}
 	}
-	fn get_destination(&self, mut origin:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, mut origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
 		let mut region_index = 0;
 		let mut region_offset = 0;
@@ -1711,7 +1708,7 @@ pub struct RestrictedMiddleUniform
 
 impl Pattern for RestrictedMiddleUniform
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		let n= if self.switch_level { topology.num_routers() } else { topology.num_servers() };
 		//assert!(n==source_size && n==target_size,"The RestrictedMiddleUniform pattern needs source_size({})==target_size({})==num_routers({})",source_size,target_size,n);
@@ -1796,13 +1793,13 @@ impl Pattern for RestrictedMiddleUniform
 			pat.initialize(source_size,target_size,topology,rng);
 		}
 	}
-	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)->usize
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
 		let pool = &self.pool[origin/self.concentration];
 		if pool.is_empty() {
 			self.else_pattern.as_ref().expect("else clause should be set").get_destination(origin,topology,rng)
 		} else {
-			let r=rng.borrow_mut().gen_range(0..pool.len());
+			let r=rng.gen_range(0..pool.len());
 			pool[r]*self.concentration + (origin%self.concentration)
 		}
 	}

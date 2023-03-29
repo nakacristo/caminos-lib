@@ -1,5 +1,4 @@
 
-use std::cell::{RefCell};
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::{BufRead,BufReader};
@@ -140,7 +139,7 @@ impl Topology for NeighboursLists
 	{
 		None
 	}
-	fn coordinated_routing_record(&self, _coordinates_a:&[usize], _coordinates_b:&[usize], _rng: Option<&RefCell<StdRng>>)->Vec<i32>
+	fn coordinated_routing_record(&self, _coordinates_a:&[usize], _coordinates_b:&[usize], _rng: Option<&mut StdRng>)->Vec<i32>
 	{
 		//(0..coordinates_a.len()).map(|i|coordinates_b[i] as i32-coordinates_a[i] as i32).collect()
 		unimplemented!();
@@ -220,7 +219,7 @@ impl NeighboursLists
 		topo
 	}
 	///Build random regular adjacencies.
-	pub fn new_rrg_adj(routers:usize, degree:usize, rng: &RefCell<StdRng>) -> Vec<Vec<usize>>
+	pub fn new_rrg_adj(routers:usize, degree:usize, rng: &mut StdRng) -> Vec<Vec<usize>>
 	{
 		//long U[routers*degree];//available
 		//std::vector<std::vector<vertex_index> > adj(routers);
@@ -282,15 +281,15 @@ impl NeighboursLists
 				}
 				//sample points x,y, keep them last in U to remove them in O(1)
 				//vertex_index r=randomInteger(Un);
-				//let r=rng.borrow_mut().gen_range(0,Un);//rand-0.4
-				let r=rng.borrow_mut().gen_range(0..Un);//rand-0.8
+				//let r=rng.gen_range(0,Un);//rand-0.4
+				let r=rng.gen_range(0..Un);//rand-0.8
 				//vertex_index x=U[r];
 				let x=U[r];
 				U[r]=U[Un-1];
 				U[Un-1]=x;
 
 				//r=randomInteger(Un-1);
-				let r=rng.borrow_mut().gen_range(0..Un-1);
+				let r=rng.gen_range(0..Un-1);
 				//vertex_index y=U[r];
 				let y=U[r];
 				U[r]=U[Un-2];
@@ -387,7 +386,7 @@ impl NeighboursLists
 	///RandomRegularGraph topologies use
 	/// * routers: the total number of routers.
 	/// * degree: the degree, ports towards other routers.
-	pub fn new_cfg(cv:&ConfigurationValue, rng: &RefCell<StdRng>) -> NeighboursLists
+	pub fn new_cfg(cv:&ConfigurationValue, rng: &mut StdRng) -> NeighboursLists
 	{
 		let mut routers=None;
 		let mut degree=None;

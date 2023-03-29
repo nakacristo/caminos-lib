@@ -1,5 +1,4 @@
 
-use std::cell::RefCell;
 use ::rand::{rngs::StdRng};
 use super::prelude::*;
 use super::cartesian::CartesianData;
@@ -151,7 +150,7 @@ impl Topology for Dragonfly
 	{
 		None
 	}
-	fn coordinated_routing_record(&self, _coordinates_a:&[usize], _coordinates_b:&[usize], _rng: Option<&RefCell<StdRng>>)->Vec<i32>
+	fn coordinated_routing_record(&self, _coordinates_a:&[usize], _coordinates_b:&[usize], _rng: Option<&mut StdRng>)->Vec<i32>
 	{
 		//(0..coordinates_a.len()).map(|i|coordinates_b[i] as i32-coordinates_a[i] as i32).collect()
 		unimplemented!();
@@ -275,7 +274,7 @@ It is called a point to a combination of group, router, and port identifier.
 pub trait Arrangement : Quantifiable + core::fmt::Debug
 {
 	/// Initialization should be called once before any other of its methods.
-	fn initialize(&mut self, size:ArrangementSize, rng: &RefCell<StdRng>);
+	fn initialize(&mut self, size:ArrangementSize, rng: &mut StdRng);
 	/// Gets the point connected to the `input`.
 	fn map( &self, input:ArrangementPoint ) -> ArrangementPoint;
 	/// Get the size with the arrangement has been initialized.
@@ -331,7 +330,7 @@ pub struct Palmtree
 
 impl Arrangement for Palmtree
 {
-	fn initialize(&mut self, size:ArrangementSize, _rng: &RefCell<StdRng>)
+	fn initialize(&mut self, size:ArrangementSize, _rng: &mut StdRng)
 	{
 		self.size = size;
 	}
@@ -374,7 +373,7 @@ pub struct RandomArrangement
 
 impl Arrangement for RandomArrangement
 {
-	fn initialize(&mut self, size:ArrangementSize, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, size:ArrangementSize, rng: &mut StdRng)
 	{
 		use rand::prelude::SliceRandom;
 		use rand::Rng;
@@ -385,7 +384,6 @@ impl Arrangement for RandomArrangement
 		let total_points = n*m;
 		let base_trunking = total_points/2 / group_pairs;
 		let irregular_links = total_points/2 - base_trunking*group_pairs;
-		let mut rng = rng.borrow_mut();
 		let mut free_points : Vec<Vec<usize>> = (0..n).map(|_| (0..m).collect() ).collect();
 		self.inner_map = vec![0;total_points];
 		for _ in 0..base_trunking
@@ -505,7 +503,7 @@ pub struct Dragonfly2ColorsRouting
 
 impl Routing for Dragonfly2ColorsRouting
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location

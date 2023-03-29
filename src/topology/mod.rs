@@ -16,7 +16,6 @@ pub mod slimfly;
 pub mod multistage;
 pub mod megafly;
 
-use std::cell::{RefCell};
 use std::fs::File;
 use ::rand::{rngs::StdRng};
 use std::io::{Write};
@@ -131,7 +130,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 	///Specific for some toologies, but must be checkable for anyone
 	fn cartesian_data(&self) -> Option<&CartesianData>;
 	///Specific for some topologies, but must be checkable for anyone
-	fn coordinated_routing_record(&self, _coordinates_a:&[usize], _coordinates_b:&[usize], _rng:Option<&RefCell<StdRng>>)->Vec<i32>
+	fn coordinated_routing_record(&self, _coordinates_a:&[usize], _coordinates_b:&[usize], _rng:Option<&mut StdRng>)->Vec<i32>
 	{
 		unimplemented!()
 	}
@@ -649,7 +648,7 @@ pub struct TopologyBuilderArgument<'a>
 	///The user defined plugs. In case the topology needs to create elements.
 	pub plugs: &'a Plugs,
 	///The random number generator to use.
-	pub rng: &'a RefCell<StdRng>,
+	pub rng: &'a mut StdRng,
 }
 
 /**

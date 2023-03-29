@@ -23,6 +23,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * Renamed TransmissionFromServer into TransmissionFromOblivious.
 * Some changes in the Dragonfly struct, to allow for more global arrangements.
 * `Event::process` now receives SimulationShared and SimulationMut for better encapsulation.
+* Replaced every `&RefCell<StdRng>` by `&mut StdRng` everywhere.
 
 ## [0.4.0] to [0.5.0]
 

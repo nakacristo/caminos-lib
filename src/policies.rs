@@ -14,7 +14,6 @@ use crate::router::Router;
 use crate::topology::{Topology,Location};
 use crate::{Plugs,Phit,match_object_panic};
 
-use std::cell::{RefCell};
 use std::fmt::Debug;
 use std::convert::TryInto;
 use std::rc::Rc;
@@ -68,7 +67,7 @@ pub trait VirtualChannelPolicy : Debug
 	///router: the router in which the decision is being made.
 	///topology: The network topology.
 	///rng: the global random number generator.
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>;
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>;
 	fn need_server_ports(&self)->bool;
 	fn need_port_average_queue_length(&self)->bool;
 	fn need_port_last_transmission(&self)->bool;
@@ -335,7 +334,7 @@ pub struct Identity{}
 
 impl VirtualChannelPolicy for Identity
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		candidates
 	}
@@ -371,10 +370,10 @@ pub struct Random{}
 
 impl VirtualChannelPolicy for Random
 {
-	//fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _target_router_index:usize, _entry_port:usize, _entry_virtual_channel:usize, _performed_hops:usize, _server_ports:&Option<Vec<usize>>, _port_average_neighbour_queue_length:&Option<Vec<f32>>, _port_last_transmission:&Option<Vec<usize>>, _port_occuped_output_space:&Option<Vec<usize>>, _port_available_output_space:&Option<Vec<usize>>, _current_cycle:usize, _topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
-	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	//fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _target_router_index:usize, _entry_port:usize, _entry_virtual_channel:usize, _performed_hops:usize, _server_ports:&Option<Vec<usize>>, _port_average_neighbour_queue_length:&Option<Vec<f32>>, _port_last_transmission:&Option<Vec<usize>>, _port_occuped_output_space:&Option<Vec<usize>>, _port_available_output_space:&Option<Vec<usize>>, _current_cycle:usize, _topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
-		vec![candidates[rng.borrow_mut().gen_range(0..candidates.len())].clone()]
+		vec![candidates[rng.gen_range(0..candidates.len())].clone()]
 	}
 
 	fn need_server_ports(&self)->bool
@@ -407,7 +406,7 @@ pub struct Shortest{}
 
 impl VirtualChannelPolicy for Shortest
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		let mut best=vec![];
 		let mut best_credits=0;
@@ -465,7 +464,7 @@ pub struct Hops{}
 
 impl VirtualChannelPolicy for Hops
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		let server_ports=info.server_ports.expect("server_ports have not been computed for policy Hops");
 		let filtered=candidates.into_iter().filter(|&CandidateEgress{port,virtual_channel,label:_label,estimated_remaining_hops:_,..}|virtual_channel==info.performed_hops|| server_ports.contains(&port)).collect::<Vec<_>>();
@@ -510,7 +509,7 @@ pub struct EnforceFlowControl{}
 
 impl VirtualChannelPolicy for EnforceFlowControl
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		let filtered=candidates.into_iter().filter(|candidate|candidate.router_allows.unwrap_or(true)).collect::<Vec<_>>();
 		filtered
@@ -550,7 +549,7 @@ pub struct WideHops{
 
 impl VirtualChannelPolicy for WideHops
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		let server_ports=info.server_ports.expect("server_ports have not been computed for policy WideHops");
 		let lower_limit = self.width*info.performed_hops;
@@ -627,7 +626,7 @@ pub struct LowestSinghWeight
 
 impl VirtualChannelPolicy for LowestSinghWeight
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=info.port_average_neighbour_queue_length.expect("port_average_neighbour_queue_length have not been computed for policy LowestSinghWeight");
 		let dist=topology.distance(router.get_index().expect("we need routers with index"),info.target_router_index);
@@ -793,7 +792,7 @@ pub struct LowestLabel{}
 
 impl VirtualChannelPolicy for LowestLabel
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		let mut best=vec![];
 		let mut best_label=<i32>::max_value();
@@ -863,7 +862,7 @@ pub struct LabelSaturate
 
 impl VirtualChannelPolicy for LabelSaturate
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		if self.bottom
 		{
@@ -940,7 +939,7 @@ pub struct LabelTransform
 
 impl VirtualChannelPolicy for LabelTransform
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		candidates.into_iter().filter_map(
 			//|CandidateEgress{port,virtual_channel,label,estimated_remaining_hops}|
@@ -1063,7 +1062,7 @@ pub struct OccupancyFunction
 
 impl VirtualChannelPolicy for OccupancyFunction
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy OccupancyFunction");
 		if router.get_index().expect("we need routers with index") == info.target_router_index
@@ -1176,7 +1175,7 @@ pub struct NegateLabel
 
 impl VirtualChannelPolicy for NegateLabel
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		candidates.into_iter().map(
 			//|CandidateEgress{port,virtual_channel,label,estimated_remaining_hops}|
@@ -1223,7 +1222,7 @@ pub struct VecLabel
 
 impl VirtualChannelPolicy for VecLabel
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy VecLabel");
 		if router.get_index().expect("we need routers with index") == info.target_router_index
@@ -1291,7 +1290,7 @@ pub struct MapLabel
 
 impl VirtualChannelPolicy for MapLabel
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy MapLabel");
 		if router.get_index().expect("we need routers with index") == info.target_router_index
@@ -1377,7 +1376,7 @@ pub struct ShiftEntryVC
 
 impl VirtualChannelPolicy for ShiftEntryVC
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy ShiftEntryVC");
 		if router.get_index().expect("we need routers with index") == info.target_router_index
@@ -1436,7 +1435,7 @@ pub struct MapHop
 
 impl VirtualChannelPolicy for MapHop
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy MapHop");
 		if router.get_index().expect("we need routers with index") == info.target_router_index
@@ -1496,7 +1495,7 @@ pub struct ArgumentVC
 
 impl VirtualChannelPolicy for ArgumentVC
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy ArgumentVC");
 		if router.get_index().expect("we need routers with index") == info.target_router_index
@@ -1552,7 +1551,7 @@ pub struct Either
 
 impl VirtualChannelPolicy for Either
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy Either");
 		if router.get_index().expect("we need routers with index") == info.target_router_index
@@ -1616,7 +1615,7 @@ pub struct MapEntryVC
 
 impl VirtualChannelPolicy for MapEntryVC
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy MapEntryVC");
 		if router.get_index().expect("we need routers with index") == info.target_router_index
@@ -1689,7 +1688,7 @@ pub struct MapMessageSize
 
 impl VirtualChannelPolicy for MapMessageSize
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		if router.get_index().expect("we need routers with index") == info.target_router_index
 		{
@@ -1757,7 +1756,7 @@ pub struct Chain
 
 impl VirtualChannelPolicy for Chain
 {
-	fn filter(&self, mut candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, mut candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy Chain");
 		if router.get_index().expect("we need routers with index") == info.target_router_index
@@ -1843,7 +1842,7 @@ pub struct VOQ
 
 impl VirtualChannelPolicy for VOQ
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &RefCell<StdRng>) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy VOQ");
 		if router.get_index().expect("we need routers with index") == info.target_router_index

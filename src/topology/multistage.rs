@@ -1,5 +1,4 @@
 
-use std::cell::{RefCell};
 use std::collections::BTreeSet;
 
 use ::rand::{Rng,rngs::StdRng};
@@ -480,7 +479,7 @@ impl ExplicitStage
 		(bottom_list,top_list)
 	}
 	///Build random regular adjacencies.
-	pub fn random_adjacencies(bottom_size:usize, bottom_degree:usize, top_size:usize, top_degree:usize, rng: &RefCell<StdRng>) -> (Vec<Vec<usize>>,Vec<Vec<usize>>)
+	pub fn random_adjacencies(bottom_size:usize, bottom_degree:usize, top_size:usize, top_degree:usize, rng: &mut StdRng) -> (Vec<Vec<usize>>,Vec<Vec<usize>>)
 	{
 		let mut to_above=vec![Vec::with_capacity(bottom_degree);bottom_size];
 		let mut to_below=vec![Vec::with_capacity(top_degree);top_size];
@@ -535,13 +534,13 @@ impl ExplicitStage
 					}
 				}
 				//sample points x,y, keep them last in U to remove them in O(1)
-				//let r=rng.borrow_mut().gen_range(0,upwards_available_amount);//rand-0.4
-				let r=rng.borrow_mut().gen_range(0..upwards_available_amount);//rand-0.8
+				//let r=rng.gen_range(0,upwards_available_amount);//rand-0.4
+				let r=rng.gen_range(0..upwards_available_amount);//rand-0.8
 				let x=upwards_available[r];
 				upwards_available[r]=upwards_available[upwards_available_amount-1];
 				upwards_available[upwards_available_amount-1]=x;
 
-				let r=rng.borrow_mut().gen_range(0..downwards_available_amount);
+				let r=rng.gen_range(0..downwards_available_amount);
 				let y=downwards_available[r];
 				downwards_available[r]=downwards_available[downwards_available_amount-1];
 				downwards_available[downwards_available_amount-1]=y;
@@ -636,7 +635,7 @@ impl Stage for WidenedStage
 
 impl WidenedStage
 {
-	pub fn new(arg:StageBuilderArgument) -> WidenedStage
+	pub fn new(mut arg:StageBuilderArgument) -> WidenedStage
 	{
 		let mut base=None;
 		let mut multiplier=None;
@@ -650,7 +649,7 @@ impl WidenedStage
 			{
 				match name.as_ref()
 				{
-					"base" => base=Some(new_stage(StageBuilderArgument{cv:value,..arg})),
+					"base" => base=Some(new_stage(StageBuilderArgument{cv:value,rng:&mut arg.rng,..arg})),
 					"multiplier" => match value
 					{
 						&ConfigurationValue::Number(f) => multiplier=Some(f as usize),
@@ -835,7 +834,7 @@ impl Topology for MultiStage
 	{
 		None
 	}
-	fn coordinated_routing_record(&self, _coordinates_a:&[usize], _coordinates_b:&[usize], _rng: Option<&RefCell<StdRng>>)->Vec<i32>
+	fn coordinated_routing_record(&self, _coordinates_a:&[usize], _coordinates_b:&[usize], _rng: Option<&mut StdRng>)->Vec<i32>
 	{
 		unimplemented!();
 	}
@@ -1232,7 +1231,7 @@ pub struct StageBuilderArgument<'a>
 	///The user defined plugs. In case the topology needs to create elements.
 	pub plugs: &'a Plugs,
 	///The random number generator to use.
-	pub rng: &'a RefCell<StdRng>,
+	pub rng: &'a mut StdRng,
 }
 
 /**

@@ -4,6 +4,7 @@
 
 ### 2023-03-29
 Added SimulationShared and SimulationMut for better encapsulation.
+Replaced every `&RefCell<StdRng>` by `&mut StdRng` everywhere.
 
 ### 2023-03-23
 Fix checks in InputOutputMonocycle relative to the crossbar delay.

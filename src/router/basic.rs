@@ -1,7 +1,7 @@
 
 use std::cell::RefCell;
 use std::rc::{Rc,Weak};
-use std::ops::{Deref,DerefMut};
+use std::ops::{Deref};
 use std::mem::{size_of};
 use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom};
 
@@ -132,7 +132,7 @@ impl BasicRouterMeasurement
 
 impl Router for Basic
 {
-	fn insert(&mut self, phit:Rc<Phit>, port:usize, rng: &RefCell<StdRng>)
+	fn insert(&mut self, phit:Rc<Phit>, port:usize, rng: &mut StdRng)
 	{
 		self.reception_port_space[port].insert(phit,rng).expect("there was some problem on the insertion");
 	}
@@ -896,7 +896,7 @@ impl Eventful for Basic
 							Location::RouterPort{router_index,router_port:_} =>router_index,
 							_ => panic!("The server is not attached to a router"),
 						};
-						let routing_candidates=simulation.routing.next(phit.packet.routing_info.borrow().deref(),simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&mutable.rng);
+						let routing_candidates=simulation.routing.next(phit.packet.routing_info.borrow().deref(),simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&mut mutable.rng);
 						let routing_idempotent = routing_candidates.idempotent;
 						if routing_candidates.len()==0
 						{
@@ -958,7 +958,7 @@ impl Eventful for Basic
 						for vcp in self.virtual_channel_policies.iter()
 						{
 							//good_ports=vcp.filter(good_ports,self,target_router,entry_port,entry_vc,performed_hops,&server_ports,&port_average_neighbour_queue_length,&port_last_transmission,&port_occupied_output_space,&port_available_output_space,simulation.cycle,topology,&mutable.rng);
-							good_ports=vcp.filter(good_ports,self,&request_info,topology,&mutable.rng);
+							good_ports=vcp.filter(good_ports,self,&request_info,topology,&mut mutable.rng);
 							if good_ports.is_empty()
 							{
 								break;//No need to check other policies.
@@ -980,7 +980,7 @@ impl Eventful for Basic
 						//}
 						for candidate in good_ports.into_iter()
 						{
-							simulation.routing.performed_request(&candidate,&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&mutable.rng);
+							simulation.routing.performed_request(&candidate,&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&mut mutable.rng);
 							let CandidateEgress{port:requested_port,virtual_channel:requested_vc,label,..} = candidate;
 							if self.selected_input[requested_port][requested_vc].is_none()
 							{
@@ -1048,9 +1048,9 @@ impl Eventful for Basic
 				//shuffle has changed notably from rand-0.4 to rand-0.8
 				//mutable.rng.borrow_mut().shuffle(&mut request_transit);
 				//mutable.rng.borrow_mut().shuffle(&mut request_injection);
-				let mut rng=mutable.rng.borrow_mut();
-				request_transit.shuffle(rng.deref_mut());
-				request_injection.shuffle(rng.deref_mut());
+				let rng=&mut mutable.rng;
+				request_transit.shuffle(rng);
+				request_injection.shuffle(rng);
 				//**rx=request_transit;
 				rx=request_transit;
 				rx.append(&mut request_injection);
@@ -1059,7 +1059,7 @@ impl Eventful for Basic
 			{
 				//shuffle has changed notably from rand-0.4 to rand-0.8
 				//mutable.rng.borrow_mut().shuffle(&mut rx);
-				rx.shuffle(mutable.rng.borrow_mut().deref_mut());
+				rx.shuffle(&mut mutable.rng);
 			}
 			rx
 		});
@@ -1238,7 +1238,7 @@ impl Eventful for Basic
 				let selected_virtual_channel = match self.output_arbiter
 				{
 					//OutputArbiter::Random=> cand[mutable.rng.borrow_mut().gen_range(0,cand.len())],//rand-0.4
-					OutputArbiter::Random=> cand[mutable.rng.borrow_mut().gen_range(0..cand.len())],//rand-0.8
+					OutputArbiter::Random=> cand[mutable.rng.gen_range(0..cand.len())],//rand-0.8
 					OutputArbiter::Token{ref mut port_token}=>
 					{
 						//Or by tokens as in fsin

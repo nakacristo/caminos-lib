@@ -390,7 +390,7 @@ pub struct Server
 impl Server
 {
 	///Consumes a phit
-	fn consume(&mut self, phit:Rc<Phit>, traffic:&mut dyn Traffic, statistics:&mut Statistics, cycle:usize, topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn consume(&mut self, phit:Rc<Phit>, traffic:&mut dyn Traffic, statistics:&mut Statistics, cycle:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		self.statistics.track_consumed_phit(cycle);
 		statistics.track_consumed_phit(cycle);
@@ -608,7 +608,7 @@ Part of Simulation that is intended to be exposed to the `Eventful::process` API
 pub struct SimulationMut
 {
 	///The random number generator itself, with its current state.
-	pub rng: RefCell<StdRng>,
+	pub rng: StdRng,
 }
 
 ///The object represeting the whole simulation.
@@ -731,14 +731,14 @@ impl<'a> Simulation<'a>
 		let mut routing=routing.expect("There were no routing");
 		let link_classes:Vec<LinkClass>=link_classes.expect("There were no link_classes");
 		//This has been changed from rand-0.4 to rand-0.8
-		let rng=RefCell::new(StdRng::seed_from_u64(seed as u64));
+		let mut rng=StdRng::seed_from_u64(seed as u64);
 		let topology=new_topology(TopologyBuilderArgument{
 			cv:topology,
 			plugs,
-			rng:&rng,
+			rng:&mut rng,
 		});
 		topology.check_adjacency_consistency(Some(link_classes.len()));
-		routing.initialize(topology.as_ref(),&rng);
+		routing.initialize(topology.as_ref(),&mut rng);
 		let num_routers=topology.num_routers();
 		let num_servers=topology.num_servers();
 		//let routers: Vec<Rc<RefCell<dyn Router>>>=(0..num_routers).map(|index|new_router(index,router_cfg,plugs,topology.as_ref(),maximum_packet_size)).collect();
@@ -749,7 +749,7 @@ impl<'a> Simulation<'a>
 			topology:topology.as_ref(),
 			maximum_packet_size,
 			statistics_temporal_step,
-			rng:&rng,
+			rng:&mut rng,
 		})).collect();
 		let servers=(0..num_servers).map(|index|{
 			let port=topology.server_neighbour(index);
@@ -788,7 +788,7 @@ impl<'a> Simulation<'a>
 			cv:traffic,
 			plugs,
 			topology:topology.as_ref(),
-			rng:&rng,
+			rng:&mut rng,
 		});
 		let statistics=Statistics::new(statistics_temporal_step,statistics_server_percentiles,statistics_packet_percentiles,statistics_packet_definitions,topology.as_ref());
 		Simulation{
@@ -888,7 +888,7 @@ impl<'a> Simulation<'a>
 								extra.cycle_per_hop.push(self.shared.cycle);
 							}
 							let mut brouter=self.shared.network.routers[router].borrow_mut();
-							brouter.insert(phit.clone(),port,&self.mutable.rng);
+							brouter.insert(phit.clone(),port,&mut self.mutable.rng);
 							if brouter.pending_events()==0
 							{
 								brouter.add_pending_event();
@@ -901,7 +901,7 @@ impl<'a> Simulation<'a>
 								&Location::ServerPort(_server_index) => if phit.is_begin()
 								{
 									*phit.packet.cycle_into_network.borrow_mut() = self.shared.cycle;
-									self.shared.routing.initialize_routing_info(&phit.packet.routing_info, self.shared.network.topology.as_ref(), router, phit.packet.message.destination,&self.mutable.rng);
+									self.shared.routing.initialize_routing_info(&phit.packet.routing_info, self.shared.network.topology.as_ref(), router, phit.packet.message.destination,&mut self.mutable.rng);
 								},
 								&Location::RouterPort{../*router_index,router_port*/} =>
 								{
@@ -909,7 +909,7 @@ impl<'a> Simulation<'a>
 									if phit.is_begin()
 									{
 										phit.packet.routing_info.borrow_mut().hops+=1;
-										self.shared.routing.update_routing_info(&phit.packet.routing_info, self.shared.network.topology.as_ref(), router, port, phit.packet.message.destination,&self.mutable.rng);
+										self.shared.routing.update_routing_info(&phit.packet.routing_info, self.shared.network.topology.as_ref(), router, port, phit.packet.message.destination,&mut self.mutable.rng);
 									}
 								},
 								_ => (),
@@ -921,7 +921,7 @@ impl<'a> Simulation<'a>
 							{
 								panic!("Packet reached wrong server, {} instead of {}!\n",server,phit.packet.message.destination);
 							}
-							self.shared.network.servers[server].consume(phit.clone(),self.shared.traffic.deref_mut(),&mut self.statistics,self.shared.cycle,self.shared.network.topology.as_ref(),&self.mutable.rng);
+							self.shared.network.servers[server].consume(phit.clone(),self.shared.traffic.deref_mut(),&mut self.statistics,self.shared.cycle,self.shared.network.topology.as_ref(),&mut self.mutable.rng);
 						}
 						&Location::None => panic!("Phit went nowhere previous={:?}",previous),
 					};
@@ -1015,10 +1015,10 @@ impl<'a> Simulation<'a>
 			//println!("credits of {} = {}",iserver,server.credits);
 			if let (Location::RouterPort{router_index: index,router_port: port},link_class)=server.port
 			{
-				if self.shared.traffic.should_generate(iserver,self.shared.cycle,&self.mutable.rng)
+				if self.shared.traffic.should_generate(iserver,self.shared.cycle,&mut self.mutable.rng)
 				{
 					if server.stored_messages.len()<self.server_queue_size {
-						match self.shared.traffic.generate_message(iserver,self.shared.cycle,self.shared.network.topology.as_ref(),&self.mutable.rng)
+						match self.shared.traffic.generate_message(iserver,self.shared.cycle,self.shared.network.topology.as_ref(),&mut self.mutable.rng)
 						{
 							Ok(message) =>
 							{
@@ -1795,7 +1795,7 @@ pub fn special_export(args: &str, plugs:&Plugs)
 	let topology_cfg=topology.expect("There were no topology.");
 	let format=format.unwrap_or(0);
 	let filename=filename.expect("There were no filename.");
-	let rng=RefCell::new(StdRng::from_seed({
+	let mut rng=StdRng::from_seed({
 		//changed from rand-0.4 to rand-0.8
 		let mut std_rng_seed = [0u8;32];
 		for (index,value) in seed.to_ne_bytes().iter().enumerate()
@@ -1803,8 +1803,8 @@ pub fn special_export(args: &str, plugs:&Plugs)
 			std_rng_seed[index]=*value;
 		}
 		std_rng_seed
-	}));
-	let topology = topology::new_topology(topology::TopologyBuilderArgument{cv:&topology_cfg,plugs,rng:&rng});
+	});
+	let topology = topology::new_topology(topology::TopologyBuilderArgument{cv:&topology_cfg,plugs,rng:&mut rng});
 	let mut topology_file=File::create(&filename).expect("Could not create topology file");
 	topology.write_adjacencies_to_file(&mut topology_file,format).expect("Failed writing topology to file");
 }

@@ -14,7 +14,6 @@ pub mod islip;
 use crate::Plugs;
 use crate::config_parser::ConfigurationValue;
 
-use std::cell::RefCell;
 use ::rand::rngs::StdRng;
 use random::RandomAllocator;
 use random_priority::RandomPriorityAllocator;
@@ -132,7 +131,7 @@ pub trait Allocator {
 	/// * `rng` - The random number generator to use
 	/// # Returns
 	/// * `GrantedRequests` - The granted requests
-	fn perform_allocation(&mut self, rng : &RefCell<StdRng>) -> GrantedRequests;
+	fn perform_allocation(&mut self, rng : &mut StdRng) -> GrantedRequests;
 
 	/// Check if the allocator supports the intransit priority option
 	/// # Returns
@@ -157,7 +156,7 @@ pub struct AllocatorBuilderArgument<'a>
 	/// A reference to the Plugs object
 	pub plugs : &'a Plugs,
 	/// The random number generator to use
-	pub rng : &'a RefCell<StdRng>,
+	pub rng : &'a mut StdRng,
 }
 
 /**

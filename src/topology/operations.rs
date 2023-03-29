@@ -64,7 +64,7 @@ impl Topology for RemappedServersTopology
 		self.topology.neighbour_router_iter(router_index)
 	}
 	fn cartesian_data(&self) -> Option<&CartesianData> { self.topology.cartesian_data() }
-	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], rng:Option<&RefCell<StdRng>>)->Vec<i32>
+	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], rng:Option<&mut StdRng>)->Vec<i32>
 	{
 		self.topology.coordinated_routing_record(coordinates_a,coordinates_b,rng)
 	}
@@ -118,12 +118,12 @@ impl Topology for RemappedServersTopology
 
 impl RemappedServersTopology
 {
-	pub fn new(arg:TopologyBuilderArgument) -> RemappedServersTopology
+	pub fn new(mut arg:TopologyBuilderArgument) -> RemappedServersTopology
 	{
 		let mut topology = None;
 		let mut pattern = None;
 		match_object_panic!(arg.cv, "RemappedServers", value,
-			"topology" => topology = Some(new_topology(TopologyBuilderArgument{cv:value,..arg})),
+			"topology" => topology = Some(new_topology(TopologyBuilderArgument{cv:value,rng:&mut arg.rng,..arg})),
 			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 		);
 		let topology = topology.expect("There were no topology in configuration of RemappedServersTopology.");

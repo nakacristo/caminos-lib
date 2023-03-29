@@ -6,7 +6,6 @@ This file implements the iSLIP algorithm by N. McKeown.
 
 */
 
-use std::cell::RefCell;
 use std::vec;
 
 use rand::rngs::StdRng;
@@ -178,7 +177,7 @@ impl Allocator for ISLIPAllocator {
     /// * `_rng` - NOT USED on this allocator
     /// # Returns
     /// * `GrantedRequests` - The granted requests
-    fn perform_allocation(&mut self, _rng: &RefCell<StdRng>) -> GrantedRequests {
+    fn perform_allocation(&mut self, _rng: &mut StdRng) -> GrantedRequests {
 
         // Create the granted requests vector
         let mut gr = GrantedRequests::default();

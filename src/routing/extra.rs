@@ -83,7 +83,7 @@ pub struct SumRouting
 //* [a,b,c] if a request by routing c has been made, but the two routing are still available.
 impl Routing for SumRouting
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &mut StdRng) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -165,11 +165,11 @@ impl Routing for SumRouting
 		//FIXME: we can recover idempotence in some cases.
 		RoutingNextCandidates{candidates:r,idempotent:false}
 	}
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{
 		let all:Vec<i32> = match self.policy
 		{
-			SumRoutingPolicy::Random => vec![rng.borrow_mut().gen_range(0..2)],
+			SumRoutingPolicy::Random => vec![rng.gen_range(0..2)],
 			SumRoutingPolicy::TryBoth | SumRoutingPolicy::Stubborn | SumRoutingPolicy::StubbornWhenSecond
 			| SumRoutingPolicy::SecondWhenFirstEmpty | SumRoutingPolicy::EscapeToSecond => vec![0,1],
 		};
@@ -184,7 +184,7 @@ impl Routing for SumRouting
 		}
 		bri.selections=Some(all);
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &RefCell<StdRng>)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &mut StdRng)
 	{
 		use SumRoutingPolicy::*;
 		let mut bri=routing_info.borrow_mut();
@@ -251,14 +251,14 @@ impl Routing for SumRouting
 		}
 		bri.selections=Some(cs);
 	}
-	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		//self.first_routing.initialize(topology,rng);
 		//self.second_routing.initialize(topology,rng);
 		self.routing[0].initialize(topology,rng);
 		self.routing[1].initialize(topology,rng);
 	}
-	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, _num_virtual_channels:usize, rng:&RefCell<StdRng>)
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, _num_virtual_channels:usize, rng:&mut StdRng)
 	{
 		let mut bri=routing_info.borrow_mut();
 		//if let SumRoutingPolicy::TryBoth=self.policy
@@ -390,7 +390,7 @@ pub struct Stubborn
 
 impl Routing for Stubborn
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &RefCell<StdRng>) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &mut StdRng) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -424,23 +424,23 @@ impl Routing for Stubborn
 		//return self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng).into_iter().map(|candidate|CandidateEgress{annotation:Some(RoutingAnnotation{values:vec![candidate.label],meta:vec![candidate.annotation]}),..candidate}).collect()
 		return RoutingNextCandidates{candidates:self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng).into_iter().map(|candidate|CandidateEgress{annotation:Some(RoutingAnnotation{values:vec![candidate.label],meta:vec![candidate.annotation]}),..candidate}).collect(),idempotent:false}
 	}
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{
 		let meta_routing_info=RefCell::new(RoutingInfo::new());
 		self.routing.initialize_routing_info(&meta_routing_info, topology, current_router, target_server, rng);
 		routing_info.borrow_mut().meta = Some(vec![meta_routing_info]);
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &RefCell<StdRng>)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &mut StdRng)
 	{
 		let mut bri=routing_info.borrow_mut();
 		bri.selections=None;
 		self.routing.update_routing_info(&bri.meta.as_mut().unwrap()[0],topology,current_router,current_port,target_server,rng);
 	}
-	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		self.routing.initialize(topology,rng);
 	}
-	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng:&RefCell<StdRng>)
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng:&mut StdRng)
 	{
 		let &CandidateEgress{port,virtual_channel,ref annotation,..} = requested;
 		if let Some(annotation) = annotation.as_ref()
@@ -486,7 +486,7 @@ pub struct EachLengthSourceAdaptiveRouting
 
 impl Routing for EachLengthSourceAdaptiveRouting
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &RefCell<StdRng>) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -547,7 +547,7 @@ impl Routing for EachLengthSourceAdaptiveRouting
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
 		RoutingNextCandidates{candidates:r,idempotent:true}
 	}
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &RefCell<StdRng>)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -572,14 +572,14 @@ impl Routing for EachLengthSourceAdaptiveRouting
 				if candidates.is_empty() {
 					None
 				} else {
-					let r = rng.borrow_mut().gen_range(0..candidates.len());
+					let r = rng.gen_range(0..candidates.len());
 					Some(i32::try_from(candidates[r]).unwrap())
 				}
 			}).collect();
 			routing_info.borrow_mut().selections=Some(selected_indices);
 		}
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, _current_port:usize, target_server:usize, _rng: &RefCell<StdRng>)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, _current_port:usize, target_server:usize, _rng: &mut StdRng)
 	{
 		let (target_location,_link_class)=topology.server_neighbour(target_server);
 		let target_router=match target_location
@@ -608,7 +608,7 @@ impl Routing for EachLengthSourceAdaptiveRouting
 			}
 		}
 	}
-	fn initialize(&mut self, topology:&dyn Topology, rng: &RefCell<StdRng>)
+	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		self.routing.initialize(topology,rng);
 	}

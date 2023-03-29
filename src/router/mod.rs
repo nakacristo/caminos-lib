@@ -24,7 +24,7 @@ use crate::error::{Error,SourceLocation};
 pub trait Router: Eventful + Quantifiable
 {
 	///Introduces a phit into the router in the specified port
-	fn insert(&mut self, phit:Rc<Phit>, port:usize, rng: &RefCell<StdRng>);
+	fn insert(&mut self, phit:Rc<Phit>, port:usize, rng: &mut StdRng);
 	///Receive the acknowledge of a phit clear. Generally to increase the credit count
 	fn acknowledge(&mut self, port:usize, ack_message:AcknowledgeMessage);
 	///To get the number of virtual channels the router uses.
@@ -71,7 +71,7 @@ pub struct RouterBuilderArgument<'a>
 	///Available to the router for the case it want to use the same period.
 	pub statistics_temporal_step: usize,
 	///The random number generator.
-	pub rng: &'a RefCell<StdRng>,
+	pub rng: &'a mut StdRng,
 }
 
 ///Creates a router from a configuration value.
@@ -232,7 +232,7 @@ pub trait StatusAtEmissor : Quantifiable
 pub trait SpaceAtReceptor
 {
 	///inserts a phit in the buffer space. I may return an error if the phit cannot be inserted.
-	fn insert(&mut self, phit:Rc<Phit>, rng: &RefCell<StdRng>) -> Result<(),Error>;
+	fn insert(&mut self, phit:Rc<Phit>, rng: &mut StdRng) -> Result<(),Error>;
 	///Iterate over the phits that can be processed by other structures, such as a crossbar.
 	fn front_iter(&self) -> Box<dyn Iterator<Item=Rc<Phit>>>;
 	///Consult if there is a processable phit in a given virtual channel.
@@ -428,7 +428,7 @@ pub struct ParallelBuffers
 
 impl SpaceAtReceptor for ParallelBuffers
 {
-	fn insert(&mut self, phit:Rc<Phit>, rng: &RefCell<StdRng>) -> Result<(),Error>
+	fn insert(&mut self, phit:Rc<Phit>, rng: &mut StdRng) -> Result<(),Error>
 	{
 		let current_vc=*phit.virtual_channel.borrow();
 		let vc=match current_vc
@@ -443,8 +443,8 @@ impl SpaceAtReceptor for ParallelBuffers
 		 		let vc={
 		 			if phit.is_begin()
 		 			{
-		 				//let r=rng.borrow_mut().gen_range(0,self.buffers.len());//rand-0.4
-		 				let r=rng.borrow_mut().gen_range(0..self.buffers.len());//rand-0.8
+		 				//let r=rng.gen_range(0,self.buffers.len());//rand-0.4
+		 				let r=rng.gen_range(0..self.buffers.len());//rand-0.8
 		 				self.input_virtual_channel_choices.insert(packet_ptr,r);
 		 				r
 		 			}
@@ -610,7 +610,7 @@ impl StatusAtEmissor for EmptyStatus
 
 impl SpaceAtReceptor for NoSpace
 {
-	fn insert(&mut self, _phit:Rc<Phit>, _rng: &RefCell<StdRng>) -> Result<(),Error>
+	fn insert(&mut self, _phit:Rc<Phit>, _rng: &mut StdRng) -> Result<(),Error>
 	{
 		unimplemented!()
 	}
@@ -773,7 +773,7 @@ pub struct AgnosticParallelBuffers
 
 impl SpaceAtReceptor for AgnosticParallelBuffers
 {
-	fn insert(&mut self, phit:Rc<Phit>, rng: &RefCell<StdRng>) -> Result<(),Error>
+	fn insert(&mut self, phit:Rc<Phit>, rng: &mut StdRng) -> Result<(),Error>
 	{
 		if phit.is_begin()
 		{
@@ -794,7 +794,7 @@ impl SpaceAtReceptor for AgnosticParallelBuffers
 			{
 				panic!("There is no space for the packet. packet.size={} available={:?}",phit.packet.size,self.buffers.iter().map(|buffer|self.buffer_size-buffer.len()).collect::<Vec<usize>>());
 			}
-			let r=rng.borrow_mut().gen_range(0..good.len());
+			let r=rng.gen_range(0..good.len());
 			self.currently_selected=good[r]
 		}
 		let index = self.currently_selected;

@@ -1,9 +1,7 @@
-use std::cell::RefCell;
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use rand::prelude::SliceRandom;
-use std::ops::DerefMut;
 
 //use quantifiable_derive::Quantifiable;//the derive macro
 use crate::allocator::{Allocator, Request, GrantedRequests, AllocatorBuilderArgument};
@@ -100,7 +98,7 @@ impl Allocator for RandomAllocator {
     /// * `GrantedRequests` - The granted requests
     /// # Remarks
     /// The granted requests are the requests that are granted
-    fn perform_allocation(&mut self, rng : &RefCell<StdRng>) -> GrantedRequests {
+    fn perform_allocation(&mut self, rng : &mut StdRng) -> GrantedRequests {
         // Create the granted requests vector
         let mut gr = GrantedRequests::default();
         
@@ -111,8 +109,7 @@ impl Allocator for RandomAllocator {
 
         // Shuffle the requests using the RNG passed as parameter
         // Except if the seed is set, in which case we use it
-        let mut borrowed = rng.borrow_mut();
-        let rng = self.rng.as_mut().unwrap_or(borrowed.deref_mut());
+        let rng = self.rng.as_mut().unwrap_or(rng);
         self.requests.shuffle(rng);
         // Allocate the requests with an iterator
         for Request{ref resource, ref client, priority: _ } in self.requests.iter() {
