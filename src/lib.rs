@@ -23,6 +23,8 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * Removed unnecessary generic parameter TM from routers Basic and InputOutputMonocycle. They now may select [TransmissionMechanism]s to employ.
 * Renamed TransmissionFromServer into TransmissionFromOblivious.
 * Some changes in the Dragonfly struct, to allow for more global arrangements.
+* `Event::process` now receives SimulationShared and SimulationMut for better encapsulation.
+* Replaced every `&RefCell<StdRng>` by `&mut StdRng` everywhere.
 
 ## [0.4.0] to [0.5.0]
 
@@ -600,6 +602,8 @@ pub struct SimulationShared
 	pub routing: Box<dyn Routing>,
 	///The properties associated to each link class.
 	pub link_classes: Vec<LinkClass>,
+	///The maximum size in phits that network packets can have. Any message greater than this is broken into several packets.
+	pub maximum_packet_size: usize,
 }
 
 /**
@@ -628,8 +632,6 @@ pub struct Simulation<'a>
 	pub warmup: usize,
 	///Cycles of measurement
 	pub measured: usize,
-	///The maximum size in phits that network packets can have. Any message greater than this is broken into several packets.
-	pub maximum_packet_size: usize,
 	///Maximum number of messages for generation to store in each server. Its default value is 20 messages.
 	///Attemps to generate traffic that fails because of the limit are tracked into the `missed_generations` statistic.
 	///Note that packets are not generated until it is the turn for the message to be sent to a router.
@@ -804,13 +806,13 @@ impl<'a> Simulation<'a>
 				traffic,
 				routing,
 				link_classes,
+				maximum_packet_size,
 			},
 			mutable: SimulationMut{
 				rng,
 			},
 			warmup,
 			measured,
-			maximum_packet_size,
 			server_queue_size,
 			event_queue: EventQueue::new(1000),
 			statistics,
@@ -1047,9 +1049,9 @@ impl<'a> Simulation<'a>
 					let mut size=message.size;
 					while size>0
 					{
-						let ps=if size>self.maximum_packet_size
+						let ps=if size>self.shared.maximum_packet_size
 						{
-							self.maximum_packet_size
+							self.shared.maximum_packet_size
 						}
 						else
 						{

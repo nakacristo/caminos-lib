@@ -20,6 +20,19 @@ use crate::event::{Eventful};
 use crate::quantify::Quantifiable;
 use crate::error::{Error,SourceLocation};
 
+/// Those terms for modules that define a router.
+pub mod prelude
+{
+	pub use super::{Router,StatusAtEmissor,SpaceAtReceptor,AcknowledgeMessage,Buffer,RouterBuilderArgument,TransmissionFromOblivious,TransmissionMechanism};
+	pub use crate::quantify::Quantifiable;
+	pub use crate::event::{Eventful,EventGeneration,Event};
+	pub use crate::{SimulationShared,SimulationMut};
+	pub use crate::topology::Topology;
+	pub use crate::config_parser::ConfigurationValue;
+	pub use crate::packet::{Phit,Packet};
+	pub use crate::router;
+}
+
 ///The interface that a router type must follow.
 pub trait Router: Eventful + Quantifiable
 {
