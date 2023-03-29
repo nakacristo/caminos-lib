@@ -11,7 +11,7 @@ use crate::topology::{Location,Topology};
 use crate::routing::CandidateEgress;
 use crate::policies::{RequestInfo,VirtualChannelPolicy,new_virtual_channel_policy,VCPolicyBuilderArgument};
 use crate::event::{Event,Eventful,EventGeneration,CyclePosition};
-use crate::{Phit,Packet,Simulation};
+use crate::{Phit,Packet,SimulationShared,SimulationMut};
 use crate::quantify::Quantifiable;
 use crate::packet::PacketRef;
 //use crate::Plugs;
@@ -731,7 +731,7 @@ struct PortRequest
 impl Eventful for Basic
 {
 	///main routine of the router. Do all things that must be done in a cycle, if any.
-	fn process(&mut self, simulation:&Simulation) -> Vec<EventGeneration>
+	fn process(&mut self, simulation:&SimulationShared, mutable:&mut SimulationMut) -> Vec<EventGeneration>
 	{
 		let mut cycles_span = 1;//cycles since last checked
 		if let Some(ref last)=self.last_process_at_cycle
@@ -896,7 +896,7 @@ impl Eventful for Basic
 							Location::RouterPort{router_index,router_port:_} =>router_index,
 							_ => panic!("The server is not attached to a router"),
 						};
-						let routing_candidates=simulation.routing.next(phit.packet.routing_info.borrow().deref(),simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng);
+						let routing_candidates=simulation.routing.next(phit.packet.routing_info.borrow().deref(),simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&mutable.rng);
 						let routing_idempotent = routing_candidates.idempotent;
 						if routing_candidates.len()==0
 						{
@@ -957,8 +957,8 @@ impl Eventful for Basic
 						};
 						for vcp in self.virtual_channel_policies.iter()
 						{
-							//good_ports=vcp.filter(good_ports,self,target_router,entry_port,entry_vc,performed_hops,&server_ports,&port_average_neighbour_queue_length,&port_last_transmission,&port_occupied_output_space,&port_available_output_space,simulation.cycle,topology,&simulation.rng);
-							good_ports=vcp.filter(good_ports,self,&request_info,topology,&simulation.rng);
+							//good_ports=vcp.filter(good_ports,self,target_router,entry_port,entry_vc,performed_hops,&server_ports,&port_average_neighbour_queue_length,&port_last_transmission,&port_occupied_output_space,&port_available_output_space,simulation.cycle,topology,&mutable.rng);
+							good_ports=vcp.filter(good_ports,self,&request_info,topology,&mutable.rng);
 							if good_ports.is_empty()
 							{
 								break;//No need to check other policies.
@@ -973,14 +973,14 @@ impl Eventful for Basic
 						//	//TODO: this will not be true when having true allocators.
 						//	panic!("You need a VirtualChannelPolicy able to select a single (port,vc).");
 						//}
-						//simulation.routing.performed_request(&good_ports[0],&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng);
+						//simulation.routing.performed_request(&good_ports[0],&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&mutable.rng);
 						//match good_ports[0]
 						//{
 						//	CandidateEgress{port,virtual_channel,label,estimated_remaining_hops:_,..}=>(port,virtual_channel,label),
 						//}
 						for candidate in good_ports.into_iter()
 						{
-							simulation.routing.performed_request(&candidate,&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng);
+							simulation.routing.performed_request(&candidate,&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&mutable.rng);
 							let CandidateEgress{port:requested_port,virtual_channel:requested_vc,label,..} = candidate;
 							if self.selected_input[requested_port][requested_vc].is_none()
 							{
@@ -1046,9 +1046,9 @@ impl Eventful for Basic
 					matches!(simulation.network.topology.neighbour(captured_router_index,req.entry_port), ( Location::RouterPort{..} ,_))
 				});
 				//shuffle has changed notably from rand-0.4 to rand-0.8
-				//simulation.rng.borrow_mut().shuffle(&mut request_transit);
-				//simulation.rng.borrow_mut().shuffle(&mut request_injection);
-				let mut rng=simulation.rng.borrow_mut();
+				//mutable.rng.borrow_mut().shuffle(&mut request_transit);
+				//mutable.rng.borrow_mut().shuffle(&mut request_injection);
+				let mut rng=mutable.rng.borrow_mut();
 				request_transit.shuffle(rng.deref_mut());
 				request_injection.shuffle(rng.deref_mut());
 				//**rx=request_transit;
@@ -1058,8 +1058,8 @@ impl Eventful for Basic
 			else
 			{
 				//shuffle has changed notably from rand-0.4 to rand-0.8
-				//simulation.rng.borrow_mut().shuffle(&mut rx);
-				rx.shuffle(simulation.rng.borrow_mut().deref_mut());
+				//mutable.rng.borrow_mut().shuffle(&mut rx);
+				rx.shuffle(mutable.rng.borrow_mut().deref_mut());
 			}
 			rx
 		});
@@ -1237,8 +1237,8 @@ impl Eventful for Basic
 				//Then select one of the vc candidates (either in input or output buffer) to actually use the physical port.
 				let selected_virtual_channel = match self.output_arbiter
 				{
-					//OutputArbiter::Random=> cand[simulation.rng.borrow_mut().gen_range(0,cand.len())],//rand-0.4
-					OutputArbiter::Random=> cand[simulation.rng.borrow_mut().gen_range(0..cand.len())],//rand-0.8
+					//OutputArbiter::Random=> cand[mutable.rng.borrow_mut().gen_range(0,cand.len())],//rand-0.4
+					OutputArbiter::Random=> cand[mutable.rng.borrow_mut().gen_range(0..cand.len())],//rand-0.8
 					OutputArbiter::Token{ref mut port_token}=>
 					{
 						//Or by tokens as in fsin

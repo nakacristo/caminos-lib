@@ -585,6 +585,32 @@ impl LinkClass
 	}
 }
 
+/**
+Part of Simulation that is intended to be exposed to the `Eventful::process` API in a read-only way.
+**/
+pub struct SimulationShared
+{
+	///The current cycle, i.e, the current discrete time.
+	pub cycle:usize,
+	///The instantiated network. It constains the routers and servers connected according to the topology.
+	pub network: Network,
+	///The traffic being generated/consumed by the servers.
+	pub traffic: Box<dyn Traffic>,
+	///The routing algorithm that the network router will employ to set candidate routes.
+	pub routing: Box<dyn Routing>,
+	///The properties associated to each link class.
+	pub link_classes: Vec<LinkClass>,
+}
+
+/**
+Part of Simulation that is intended to be exposed to the `Eventful::process` API in a mutable way.
+**/
+pub struct SimulationMut
+{
+	///The random number generator itself, with its current state.
+	pub rng: RefCell<StdRng>,
+}
+
 ///The object represeting the whole simulation.
 pub struct Simulation<'a>
 {
@@ -594,30 +620,22 @@ pub struct Simulation<'a>
 	///The seed of the random number generator.
 	#[allow(dead_code)]
 	pub seed: usize,
-	///The random number generator itself, with its current state.
-	pub rng: RefCell<StdRng>,
+	///Encapsulated data of the simulation intended to be readable by many.
+	pub shared: SimulationShared,
+	///Encapsulated data intended to be mutable by any.
+	pub mutable: SimulationMut,
 	///Cycles of preparation before the actual measured execution
 	pub warmup: usize,
 	///Cycles of measurement
 	pub measured: usize,
-	///The instantiated network. It constains the routers and servers connected according to the topology.
-	pub network: Network,
-	///The traffic being generated/consumed by the servers.
-	pub traffic: Box<dyn Traffic>,
 	///The maximum size in phits that network packets can have. Any message greater than this is broken into several packets.
 	pub maximum_packet_size: usize,
-	///The routing algorithm that the network router will employ to set candidate routes.
-	pub routing: Box<dyn Routing>,
-	///The properties associated to each link class.
-	pub link_classes: Vec<LinkClass>,
 	///Maximum number of messages for generation to store in each server. Its default value is 20 messages.
 	///Attemps to generate traffic that fails because of the limit are tracked into the `missed_generations` statistic.
 	///Note that packets are not generated until it is the turn for the message to be sent to a router.
 	pub server_queue_size: usize,
 	///The queue of events guiding the simulation.
 	pub event_queue: EventQueue,
-	///The current cycle, i.e, the current discrete time.
-	pub cycle:usize,
 	///The statistics being collected.
 	pub statistics: Statistics,
 	///Information abut how to launch simulations to different systems.
@@ -776,21 +794,25 @@ impl<'a> Simulation<'a>
 		Simulation{
 			configuration: cv.clone(),
 			seed,
-			rng,
+			shared: SimulationShared{
+				cycle:0,
+				network: Network{
+					topology,
+					routers,
+					servers,
+				},
+				traffic,
+				routing,
+				link_classes,
+			},
+			mutable: SimulationMut{
+				rng,
+			},
 			warmup,
 			measured,
-			network: Network{
-				topology,
-				routers,
-				servers,
-			},
-			traffic,
 			maximum_packet_size,
-			routing,
-			link_classes,
 			server_queue_size,
 			event_queue: EventQueue::new(1000),
-			cycle:0,
 			statistics,
 			launch_configurations,
 			plugs,
@@ -802,17 +824,17 @@ impl<'a> Simulation<'a>
 	{
 		self.print_memory_breakdown();
 		self.statistics.print_header();
-		while self.cycle < self.warmup+self.measured
+		while self.shared.cycle < self.warmup+self.measured
 		{
 			self.advance();
-			if self.cycle==self.warmup
+			if self.shared.cycle==self.warmup
 			{
-				self.statistics.reset(self.cycle,&mut self.network);
-				self.routing.reset_statistics(self.cycle);
+				self.statistics.reset(self.shared.cycle,&mut self.shared.network);
+				self.shared.routing.reset_statistics(self.shared.cycle);
 			}
-			if self.traffic.is_finished()
+			if self.shared.traffic.is_finished()
 			{
-				println!("Traffic consumed before cycle {}",self.cycle);
+				println!("Traffic consumed before cycle {}",self.shared.cycle);
 				break;
 			}
 		}
@@ -833,7 +855,7 @@ impl<'a> Simulation<'a>
 			{
 				break;
 			};
-			//if self.cycle>=3122
+			//if self.shared.cycle>=3122
 			//{
 			//	println!("Processing begin event at position {}",ievent);
 			//}
@@ -860,34 +882,34 @@ impl<'a> Simulation<'a>
 									*be=Some(PacketExtraInfo::default());
 								}
 								let extra = be.as_mut().unwrap();
-								let (_,link_class) = self.network.topology.neighbour(router,port);
+								let (_,link_class) = self.shared.network.topology.neighbour(router,port);
 								extra.link_classes.push(link_class);
 								extra.entry_virtual_channels.push(*phit.virtual_channel.borrow());
-								extra.cycle_per_hop.push(self.cycle);
+								extra.cycle_per_hop.push(self.shared.cycle);
 							}
-							let mut brouter=self.network.routers[router].borrow_mut();
-							brouter.insert(phit.clone(),port,&self.rng);
+							let mut brouter=self.shared.network.routers[router].borrow_mut();
+							brouter.insert(phit.clone(),port,&self.mutable.rng);
 							if brouter.pending_events()==0
 							{
 								brouter.add_pending_event();
-								//self.event_queue.enqueue_end(Event::Generic(self.network.routers[router]),0);
-								//self.event_queue.enqueue_end(Event::Generic(self.network.routers[router] as Rc<RefCell<Eventful>>),0);
+								//self.event_queue.enqueue_end(Event::Generic(self.shared.network.routers[router]),0);
+								//self.event_queue.enqueue_end(Event::Generic(self.shared.network.routers[router] as Rc<RefCell<Eventful>>),0);
 								self.event_queue.enqueue_end(Event::Generic(brouter.as_eventful().upgrade().expect("missing router")),0);
 							}
 							match previous
 							{
 								&Location::ServerPort(_server_index) => if phit.is_begin()
 								{
-									*phit.packet.cycle_into_network.borrow_mut() = self.cycle;
-									self.routing.initialize_routing_info(&phit.packet.routing_info, self.network.topology.as_ref(), router, phit.packet.message.destination,&self.rng);
+									*phit.packet.cycle_into_network.borrow_mut() = self.shared.cycle;
+									self.shared.routing.initialize_routing_info(&phit.packet.routing_info, self.shared.network.topology.as_ref(), router, phit.packet.message.destination,&self.mutable.rng);
 								},
 								&Location::RouterPort{../*router_index,router_port*/} =>
 								{
-									self.statistics.track_phit_hop(phit,self.cycle);
+									self.statistics.track_phit_hop(phit,self.shared.cycle);
 									if phit.is_begin()
 									{
 										phit.packet.routing_info.borrow_mut().hops+=1;
-										self.routing.update_routing_info(&phit.packet.routing_info, self.network.topology.as_ref(), router, port, phit.packet.message.destination,&self.rng);
+										self.shared.routing.update_routing_info(&phit.packet.routing_info, self.shared.network.topology.as_ref(), router, port, phit.packet.message.destination,&self.mutable.rng);
 									}
 								},
 								_ => (),
@@ -899,7 +921,7 @@ impl<'a> Simulation<'a>
 							{
 								panic!("Packet reached wrong server, {} instead of {}!\n",server,phit.packet.message.destination);
 							}
-							self.network.servers[server].consume(phit.clone(),self.traffic.deref_mut(),&mut self.statistics,self.cycle,self.network.topology.as_ref(),&self.rng);
+							self.shared.network.servers[server].consume(phit.clone(),self.shared.traffic.deref_mut(),&mut self.statistics,self.shared.cycle,self.shared.network.topology.as_ref(),&self.mutable.rng);
 						}
 						&Location::None => panic!("Phit went nowhere previous={:?}",previous),
 					};
@@ -916,7 +938,7 @@ impl<'a> Simulation<'a>
 						router_port,
 					} =>
 					{
-						let mut brouter=self.network.routers[router_index].borrow_mut();
+						let mut brouter=self.shared.network.routers[router_index].borrow_mut();
 						//brouter.acknowledge(router_port,virtual_channel);
 						brouter.acknowledge(router_port,ack_message);
 						if brouter.pending_events()==0
@@ -925,14 +947,14 @@ impl<'a> Simulation<'a>
 							self.event_queue.enqueue_end(Event::Generic(brouter.as_eventful().upgrade().expect("missing router")),0);
 						}
 					},
-					Location::ServerPort(server) => self.network.servers[server].router_status.acknowledge(ack_message),
-					//&Location::ServerPort(server) => TransmissionFromServer::acknowledge(self.network.servers[server].router_status,ack_message),
+					Location::ServerPort(server) => self.shared.network.servers[server].router_status.acknowledge(ack_message),
+					//&Location::ServerPort(server) => TransmissionFromServer::acknowledge(self.shared.network.servers[server].router_status,ack_message),
 					_ => (),
 				},
 				Event::Generic(ref element) =>
 				{
 					// --- generic events at the START of the cycle ---
-					let new_events=element.borrow_mut().process(self);
+					let new_events=element.borrow_mut().process(&self.shared,&mut self.mutable);
 					//element.borrow_mut().clear_pending_events();//now done by process itself
 					for ge in new_events.into_iter()
 					{
@@ -955,7 +977,7 @@ impl<'a> Simulation<'a>
 			{
 				break;
 			};
-			//if self.cycle>=3122
+			//if self.shared.cycle>=3122
 			//{
 			//	println!("Processing end event at position {}",ievent);
 			//}
@@ -976,7 +998,7 @@ impl<'a> Simulation<'a>
 				Event::Generic(ref element) =>
 				{
 					// --- generic events at the END of the cycle ---
-					let new_events=element.borrow_mut().process(self);
+					let new_events=element.borrow_mut().process(&self.shared,&mut self.mutable);
 					//element.borrow_mut().clear_pending_events();//now done by process itself
 					for ge in new_events.into_iter()
 					{
@@ -987,16 +1009,16 @@ impl<'a> Simulation<'a>
 			ievent+=1;
 		}
 		//println!("Done cycle-end events");
-		let num_servers=self.network.servers.len();
-		for (iserver,server) in self.network.servers.iter_mut().enumerate()
+		let num_servers=self.shared.network.servers.len();
+		for (iserver,server) in self.shared.network.servers.iter_mut().enumerate()
 		{
 			//println!("credits of {} = {}",iserver,server.credits);
 			if let (Location::RouterPort{router_index: index,router_port: port},link_class)=server.port
 			{
-				if self.traffic.should_generate(iserver,self.cycle,&self.rng)
+				if self.shared.traffic.should_generate(iserver,self.shared.cycle,&self.mutable.rng)
 				{
 					if server.stored_messages.len()<self.server_queue_size {
-						match self.traffic.generate_message(iserver,self.cycle,self.network.topology.as_ref(),&self.rng)
+						match self.shared.traffic.generate_message(iserver,self.shared.cycle,self.shared.network.topology.as_ref(),&self.mutable.rng)
 						{
 							Ok(message) =>
 							{
@@ -1016,7 +1038,7 @@ impl<'a> Simulation<'a>
 						};
 					} else {
 						//There is no space in the server queue of messages.
-						server.statistics.track_missed_generation(self.cycle);
+						server.statistics.track_missed_generation(self.shared.cycle);
 					}
 				}
 				if server.stored_packets.is_empty() && !server.stored_messages.is_empty()
@@ -1103,10 +1125,10 @@ impl<'a> Simulation<'a>
 								new: Location::RouterPort{router_index:index,router_port:port},
 							};
 							//self.statistics.created_phits+=1;
-							self.statistics.track_created_phit(self.cycle);
-							server.statistics.track_created_phit(self.cycle);
-							self.event_queue.enqueue_begin(event,self.link_classes[link_class].delay);
-							server.router_status.notify_outcoming_phit(vc,self.cycle);
+							self.statistics.track_created_phit(self.shared.cycle);
+							server.statistics.track_created_phit(self.shared.cycle);
+							self.event_queue.enqueue_begin(event,self.shared.link_classes[link_class].delay);
+							server.router_status.notify_outcoming_phit(vc,self.shared.cycle);
 						}
 					}
 				}
@@ -1118,15 +1140,15 @@ impl<'a> Simulation<'a>
 		}
 		//println!("Done generation");
 		self.event_queue.advance();
-		self.cycle+=1;
-		if self.cycle%1000==0
+		self.shared.cycle+=1;
+		if self.shared.cycle%1000==0
 		{
-			//println!("Statistics up to cycle {}: {:?}",self.cycle,self.statistics);
-			self.statistics.print(self.cycle,&self.network);
+			//println!("Statistics up to cycle {}: {:?}",self.shared.cycle,self.statistics);
+			self.statistics.print(self.shared.cycle,&self.shared.network);
 		}
 		if let Some(period) = self.memory_report_period
 		{
-			if self.cycle % period == 0
+			if self.shared.cycle % period == 0
 			{
 				self.print_memory_breakdown();
 			}
@@ -1143,34 +1165,34 @@ impl<'a> Simulation<'a>
 		//	average_message_delay: 100,
 		//}
 		let measurement = &self.statistics.current_measurement;
-		let cycles=self.cycle-measurement.begin_cycle;
-		let num_servers=self.network.servers.len();
+		let cycles=self.shared.cycle-measurement.begin_cycle;
+		let num_servers=self.shared.network.servers.len();
 		let injected_load=measurement.created_phits as f64/cycles as f64/num_servers as f64;
 		let accepted_load=measurement.consumed_phits as f64/cycles as f64/num_servers as f64;
 		let average_message_delay=measurement.total_message_delay as f64/measurement.consumed_messages as f64;
 		let average_packet_network_delay=measurement.total_packet_network_delay as f64/measurement.consumed_packets as f64;
-		let jscp=self.network.jain_server_consumed_phits();
-		let jsgp=self.network.jain_server_created_phits();
+		let jscp=self.shared.network.jain_server_consumed_phits();
+		let jsgp=self.shared.network.jain_server_created_phits();
 		let average_packet_hops=measurement.total_packet_hops as f64 / measurement.consumed_packets as f64;
 		let total_packet_per_hop_count=measurement.total_packet_per_hop_count.iter().map(|&count|ConfigurationValue::Number(count as f64)).collect();
 		//let total_arrivals:usize = self.statistics.link_statistics.iter().map(|rls|rls.iter().map(|ls|ls.phit_arrivals).sum::<usize>()).sum();
 		//let total_links:usize = self.statistics.link_statistics.iter().map(|rls|rls.len()).sum();
-		let total_arrivals:usize = (0..self.network.topology.num_routers()).map(|i|(0..self.network.topology.degree(i)).map(|j|self.statistics.link_statistics[i][j].phit_arrivals).sum::<usize>()).sum();
-		let total_links: usize = (0..self.network.topology.num_routers()).map(|i|self.network.topology.degree(i)).sum();
+		let total_arrivals:usize = (0..self.shared.network.topology.num_routers()).map(|i|(0..self.shared.network.topology.degree(i)).map(|j|self.statistics.link_statistics[i][j].phit_arrivals).sum::<usize>()).sum();
+		let total_links: usize = (0..self.shared.network.topology.num_routers()).map(|i|self.shared.network.topology.degree(i)).sum();
 		let average_link_utilization = total_arrivals as f64 / cycles as f64 / total_links as f64;
 		let maximum_arrivals:usize = self.statistics.link_statistics.iter().map(|rls|rls.iter().map(|ls|ls.phit_arrivals).max().unwrap()).max().unwrap();
 		let maximum_link_utilization = maximum_arrivals as f64 / cycles as f64;
-		let server_average_cycle_last_created_phit : f64 = (self.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).sum::<usize>() as f64)/(self.network.servers.len() as f64);
-		let server_average_cycle_last_consumed_message : f64 = (self.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).sum::<usize>() as f64)/(self.network.servers.len() as f64);
-		let server_average_missed_generations : f64 = (self.network.servers.iter().map(|s|s.statistics.current_measurement.missed_generations).sum::<usize>() as f64)/(self.network.servers.len() as f64);
-		let servers_with_missed_generations : usize = self.network.servers.iter().map(|s|if s.statistics.current_measurement.missed_generations > 0 {1} else {0}).sum::<usize>();
+		let server_average_cycle_last_created_phit : f64 = (self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).sum::<usize>() as f64)/(self.shared.network.servers.len() as f64);
+		let server_average_cycle_last_consumed_message : f64 = (self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).sum::<usize>() as f64)/(self.shared.network.servers.len() as f64);
+		let server_average_missed_generations : f64 = (self.shared.network.servers.iter().map(|s|s.statistics.current_measurement.missed_generations).sum::<usize>() as f64)/(self.shared.network.servers.len() as f64);
+		let servers_with_missed_generations : usize = self.shared.network.servers.iter().map(|s|if s.statistics.current_measurement.missed_generations > 0 {1} else {0}).sum::<usize>();
 		let virtual_channel_usage: Vec<_> =measurement.virtual_channel_usage.iter().map(|&count|
 			ConfigurationValue::Number(count as f64 / cycles as f64 / total_links as f64)
 		).collect();
 		let git_id=get_git_id();
 		let version_number = get_version_number();
 		let mut result_content = vec![
-			(String::from("cycle"),ConfigurationValue::Number(self.cycle as f64)),
+			(String::from("cycle"),ConfigurationValue::Number(self.shared.cycle as f64)),
 			(String::from("injected_load"),ConfigurationValue::Number(injected_load)),
 			(String::from("accepted_load"),ConfigurationValue::Number(accepted_load)),
 			(String::from("average_message_delay"),ConfigurationValue::Number(average_message_delay)),
@@ -1190,11 +1212,11 @@ impl<'a> Simulation<'a>
 			(String::from("git_id"),ConfigurationValue::Literal(git_id.to_string())),
 			(String::from("version_number"),ConfigurationValue::Literal(version_number.to_string())),
 		];
-		if let Some(content)=self.routing.statistics(self.cycle)
+		if let Some(content)=self.shared.routing.statistics(self.shared.cycle)
 		{
 			result_content.push((String::from("routing_statistics"),content));
 		}
-		if let Some(content) = self.network.routers.iter().enumerate().fold(None,|maybe_stat,(index,router)|router.borrow().aggregate_statistics(maybe_stat,index,self.network.routers.len(),self.cycle))
+		if let Some(content) = self.shared.network.routers.iter().enumerate().fold(None,|maybe_stat,(index,router)|router.borrow().aggregate_statistics(maybe_stat,index,self.shared.network.routers.len(),self.shared.cycle))
 		{
 			result_content.push((String::from("router_aggregated_statistics"),content));
 		}
@@ -1238,16 +1260,16 @@ impl<'a> Simulation<'a>
 				).collect();
 				virtual_channel_usage_collect.push(ConfigurationValue::Array(virtual_channel_usage));
 			};
-			let jscp_collect = self.network.temporal_jain_server_consumed_phits()
+			let jscp_collect = self.shared.network.temporal_jain_server_consumed_phits()
 				.into_iter()
 				.map(|x|ConfigurationValue::Number(x))
 				.collect();
-			let jsgp_collect = self.network.temporal_jain_server_created_phits()
+			let jsgp_collect = self.shared.network.temporal_jain_server_created_phits()
 				.into_iter()
 				.map(|x|ConfigurationValue::Number(x))
 				.collect();
 			let temporal_content = vec![
-				//(String::from("cycle"),ConfigurationValue::Number(self.cycle as f64)),
+				//(String::from("cycle"),ConfigurationValue::Number(self.shared.cycle as f64)),
 				(String::from("injected_load"),ConfigurationValue::Array(injected_load_collect)),
 				(String::from("accepted_load"),ConfigurationValue::Array(accepted_load_collect)),
 				(String::from("average_message_delay"),ConfigurationValue::Array(average_message_delay_collect)),
@@ -1265,12 +1287,12 @@ impl<'a> Simulation<'a>
 		}
 		if !self.statistics.server_percentiles.is_empty()
 		{
-			let mut servers_injected_load : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.current_measurement.created_phits as f64/cycles as f64).collect();
-			let mut servers_accepted_load : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.current_measurement.consumed_phits as f64/cycles as f64).collect();
-			let mut servers_average_message_delay : Vec<f64> = self.network.servers.iter().map(|s|s.statistics.current_measurement.total_message_delay as f64/s.statistics.current_measurement.consumed_messages as f64).collect();
-			let mut servers_cycle_last_created_phit : Vec<usize> = self.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).collect();
-			let mut servers_cycle_last_consumed_message : Vec<usize> = self.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).collect();
-			let mut servers_missed_generations : Vec<usize> = self.network.servers.iter().map(|s|s.statistics.current_measurement.missed_generations).collect();
+			let mut servers_injected_load : Vec<f64> = self.shared.network.servers.iter().map(|s|s.statistics.current_measurement.created_phits as f64/cycles as f64).collect();
+			let mut servers_accepted_load : Vec<f64> = self.shared.network.servers.iter().map(|s|s.statistics.current_measurement.consumed_phits as f64/cycles as f64).collect();
+			let mut servers_average_message_delay : Vec<f64> = self.shared.network.servers.iter().map(|s|s.statistics.current_measurement.total_message_delay as f64/s.statistics.current_measurement.consumed_messages as f64).collect();
+			let mut servers_cycle_last_created_phit : Vec<usize> = self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).collect();
+			let mut servers_cycle_last_consumed_message : Vec<usize> = self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).collect();
+			let mut servers_missed_generations : Vec<usize> = self.shared.network.servers.iter().map(|s|s.statistics.current_measurement.missed_generations).collect();
 			//XXX There are more efficient ways to find percentiles than to sort them, but should not be notable in any case. See https://en.wikipedia.org/wiki/Selection_algorithm
 			servers_injected_load.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
 			servers_accepted_load.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
@@ -1359,7 +1381,7 @@ impl<'a> Quantifiable for Simulation<'a>
 	}
 	fn print_memory_breakdown(&self)
 	{
-		println!("\nBegin memory report at cycle {}",self.cycle);
+		println!("\nBegin memory report at cycle {}",self.shared.cycle);
 		println!("Kernel report:");
 		if let Ok(linux_process) = procfs::process::Process::myself()
 		{
@@ -1386,10 +1408,10 @@ impl<'a> Quantifiable for Simulation<'a>
 		println!("\tevent : {}",size_of::<Event>());
 		//self.event_queue.print_memory();
 		println!("Tracked memory:");
-		println!("\tnetwork total : {}",quantify::human_bytes(self.network.total_memory()));
-		println!("\ttraffic total : {}",quantify::human_bytes(self.traffic.total_memory()));
+		println!("\tnetwork total : {}",quantify::human_bytes(self.shared.network.total_memory()));
+		println!("\ttraffic total : {}",quantify::human_bytes(self.shared.traffic.total_memory()));
 		println!("\tevent_queue total : {}",quantify::human_bytes(self.event_queue.total_memory()));
-		//println!("\trouting total : {}",quantify::human_bytes(self.routing.total_memory()));
+		//println!("\trouting total : {}",quantify::human_bytes(self.shared.routing.total_memory()));
 		println!("\tstatistics total : {}",quantify::human_bytes(self.statistics.total_memory()));
 		println!("End of memory report\n");
 	}

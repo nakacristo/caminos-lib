@@ -2,6 +2,9 @@
 
 ## next  [0.5.5]
 
+### 2023-03-29
+Added SimulationShared and SimulationMut for better encapsulation.
+
 ### 2023-03-23
 Fix checks in InputOutputMonocycle relative to the crossbar delay.
 

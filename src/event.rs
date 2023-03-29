@@ -2,7 +2,7 @@
 use std::rc::{Rc,Weak};
 use std::cell::RefCell;
 use std::mem::{size_of};
-use crate::{Phit,Simulation};
+use crate::{Phit,SimulationShared,SimulationMut};
 use crate::topology::Location;
 use crate::quantify::Quantifiable;
 use crate::router::{AcknowledgeMessage};
@@ -12,7 +12,7 @@ use quantifiable_derive::Quantifiable;//the derive macro
 pub trait Eventful
 {
 	///Method to ve called to process the events.
-	fn process(&mut self, simulation:&Simulation) -> Vec<EventGeneration>;
+	fn process(&mut self, simulation:&SimulationShared, simulation_mut:&mut SimulationMut) -> Vec<EventGeneration>;
 	///Number of pending events.
 	fn pending_events(&self)->usize;
 	///Mark the eventful as having another pending event. It should also be added to some queue.

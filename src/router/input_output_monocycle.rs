@@ -11,7 +11,7 @@ use crate::topology::{Location,Topology};
 use crate::routing::CandidateEgress;
 use crate::policies::{RequestInfo,VirtualChannelPolicy,new_virtual_channel_policy,VCPolicyBuilderArgument};
 use crate::event::{Event,Eventful,EventGeneration,CyclePosition};
-use crate::{Phit,Simulation};
+use crate::{Phit,SimulationShared,SimulationMut};
 use crate::quantify::Quantifiable;
 use crate::match_object_panic;
 
@@ -519,7 +519,7 @@ impl InputOutputMonocycle
 impl Eventful for InputOutputMonocycle
 {
 	///main routine of the router. Do all things that must be done in a cycle, if any.
-	fn process(&mut self, simulation:&Simulation) -> Vec<EventGeneration>
+	fn process(&mut self, simulation:&SimulationShared, mutable:&mut SimulationMut) -> Vec<EventGeneration>
 	{
 		let mut cycles_span = 1;//cycles since last checked
 		if let Some(ref last)=self.last_process_at_cycle
@@ -686,7 +686,7 @@ impl Eventful for InputOutputMonocycle
 							Location::RouterPort{router_index,router_port:_} =>router_index,
 							_ => panic!("The server is not attached to a router"),
 						};
-						let routing_candidates=simulation.routing.next(phit.packet.routing_info.borrow().deref(),simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng);
+						let routing_candidates=simulation.routing.next(phit.packet.routing_info.borrow().deref(),simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&mutable.rng);
 						let routing_idempotent = routing_candidates.idempotent;
 						if routing_candidates.len()==0
 						{
@@ -747,8 +747,8 @@ impl Eventful for InputOutputMonocycle
 						};
 						for vcp in self.virtual_channel_policies.iter()
 						{
-							//good_ports=vcp.filter(good_ports,self,target_router,entry_port,entry_vc,performed_hops,&server_ports,&port_average_neighbour_queue_length,&port_last_transmission,&port_occupied_output_space,&port_available_output_space,simulation.cycle,topology,&simulation.rng);
-							good_ports=vcp.filter(good_ports,self,&request_info,topology,&simulation.rng);
+							//good_ports=vcp.filter(good_ports,self,target_router,entry_port,entry_vc,performed_hops,&server_ports,&port_average_neighbour_queue_length,&port_last_transmission,&port_occupied_output_space,&port_available_output_space,simulation.cycle,topology,&mutable.rng);
+							good_ports=vcp.filter(good_ports,self,&request_info,topology,&mutable.rng);
 							if good_ports.len()==0
 							{
 								break;//No need to check other policies.
@@ -762,14 +762,14 @@ impl Eventful for InputOutputMonocycle
 						//{
 						//	panic!("You need a VirtualChannelPolicy able to select a single (port,vc).");
 						//}
-						//simulation.routing.performed_request(&good_ports[0],&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng);
+						//simulation.routing.performed_request(&good_ports[0],&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&mutable.rng);
 						//match good_ports[0]
 						//{
 						//	CandidateEgress{port,virtual_channel,label,estimated_remaining_hops:_,..}=>(port,virtual_channel,label),
 						//}
 						for candidate in good_ports
 						{
-							simulation.routing.performed_request(&candidate,&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&simulation.rng);
+							simulation.routing.performed_request(&candidate,&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&mutable.rng);
 							let CandidateEgress{port:requested_port,virtual_channel:requested_vc,label,..} = candidate;
 //							if self.selected_input[requested_port][requested_vc].is_none()
 //							{
@@ -823,7 +823,7 @@ impl Eventful for InputOutputMonocycle
 
 		// Perform the allocation
 		let mut requests_granted : Vec<VCARequest> = Vec::new();
-		for gr in self.crossbar_allocator.perform_allocation(&simulation.rng) {
+		for gr in self.crossbar_allocator.perform_allocation(&mutable.rng) {
 			// convert from allocator Request to VCARequest
 			requests_granted.push(gr.to_port_request(amount_virtual_channels));
 		}
@@ -968,7 +968,7 @@ impl Eventful for InputOutputMonocycle
 				//Then select one of the vc candidates (either in input or output buffer) to actually use the physical port.
 				let selected_virtual_channel = match self.output_arbiter
 				{
-					OutputArbiter::Random=> cand[simulation.rng.borrow_mut().gen_range(0..cand.len())],
+					OutputArbiter::Random=> cand[mutable.rng.borrow_mut().gen_range(0..cand.len())],
 					OutputArbiter::Token{ref mut port_token}=>
 					{
 						//Or by tokens as in fsin
@@ -1140,7 +1140,7 @@ mod internal
 	//}
 	impl Eventful for PhitToOutput
 	{
-		fn process(&mut self, _simulation:&Simulation) -> Vec<EventGeneration>
+		fn process(&mut self, _simulation:&SimulationShared, _mutable:&mut SimulationMut) -> Vec<EventGeneration>
 		{
 			let mut router = self.router.borrow_mut();
 			if router.output_buffers[self.exit_port][self.exit_vc].len()>=router.output_buffer_size
