@@ -2,6 +2,9 @@
 
 ## next  [0.5.5]
 
+### 2023-04-03
+Changed latex backed to use utf8.
+
 ### 2023-03-29
 Added SimulationShared and SimulationMut for better encapsulation.
 Replaced every `&RefCell<StdRng>` by `&mut StdRng` everywhere.

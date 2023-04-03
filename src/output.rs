@@ -1693,7 +1693,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 	};
 	let whole_tex=format!(r#"
 \documentclass[a4paper, 12pt, fleqn]{{article}}
-\usepackage[latin1]{{inputenc}}
+\usepackage[utf8]{{inputenc}}
 \usepackage{{amsfonts}}
 \usepackage{{amssymb}}
 \usepackage{{amsmath}}
