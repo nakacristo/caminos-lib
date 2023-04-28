@@ -616,7 +616,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 					let container=match container
 					{
 						ConfigurationValue::Array(a) => a,
-						_ => panic!("conatiner argument of at evaluated to a non-array ({}:?)",container),
+						_ => panic!("container argument of at evaluated to a non-array ({}:?)",container),
 					};
 					let position=match position
 					{
@@ -922,7 +922,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 								Some(other) => panic!("{:?} cannot be used as binding variable",other),
 							};
 							Box::new(move |a,b|{
-								let context = match context
+								let context_a = match context
 								{
 									ConfigurationValue::Object(name, data) =>
 									{
@@ -932,18 +932,19 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 									},
 									_ => panic!("wrong context"),
 								};
-								let a = evaluate(expr, &context, path).unwrap_or_else(|e|panic!("error {} in sort function",e));
-								let context = match context
+								let a = evaluate(expr, &context_a, path).unwrap_or_else(|e|panic!("error {} in sort function",e));
+								let context_b = match context
 								{
 									ConfigurationValue::Object(name, data) =>
 									{
-										let mut content = data;
+										let mut content = data.clone();
 										content.push( (binding.clone(), b.clone() ) );
-										ConfigurationValue::Object(name,content)
+										ConfigurationValue::Object(name.to_string(),content)
 									},
 									_ => panic!("wrong context"),
 								};
-								let b = evaluate(expr, &context, path).unwrap_or_else(|e|panic!("error {} in sort function",e));
+								// NOTE: the cloning for the second context could be eliminated. But it would require delicate management of context.data.last.
+								let b = evaluate(expr, &context_b, path).unwrap_or_else(|e|panic!("error {} in sort function",e));
 								a.partial_cmp(&b).unwrap()
 							})
 						},

@@ -2,6 +2,9 @@
 
 ## next  [0.5.5]
 
+### 2023-04-28
+BUGFIX: bad contexts were used in the sort config function.
+
 ### 2023-04-03
 Changed latex backed to use utf8.
 
