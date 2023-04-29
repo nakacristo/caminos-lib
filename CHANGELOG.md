@@ -2,6 +2,11 @@
 
 ## next  [0.5.5]
 
+### 2023-04-29
+Update some tests that were still using `RefCell<StdRng<_>>`.
+Added a test for the sort config function.
+Improved to sort config function to clone the context only once, instead of twice per comparison.
+
 ### 2023-04-28
 BUGFIX: bad contexts were used in the sort config function.
 

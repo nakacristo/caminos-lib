@@ -1500,11 +1500,11 @@ mod tests {
 	{
 		let plugs = Plugs::default();
 		let cv = ConfigurationValue::Object("FixedRandom".to_string(),vec![("allow_self".to_string(),ConfigurationValue::True)]);
-		let rng=RefCell::new(StdRng::seed_from_u64(10u64));
+		let mut rng=StdRng::seed_from_u64(10u64);
 		use crate::topology::{new_topology,TopologyBuilderArgument};
 		// TODO: topology::dummy?
 		let topo_cv = ConfigurationValue::Object("Hamming".to_string(),vec![("sides".to_string(),ConfigurationValue::Array(vec![])), ("servers_per_router".to_string(),ConfigurationValue::Number(1.0))]);
-		let dummy_topology = new_topology(TopologyBuilderArgument{cv:&topo_cv,plugs:&plugs,rng:&rng});
+		let dummy_topology = new_topology(TopologyBuilderArgument{cv:&topo_cv,plugs:&plugs,rng:&mut rng});
 		
 		for size in [1000]
 		{
@@ -1517,11 +1517,11 @@ mod tests {
 			{
 				let arg = PatternBuilderArgument{ cv:&cv, plugs:&plugs };
 				let mut with_self = FixedRandom::new(arg);
-				with_self.initialize(size,size,&*dummy_topology,&rng);
+				with_self.initialize(size,size,&*dummy_topology,&mut rng);
 				let mut dests = vec![0;size];
 				for origin in 0..size
 				{
-					let destination = with_self.get_destination(origin,&*dummy_topology,&rng);
+					let destination = with_self.get_destination(origin,&*dummy_topology,&mut rng);
 					if destination==origin
 					{
 						count+=1;
@@ -1542,8 +1542,8 @@ mod tests {
 			let arg = PatternBuilderArgument{ cv:&cv, plugs:&plugs };
 			let size = 2usize.pow(logsize);
 			let mut without_self = FixedRandom::new(arg);
-			without_self.initialize(size,size,&*dummy_topology,&rng);
-			let count = (0..size).filter( |&origin| origin==without_self.get_destination(origin,&*dummy_topology,&rng) ).count();
+			without_self.initialize(size,size,&*dummy_topology,&mut rng);
+			let count = (0..size).filter( |&origin| origin==without_self.get_destination(origin,&*dummy_topology,&mut rng) ).count();
 			assert!(count==0, "Got {} selfs at size {}.", count, size );
 		}
 	}

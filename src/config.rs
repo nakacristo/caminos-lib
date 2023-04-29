@@ -910,48 +910,39 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 						ConfigurationValue::Array(a) => a,
 						_ => panic!("first argument of at evaluated to a non-array ({}:?)",container),
 					};
-					let f:Box< dyn Fn(&ConfigurationValue,&ConfigurationValue)->std::cmp::Ordering > = match expression
+					let expression = match expression
 					{
-						None => Box::new(|a:&ConfigurationValue,b:&ConfigurationValue|a.partial_cmp(b).unwrap()),
-						Some(expr) =>
-						{
-							let binding=match binding
-							{
-								None => "x".to_string(),
-								Some(ConfigurationValue::Literal(s)) => s,
-								Some(other) => panic!("{:?} cannot be used as binding variable",other),
-							};
-							Box::new(move |a,b|{
-								let context_a = match context
-								{
-									ConfigurationValue::Object(name, data) =>
-									{
-										let mut content = data.clone();
-										content.push( (binding.clone(), a.clone() ) );
-										ConfigurationValue::Object(name.to_string(),content)
-									},
-									_ => panic!("wrong context"),
-								};
-								let a = evaluate(expr, &context_a, path).unwrap_or_else(|e|panic!("error {} in sort function",e));
-								let context_b = match context
-								{
-									ConfigurationValue::Object(name, data) =>
-									{
-										let mut content = data.clone();
-										content.push( (binding.clone(), b.clone() ) );
-										ConfigurationValue::Object(name.to_string(),content)
-									},
-									_ => panic!("wrong context"),
-								};
-								// NOTE: the cloning for the second context could be eliminated. But it would require delicate management of context.data.last.
-								let b = evaluate(expr, &context_b, path).unwrap_or_else(|e|panic!("error {} in sort function",e));
-								a.partial_cmp(&b).unwrap()
-							})
-						},
+						None => {
+							// If there is no expression just sort the array by its value.
+							container.sort_by(|a,b|a.partial_cmp(b).unwrap());
+							return Ok(ConfigurationValue::Array(container));
+						}
+						Some(expr) => expr,
 					};
-					//FIXME: It does not seem possibly to propragate errors in the closure through any `sort_by` function.
-					//container.sort_by(|a,b|a.partial_cmp(b).unwrap());
-					container.sort_by(f);
+					let mut context = context.clone();//A single whole clone.
+					let binding=match binding
+					{
+						None => "x".to_string(),
+						Some(ConfigurationValue::Literal(s)) => s,
+						Some(other) => panic!("{:?} cannot be used as binding variable",other),
+					};
+					// When given an expression we first compute the expression for each element of the array, making tuples (expression_value,entry).
+					let mut container : Vec<( ConfigurationValue, ConfigurationValue )> = container.into_iter().map(|entry|{
+						// We clone the context only once. Then push and pop onto it to keep it the same between iterations.
+						if let ConfigurationValue::Object(_name,ref mut data) = &mut context
+						{
+							data.push( (binding.clone(), entry.clone()) );
+						}
+						//let expr_value = evaluate(expression, &context, path).unwrap_or_else(|e|panic!("error {} in sort function",e));
+						let expr_value = evaluate(expression, &context, path)?;
+						if let ConfigurationValue::Object(_name,ref mut data) = &mut context
+						{
+							data.pop();
+						}
+						Ok( (expr_value,entry) )
+					}).collect::<Result<_,_>>()?;
+					container.sort_by(|(a,_),(b,_)|a.partial_cmp(b).unwrap());
+					let container = container.into_iter().map( |(_expr_value,entry)| entry ).collect();
 					Ok(ConfigurationValue::Array(container))
 				}
 				"last" =>
@@ -1929,13 +1920,28 @@ mod tests {
 	fn config_functions()
 	{
 		use std::path::PathBuf;
-		let context = ConfigurationValue::None;
+		let context = ConfigurationValue::Object("Context".to_string(),vec![
+			("a1".to_string(),ConfigurationValue::Array(vec![ConfigurationValue::Number(10.0),ConfigurationValue::Number(15.0),ConfigurationValue::Number(7.0),ConfigurationValue::Number(2.0),ConfigurationValue::Number(14.0),]))
+		]);
 		let path = PathBuf::from(".");
 		let v1 = Expr::Number(1.0);
 		let v2 = Expr::Number(2.0);
 		match evaluate(&Expr::FunctionCall("add".to_string(),vec![("first".to_string(),v1),("second".to_string(),v2)]),&context,&path)
 		{
 			Ok( ConfigurationValue::Number(x) ) => assert_eq!(x,3.0),
+			_ => assert!(false),
+		}
+		match evaluate(&Expr::FunctionCall("sort".to_string(),vec![("container".to_string(),Expr::Ident("a1".to_string())),("expression".to_string(),Expr::Ident("x".to_string()))]),&context,&path)
+		{
+			Ok( ConfigurationValue::Array(x) ) => {
+				let mut it = x.iter();
+				assert_eq!(it.next().unwrap().as_usize().unwrap(),2);
+				assert_eq!(it.next().unwrap().as_usize().unwrap(),7);
+				assert_eq!(it.next().unwrap().as_usize().unwrap(),10);
+				assert_eq!(it.next().unwrap().as_usize().unwrap(),14);
+				assert_eq!(it.next().unwrap().as_usize().unwrap(),15);
+				assert_eq!(it.next(),None);
+			}
 			_ => assert!(false),
 		}
 	}
