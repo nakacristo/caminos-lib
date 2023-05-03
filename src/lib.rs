@@ -871,6 +871,13 @@ impl<'a> Simulation<'a>
 					ref new,
 				} =>
 				{
+					let target_server = phit.packet.message.destination;
+					let (target_location,_link_class)=self.shared.network.topology.server_neighbour(target_server);
+					let target_router=match target_location
+					{
+						Location::RouterPort{router_index,router_port:_} =>router_index,
+						_ => panic!("The server is not attached to a router"),
+					};
 					match new
 					{
 						&Location::RouterPort{router_index:router,router_port:port} =>
@@ -903,7 +910,7 @@ impl<'a> Simulation<'a>
 								&Location::ServerPort(_server_index) => if phit.is_begin()
 								{
 									*phit.packet.cycle_into_network.borrow_mut() = self.shared.cycle;
-									self.shared.routing.initialize_routing_info(&phit.packet.routing_info, self.shared.network.topology.as_ref(), router, phit.packet.message.destination,&mut self.mutable.rng);
+									self.shared.routing.initialize_routing_info(&phit.packet.routing_info, self.shared.network.topology.as_ref(), router, target_router, Some(target_server), &mut self.mutable.rng);
 								},
 								&Location::RouterPort{../*router_index,router_port*/} =>
 								{
@@ -911,7 +918,7 @@ impl<'a> Simulation<'a>
 									if phit.is_begin()
 									{
 										phit.packet.routing_info.borrow_mut().hops+=1;
-										self.shared.routing.update_routing_info(&phit.packet.routing_info, self.shared.network.topology.as_ref(), router, port, phit.packet.message.destination,&mut self.mutable.rng);
+										self.shared.routing.update_routing_info(&phit.packet.routing_info, self.shared.network.topology.as_ref(), router, port, target_router, Some(target_server), &mut self.mutable.rng);
 									}
 								},
 								_ => (),

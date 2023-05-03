@@ -5,7 +5,7 @@
 ### 2023-05-03
 Added `intermediate_bypass` to Valiant routing.
 Added `sbatch_args` so the slurm options to pass an arbitrary list of strings.
-Changed interface of `Routing::next` to contain the target router, make the target server optional, and return an `Error`.
+Changed interface of `Routing` to contain the target router and making the target server optional. Also, `next` returns an `Error`.
 
 ### 2023-04-29
 Update some tests that were still using `RefCell<StdRng<_>>`.

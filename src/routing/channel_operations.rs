@@ -41,21 +41,21 @@ impl Routing for ChannelsPerHop
 		let r = candidates.into_iter().filter(|c|vcs.contains(&c.virtual_channel)).collect();
 		Ok(RoutingNextCandidates{candidates:r,idempotent})
 	}
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
 	{
-		self.routing.initialize_routing_info(routing_info,topology,current_router,target_server,rng);
+		self.routing.initialize_routing_info(routing_info,topology,current_router,target_router,target_server,rng);
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &mut StdRng)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
 	{
-		self.routing.update_routing_info(routing_info,topology,current_router,current_port,target_server,rng);
+		self.routing.update_routing_info(routing_info,topology,current_router,current_port,target_router,target_server,rng);
 	}
 	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		self.routing.initialize(topology,rng);
 	}
-	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng:&mut StdRng)
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, num_virtual_channels:usize, rng:&mut StdRng)
 	{
-		self.routing.performed_request(requested,routing_info,topology,current_router,target_server,num_virtual_channels,rng);
+		self.routing.performed_request(requested,routing_info,topology,current_router,target_router,target_server,num_virtual_channels,rng);
 	}
 	fn statistics(&self, cycle:usize) -> Option<ConfigurationValue>
 	{
@@ -122,14 +122,14 @@ impl Routing for ChannelsPerHopPerLinkClass
 		}).collect();
 		Ok(RoutingNextCandidates{candidates:r,idempotent})
 	}
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
 	{
 		let mut info = routing_info.borrow_mut();
 		info.meta=Some(vec![ RefCell::new(RoutingInfo::new())]);
 		info.selections = Some(vec![0;self.channels.len()]);
-		self.routing.initialize_routing_info(&info.meta.as_ref().unwrap()[0],topology,current_router,target_server,rng);
+		self.routing.initialize_routing_info(&info.meta.as_ref().unwrap()[0],topology,current_router,target_router,target_server,rng);
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &mut StdRng)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
 	{
 		let (_previous_location,link_class)=topology.neighbour(current_router,current_port);
 		let mut info = routing_info.borrow_mut();
@@ -144,15 +144,15 @@ impl Routing for ChannelsPerHopPerLinkClass
 		}
 		let subinfo = &info.meta.as_ref().unwrap()[0];
 		subinfo.borrow_mut().hops+=1;
-		self.routing.update_routing_info(subinfo,topology,current_router,current_port,target_server,rng);
+		self.routing.update_routing_info(subinfo,topology,current_router,current_port,target_router,target_server,rng);
 	}
 	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		self.routing.initialize(topology,rng);
 	}
-	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng:&mut StdRng)
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, num_virtual_channels:usize, rng:&mut StdRng)
 	{
-		self.routing.performed_request(requested,&routing_info.borrow().meta.as_ref().unwrap()[0],topology,current_router,target_server,num_virtual_channels,rng);
+		self.routing.performed_request(requested,&routing_info.borrow().meta.as_ref().unwrap()[0],topology,current_router,target_router,target_server,num_virtual_channels,rng);
 	}
 	fn statistics(&self, cycle:usize) -> Option<ConfigurationValue>
 	{
@@ -222,14 +222,14 @@ impl Routing for AscendantChannelsWithLinkClass
 		}).collect();
 		Ok(RoutingNextCandidates{candidates:r,idempotent})
 	}
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
 	{
 		let mut info = routing_info.borrow_mut();
 		info.meta=Some(vec![ RefCell::new(RoutingInfo::new())]);
 		info.selections = Some(vec![0;self.bases.len()]);
-		self.routing.initialize_routing_info(&info.meta.as_ref().unwrap()[0],topology,current_router,target_server,rng);
+		self.routing.initialize_routing_info(&info.meta.as_ref().unwrap()[0],topology,current_router,target_router,target_server,rng);
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &mut StdRng)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
 	{
 		let (_previous_location,link_class)=topology.neighbour(current_router,current_port);
 		let mut info = routing_info.borrow_mut();
@@ -248,15 +248,15 @@ impl Routing for AscendantChannelsWithLinkClass
 		}
 		let subinfo = &info.meta.as_ref().unwrap()[0];
 		subinfo.borrow_mut().hops+=1;
-		self.routing.update_routing_info(subinfo,topology,current_router,current_port,target_server,rng);
+		self.routing.update_routing_info(subinfo,topology,current_router,current_port,target_router,target_server,rng);
 	}
 	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		self.routing.initialize(topology,rng);
 	}
-	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng:&mut StdRng)
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, num_virtual_channels:usize, rng:&mut StdRng)
 	{
-		self.routing.performed_request(requested,&routing_info.borrow().meta.as_ref().unwrap()[0],topology,current_router,target_server,num_virtual_channels,rng);
+		self.routing.performed_request(requested,&routing_info.borrow().meta.as_ref().unwrap()[0],topology,current_router,target_router,target_server,num_virtual_channels,rng);
 	}
 	fn statistics(&self, cycle:usize) -> Option<ConfigurationValue>
 	{
@@ -319,21 +319,21 @@ impl Routing for ChannelMap
 		}
 		Ok(RoutingNextCandidates{candidates:r,idempotent})
 	}
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
 	{
-		self.routing.initialize_routing_info(routing_info,topology,current_router,target_server,rng);
+		self.routing.initialize_routing_info(routing_info,topology,current_router,target_router,target_server,rng);
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &mut StdRng)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
 	{
-		self.routing.update_routing_info(routing_info,topology,current_router,current_port,target_server,rng);
+		self.routing.update_routing_info(routing_info,topology,current_router,current_port,target_router,target_server,rng);
 	}
 	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		self.routing.initialize(topology,rng);
 	}
-	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, _num_virtual_channels:usize, rng:&mut StdRng)
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, _num_virtual_channels:usize, rng:&mut StdRng)
 	{
-		self.routing.performed_request(requested,routing_info,topology,current_router,target_server,self.map.len(),rng);
+		self.routing.performed_request(requested,routing_info,topology,current_router,target_router,target_server,self.map.len(),rng);
 	}
 	fn statistics(&self, cycle:usize) -> Option<ConfigurationValue>
 	{

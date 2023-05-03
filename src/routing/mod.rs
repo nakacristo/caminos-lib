@@ -181,13 +181,13 @@ pub trait Routing : Debug
 	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>;
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize);
 	///Initialize the routing info of the packet. Called when the first phit of the packet leaves the server and enters a router.
-	fn initialize_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _rng: &mut StdRng) {}
+	fn initialize_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_touter:usize, _target_server:Option<usize>, _rng: &mut StdRng) {}
 	///Updates the routing info of the packet. Called when the first phit of the packet leaves a router and enters another router. Values are of the router being entered into.
-	fn update_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _current_port:usize, _target_server:usize,_rng: &mut StdRng) {}
+	fn update_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _current_port:usize, _target_router:usize, _target_server:Option<usize>,_rng: &mut StdRng) {}
 	///Prepares the routing to be utilized. Perhaps by precomputing routing tables.
 	fn initialize(&mut self, _topology:&dyn Topology, _rng: &mut StdRng) {}
 	///To be called by the router when one of the candidates is requested.
-	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&mut StdRng) {}
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng) {}
 	///To optionally write routing statistics into the simulation output.
 	fn statistics(&self,_cycle:usize) -> Option<ConfigurationValue>{ None }
 	///Clears all collected statistics
@@ -504,14 +504,14 @@ impl<R:SourceRouting+Debug> Routing for R
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
 		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, current_router:usize, target_router:usize, _target_server:Option<usize>, rng: &mut StdRng)
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		if current_router!=target_router
 		{
 			//let path_collection = &self.paths[current_router][target_router];
@@ -609,14 +609,14 @@ impl Routing for SourceAdaptiveRouting
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
 		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, current_router:usize, target_router:usize, _target_server:Option<usize>, rng: &mut StdRng)
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		routing_info.borrow_mut().visited_routers=Some(vec![current_router]);
 		if current_router!=target_router
 		{
@@ -637,14 +637,14 @@ impl Routing for SourceAdaptiveRouting
 			routing_info.borrow_mut().selections=Some(selected_indices);
 		}
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, _current_port:usize, target_server:usize, _rng: &mut StdRng)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, current_router:usize, _current_port:usize, target_router:usize, _target_server:Option<usize>, _rng: &mut StdRng)
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		let mut ri=routing_info.borrow_mut();
 		let hops = ri.hops;
 		if let Some(ref mut visited)=ri.visited_routers

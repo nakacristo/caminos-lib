@@ -769,7 +769,7 @@ impl Eventful for InputOutputMonocycle
 						//}
 						for candidate in good_ports
 						{
-							simulation.routing.performed_request(&candidate,&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&mut mutable.rng);
+							simulation.routing.performed_request(&candidate,&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_router,Some(target_server),amount_virtual_channels,&mut mutable.rng);
 							let CandidateEgress{port:requested_port,virtual_channel:requested_vc,label,..} = candidate;
 //							if self.selected_input[requested_port][requested_vc].is_none()
 //							{

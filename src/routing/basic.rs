@@ -213,14 +213,14 @@ impl Routing for Valiant
 		// //println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
 		// r
 	}
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		let n=topology.num_routers();
 		let middle = if self.selection_exclude_indirect_routers
 		{
@@ -248,29 +248,29 @@ impl Routing for Valiant
 		bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
 		if middle==current_router || middle==target_router
 		{
-			self.second.initialize_routing_info(&bri.meta.as_ref().unwrap()[1],topology,current_router,target_server,rng);
+			self.second.initialize_routing_info(&bri.meta.as_ref().unwrap()[1],topology,current_router,target_router,target_server,rng);
 		}
 		else
 		{
 			bri.selections=Some(vec![middle as i32]);
 			//FIXME: what do we do when we are not excluding indirect routers?
-			let middle_server=
-			{
-				let mut x=None;
-				for i in 0..topology.ports(middle)
-				{
-					if let (Location::ServerPort(server),_link_class)=topology.neighbour(middle,i)
-					{
-						x=Some(server);
-						break;
-					}
-				}
-				x.unwrap()
-			};
-			self.first.initialize_routing_info(&bri.meta.as_ref().unwrap()[0],topology,current_router,middle_server,rng)
+			//let middle_server=
+			//{
+			//	let mut x=None;
+			//	for i in 0..topology.ports(middle)
+			//	{
+			//		if let (Location::ServerPort(server),_link_class)=topology.neighbour(middle,i)
+			//		{
+			//			x=Some(server);
+			//			break;
+			//		}
+			//	}
+			//	x.unwrap()
+			//};
+			self.first.initialize_routing_info(&bri.meta.as_ref().unwrap()[0],topology,current_router,middle,None,rng)
 		}
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &mut StdRng)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
 	{
 		let mut bri=routing_info.borrow_mut();
 		let middle = bri.selections.as_ref().map(|s| s[0] as usize);
@@ -281,7 +281,7 @@ impl Routing for Valiant
 				//Already towards true destination
 				let meta=bri.meta.as_mut().unwrap();
 				meta[1].borrow_mut().hops+=1;
-				self.second.update_routing_info(&meta[1],topology,current_router,current_port,target_server,rng);
+				self.second.update_routing_info(&meta[1],topology,current_router,current_port,target_router,target_server,rng);
 			}
 			Some(middle) =>
 			{
@@ -296,14 +296,13 @@ impl Routing for Valiant
 				{
 					bri.selections=None;
 					let meta=bri.meta.as_ref().unwrap();
-					self.second.initialize_routing_info(&meta[1],topology,current_router,target_server,rng);
+					self.second.initialize_routing_info(&meta[1],topology,current_router,target_router,target_server,rng);
 				}
 				else
 				{
-					//FIXME: that target_server
 					let meta=bri.meta.as_mut().unwrap();
 					meta[0].borrow_mut().hops+=1;
-					self.first.update_routing_info(&meta[0],topology,current_router,current_port,target_server,rng);
+					self.first.update_routing_info(&meta[0],topology,current_router,current_port,middle,None,rng);
 				}
 			}
 		};
@@ -318,7 +317,7 @@ impl Routing for Valiant
 			pattern.initialize(size,size,topology,rng);
 		}
 	}
-	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&mut StdRng)
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 		//TODO: recurse over routings
 	}

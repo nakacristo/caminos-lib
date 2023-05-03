@@ -761,14 +761,14 @@ impl Routing for DOR
 		}
 	}
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, toology:&dyn Topology, current_router:usize, target_server:usize)
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, _target_server:Option<usize>, rng: &mut StdRng)
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		//DOR needs cartesian data in the topology, which could be a dragonfly or whatever...
 		let cartesian_data=topology.cartesian_data().expect("DOR requires a Cartesian topology");
 		let up_current=cartesian_data.unpack(current_router);
@@ -778,7 +778,7 @@ impl Routing for DOR
 		//println!("routing record from {} to {} is {:?}",current_router,target_router,routing_record);
 		routing_info.borrow_mut().routing_record=Some(routing_record);
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, _target_server:usize, _rng: &mut StdRng)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, _target_router:usize, _target_server:Option<usize>, _rng: &mut StdRng)
 	{
 		//let dimension=current_port/2;
 		//let delta=if current_port%2==0 { -1i32 } else { 1i32 };
@@ -823,7 +823,7 @@ impl Routing for DOR
 	fn initialize(&mut self, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 	}
-	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&mut StdRng)
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 	}
 	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
@@ -1059,15 +1059,14 @@ impl Routing for ValiantDOR
 			};
 		}
 	}
-	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, toology:&dyn Topology, current_router:usize, target_server:usize)
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, _target_server:Option<usize>, rng: &mut StdRng)
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		//ValiantDOR needs cartesian data in the topology, which could be a dragonfly or whatever...
 		let cartesian_data=topology.cartesian_data().expect("ValiantDOR requires a Cartesian topology");
 		let up_current=cartesian_data.unpack(current_router);
@@ -1098,7 +1097,7 @@ impl Routing for ValiantDOR
 			routing_info.borrow_mut().selections=Some(vec![offset as i32,r]);
 		}
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, rng: &mut StdRng)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, _target_server:Option<usize>, rng: &mut StdRng)
 	{
 		//let dimension=current_port/2;
 		//let delta=if current_port%2==0 { -1i32 } else { 1i32 };
@@ -1157,12 +1156,12 @@ impl Routing for ValiantDOR
 					r+=delta;
 					let target_router = if r!=0 { None } else
 					{
-						let (target_location,_link_class)=topology.server_neighbour(target_server);
-						let target_router=match target_location
-						{
-							Location::RouterPort{router_index,router_port:_} =>router_index,
-							_ => panic!("The server is not attached to a router"),
-						};
+						//let (target_location,_link_class)=topology.server_neighbour(target_server);
+						//let target_router=match target_location
+						//{
+						//	Location::RouterPort{router_index,router_port:_} =>router_index,
+						//	_ => panic!("The server is not attached to a router"),
+						//};
 						Some(target_router)
 					};
 					while r==0 && offset<self.randomized.len()-1
@@ -1201,7 +1200,7 @@ impl Routing for ValiantDOR
 	fn initialize(&mut self, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 	}
-	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&mut StdRng)
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 	}
 	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
@@ -1379,14 +1378,14 @@ impl Routing for O1TURN
 		}
 	}
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, toology:&dyn Topology, current_router:usize, target_server:usize)
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, _target_server:Option<usize>, rng: &mut StdRng)
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		//O1TURN needs cartesian data in the topology, which could be a dragonfly or whatever...
 		let cartesian_data=topology.cartesian_data().expect("O1TURN requires a Cartesian topology");
 		let up_current=cartesian_data.unpack(current_router);
@@ -1399,7 +1398,7 @@ impl Routing for O1TURN
 			rng.gen_range(0..2)
 		}]);
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, current_port:usize, _target_server:usize, _rng: &mut StdRng)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, current_port:usize, _target_router:usize, _target_server:Option<usize>, _rng: &mut StdRng)
 	{
 		let dimension=current_port/2;
 		let delta=if current_port%2==0 { -1i32 } else { 1i32 };
@@ -1416,7 +1415,7 @@ impl Routing for O1TURN
 	fn initialize(&mut self, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 	}
-	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&mut StdRng)
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 	}
 	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
@@ -1590,23 +1589,23 @@ impl Routing for OmniDimensionalDeroute
 		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, toology:&dyn Topology, current_router:usize, target_server:usize)
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _rng: &mut StdRng)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _rng: &mut StdRng)
 	{
 		routing_info.borrow_mut().selections=Some(vec![self.allowed_deroutes as i32]);
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_server:usize, _rng: &mut StdRng)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, _target_server:Option<usize>, _rng: &mut StdRng)
 	{
 		//let cartesian_data=topology.cartesian_data().expect("OmniDimensionalDeroute requires a Cartesian topology");
 		if let (Location::RouterPort{router_index: previous_router,router_port:_},_link_class)=topology.neighbour(current_router,current_port)
 		{
 			//let up_current=cartesian_data.unpack(current_router);
 			//let up_previous=cartesian_data.unpack(previous_router);
-			let (target_location,_link_class)=topology.server_neighbour(target_server);
-			let target_router=match target_location
-			{
-				Location::RouterPort{router_index,router_port:_} =>router_index,
-				_ => panic!("The server is not attached to a router"),
-			};
+			//let (target_location,_link_class)=topology.server_neighbour(target_server);
+			//let target_router=match target_location
+			//{
+			//	Location::RouterPort{router_index,router_port:_} =>router_index,
+			//	_ => panic!("The server is not attached to a router"),
+			//};
 			//let up_target=cartesian_data.unpack(target_router);
 			if topology.distance(previous_router,target_router)!=1+topology.distance(current_router,target_router)
 			{
@@ -1629,7 +1628,7 @@ impl Routing for OmniDimensionalDeroute
 	fn initialize(&mut self, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 	}
-	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&mut StdRng)
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 	}
 	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>

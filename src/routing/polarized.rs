@@ -174,7 +174,7 @@ impl Routing for Polarized
 		}
 		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
-	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, current_router:usize, _target_server:usize, _rng: &mut StdRng)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, current_router:usize, _target_router:usize, _target_server:Option<usize>, _rng: &mut StdRng)
 	{
 		routing_info.borrow_mut().visited_routers=Some(vec![current_router]);
 		if self.enable_statistics
@@ -183,7 +183,7 @@ impl Routing for Polarized
 			routing_info.borrow_mut().auxiliar = RefCell::new(Some(any));
 		}
 	}
-	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, current_router:usize, _current_port:usize, _target_server:usize, _rng: &mut StdRng)
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, current_router:usize, _current_port:usize, _target_router:usize, _target_server:Option<usize>, _rng: &mut StdRng)
 	{
 		let mut ri=routing_info.borrow_mut();
 		if let Some(ref mut visited)=ri.visited_routers
@@ -215,7 +215,7 @@ impl Routing for Polarized
 			println!("INFO: d/ln n * ln 2/2 = {} < .5: In a RRG with these parameters Polarized routing is expected to have problematic corners.",random_placid_value);
 		}
 	}
-	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&mut StdRng)
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 	}
 	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
