@@ -19,6 +19,7 @@ use crate::config_parser::ConfigurationValue;
 use crate::routing::{RoutingBuilderArgument,RoutingInfo,CandidateEgress,RoutingNextCandidates,Routing,new_routing};
 use crate::topology::{Topology,Location};
 use crate::matrix::Matrix;
+use crate::pattern::prelude::*;
 
 ///Use the shortest path from origin to destination
 #[derive(Debug)]
@@ -87,6 +88,27 @@ impl Shortest
 	}
 }
 
+/**
+This is Valiant's randomization scheme. Each packet to be sent from a source to a destination is routed first to a random intermediate node, and from that intermediate to destination. These randomization makes the two parts behave as if the
+traffic pattern was uniform at the cost of doubling the lengths.
+
+See Valiant, L. G. (1982). A scheme for fast parallel communication. SIAM journal on computing, 11(2), 350-361.
+
+```ignore
+Valiant{
+	first: Shortest,
+	second: Shortest,
+	legend_name: "Using Valiant scheme, shortest to intermediate and shortest to destination",
+	//selection_exclude_indirect_routers: false,//optional parameter
+	//first_reserved_virtual_channels: [0],//optional parameter, defaults to empty. Reserves some VCs to be used only in the first stage
+	//second_reserved_virtual_channels: [1,2],//optional, defaults to empty. Reserves some VCs to be used only in the second stage.
+	//intermediate_bypass: CartesianTransform{sides:[4,4],project:[true,false]} //optional, defaults to None.
+	// A pattern on the routers such that when reaching a router `x` with `intermediate_bypass(x)==intermediate_bypass(Valiant_choice)` the first stage is terminated.
+	// This is intended to use with projecting patterns, for example those that map a whole group to a single representative.
+	// In such case, upon reaching that intermediate group the packet would change to the second fase, without having to reach the specific router.
+}
+```
+**/
 #[derive(Debug)]
 pub struct Valiant
 {
@@ -96,6 +118,10 @@ pub struct Valiant
 	selection_exclude_indirect_routers: bool,
 	first_reserved_virtual_channels: Vec<usize>,
 	second_reserved_virtual_channels: Vec<usize>,
+	/// A pattern on the routers such that when reaching a router `x` with `intermediate_bypass(x)==intermediate_bypass(Valiant_choice)` the first stage is terminated.
+	/// This is intended to use with projecting patterns, for example those that map a whole group to a single representative.
+	/// In such case, upon reaching that intermediate group the packet would change to the second fase, without having to reach the specific router.
+	intermediate_bypass: Option<Box<dyn Pattern>>,
 }
 
 impl Routing for Valiant
@@ -257,7 +283,14 @@ impl Routing for Valiant
 			}
 			Some(middle) =>
 			{
-				if current_router==middle
+				let at_middle = if let Some(ref pattern) = self.intermediate_bypass {
+					let proj_middle = pattern.get_destination(middle,topology,rng);
+					let proj_current = pattern.get_destination(current_router,topology,rng);
+					proj_middle == proj_current
+				} else {
+					current_router == middle
+				};
+				if at_middle
 				{
 					bri.selections=None;
 					let meta=bri.meta.as_ref().unwrap();
@@ -277,6 +310,11 @@ impl Routing for Valiant
 	{
 		self.first.initialize(topology,rng);
 		self.second.initialize(topology,rng);
+		if let Some(ref mut pattern) = self.intermediate_bypass
+		{
+			let size = topology.num_routers();
+			pattern.initialize(size,size,topology,rng);
+		}
 	}
 	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
@@ -295,6 +333,7 @@ impl Valiant
 		let mut selection_exclude_indirect_routers=false;
 		let mut first_reserved_virtual_channels=vec![];
 		let mut second_reserved_virtual_channels=vec![];
+		let mut intermediate_bypass=None;
 		match_object_panic!(arg.cv,"Valiant",value,
 			"first" => first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
 			"second" => second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
@@ -305,6 +344,7 @@ impl Valiant
 			"second_reserved_virtual_channels" => second_reserved_virtual_channels=value.
 				as_array().expect("bad value for second_reserved_virtual_channels").iter()
 				.map(|v|v.as_f64().expect("bad value in second_reserved_virtual_channels") as usize).collect(),
+			"intermediate_bypass" => intermediate_bypass=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 		);
 		let first=first.expect("There were no first");
 		let second=second.expect("There were no second");
@@ -316,6 +356,7 @@ impl Valiant
 			selection_exclude_indirect_routers,
 			first_reserved_virtual_channels,
 			second_reserved_virtual_channels,
+			intermediate_bypass,
 		}
 	}
 }

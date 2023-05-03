@@ -2,6 +2,9 @@
 
 ## next  [0.5.5]
 
+### 2023-05-03
+Added `intermediate_bypass` to Valiant routing.
+
 ### 2023-04-29
 Update some tests that were still using `RefCell<StdRng<_>>`.
 Added a test for the sort config function.
