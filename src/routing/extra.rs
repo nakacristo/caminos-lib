@@ -83,17 +83,18 @@ pub struct SumRouting
 //* [a,b,c] if a request by routing c has been made, but the two routing are still available.
 impl Routing for SumRouting
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		let distance=topology.distance(current_router,target_router);
 		if distance==0
 		{
+			let target_server = target_server.expect("target server was not given.");
 			for i in 0..topology.ports(current_router)
 			{
 				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
@@ -103,7 +104,7 @@ impl Routing for SumRouting
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
 						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
-						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true};
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true});
 					}
 				}
 			}
@@ -127,13 +128,13 @@ impl Routing for SumRouting
 					//let el0=self.first_extra_label;
 					let el0=self.extra_label[0];
 					//let r0=self.first_routing.next(&meta[0].borrow(),topology,current_router,target_server,avc0.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc0[candidate.virtual_channel],label:candidate.label+el0,annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate} );
-					let r0=self.routing[0].next(&meta[0].borrow(),topology,current_router,target_server,avc0.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc0[candidate.virtual_channel],label:candidate.label+el0,annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate} );
+					let r0=self.routing[0].next(&meta[0].borrow(),topology,current_router,target_router,target_server,avc0.len(),rng)?.into_iter().map( |candidate| CandidateEgress{virtual_channel:avc0[candidate.virtual_channel],label:candidate.label+el0,annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate} );
 					//let avc1=&self.second_allowed_virtual_channels;
 					let avc1=&self.allowed_virtual_channels[1];
 					//let el1=self.second_extra_label;
 					let el1=self.extra_label[1];
 					//let r1=self.second_routing.next(&meta[1].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
-					let r1=self.routing[1].next(&meta[1].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
+					let r1=self.routing[1].next(&meta[1].borrow(),topology,current_router,target_router,target_server,avc1.len(),rng)?.into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
 					match self.policy
 					{
 						SumRoutingPolicy::SecondWhenFirstEmpty =>
@@ -153,7 +154,7 @@ impl Routing for SumRouting
 					let allowed_virtual_channels = &self.allowed_virtual_channels[index];
 					//let extra_label = if s[0]==0 { self.first_extra_label } else { self.second_extra_label };
 					let extra_label = self.extra_label[index];
-					let r=routing.next(&meta[index].borrow(),topology,current_router,target_server,allowed_virtual_channels.len(),rng);
+					let r=routing.next(&meta[index].borrow(),topology,current_router,target_router,target_server,allowed_virtual_channels.len(),rng)?;
 					//r.into_iter().map( |(x,c)| (x,allowed_virtual_channels[c]) ).collect()
 					r.into_iter()
 					//.map( |candidate| CandidateEgress{virtual_channel:allowed_virtual_channels[candidate.virtual_channel],label:candidate.label+extra_label,..candidate} ).collect()
@@ -163,7 +164,7 @@ impl Routing for SumRouting
 			}
 		};
 		//FIXME: we can recover idempotence in some cases.
-		RoutingNextCandidates{candidates:r,idempotent:false}
+		Ok(RoutingNextCandidates{candidates:r,idempotent:false})
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{
@@ -390,16 +391,17 @@ pub struct Stubborn
 
 impl Routing for Stubborn
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		if target_router==current_router
 		{
+			let target_server = target_server.expect("target server was not given.");
 			for i in 0..topology.ports(current_router)
 			{
 				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
@@ -409,7 +411,7 @@ impl Routing for Stubborn
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
 						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
-						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true};
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true});
 					}
 				}
 			}
@@ -418,11 +420,11 @@ impl Routing for Stubborn
 		if let Some(ref sel)=routing_info.selections
 		{
 			//return vec![CandidateEgress{port:sel[0] as usize,virtual_channel:sel[1] as usize,label:sel[2],..Default::default()}]
-			return RoutingNextCandidates{candidates:vec![CandidateEgress{port:sel[0] as usize,virtual_channel:sel[1] as usize,label:sel[2],..Default::default()}],idempotent:false};
+			return Ok(RoutingNextCandidates{candidates:vec![CandidateEgress{port:sel[0] as usize,virtual_channel:sel[1] as usize,label:sel[2],..Default::default()}],idempotent:false});
 		}
 		//return self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng)
 		//return self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng).into_iter().map(|candidate|CandidateEgress{annotation:Some(RoutingAnnotation{values:vec![candidate.label],meta:vec![candidate.annotation]}),..candidate}).collect()
-		return RoutingNextCandidates{candidates:self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng).into_iter().map(|candidate|CandidateEgress{annotation:Some(RoutingAnnotation{values:vec![candidate.label],meta:vec![candidate.annotation]}),..candidate}).collect(),idempotent:false}
+		return Ok(RoutingNextCandidates{candidates:self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_router,target_server,num_virtual_channels,rng)?.into_iter().map(|candidate|CandidateEgress{annotation:Some(RoutingAnnotation{values:vec![candidate.label],meta:vec![candidate.annotation]}),..candidate}).collect(),idempotent:false})
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{
@@ -486,17 +488,18 @@ pub struct EachLengthSourceAdaptiveRouting
 
 impl Routing for EachLengthSourceAdaptiveRouting
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		let distance=topology.distance(current_router,target_router);
 		if distance==0
 		{
+			let target_server = target_server.expect("target server was not given.");
 			for i in 0..topology.ports(current_router)
 			{
 				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
@@ -506,10 +509,10 @@ impl Routing for EachLengthSourceAdaptiveRouting
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
 						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
-						return RoutingNextCandidates{
+						return Ok(RoutingNextCandidates{
 							candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),
 							idempotent:true
-						};
+						});
 					}
 				}
 			}
@@ -545,7 +548,7 @@ impl Routing for EachLengthSourceAdaptiveRouting
 			}
 		}
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
-		RoutingNextCandidates{candidates:r,idempotent:true}
+		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{

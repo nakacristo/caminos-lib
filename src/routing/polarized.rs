@@ -70,17 +70,18 @@ pub struct Polarized
 
 impl Routing for Polarized
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		let distance=topology.distance(current_router,target_router);
 		if distance==0
 		{
+			let target_server = target_server.expect("target server was not given.");
 			for i in 0..topology.ports(current_router)
 			{
 				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
@@ -90,7 +91,7 @@ impl Routing for Polarized
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
 						let r=(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
-						return RoutingNextCandidates{candidates:r,idempotent:true};
+						return Ok(RoutingNextCandidates{candidates:r,idempotent:true});
 					}
 				}
 			}
@@ -171,7 +172,7 @@ impl Routing for Polarized
 				}
 			}
 		}
-		RoutingNextCandidates{candidates:r,idempotent:true}
+		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, current_router:usize, _target_server:usize, _rng: &mut StdRng)
 	{

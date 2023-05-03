@@ -16,7 +16,7 @@ use ::rand::{rngs::StdRng,Rng};
 
 use crate::match_object_panic;
 use crate::config_parser::ConfigurationValue;
-use crate::routing::{RoutingBuilderArgument,RoutingInfo,CandidateEgress,RoutingNextCandidates,Routing,new_routing};
+use crate::routing::prelude::*;
 use crate::topology::{Topology,Location};
 use crate::matrix::Matrix;
 use crate::pattern::prelude::*;
@@ -29,17 +29,18 @@ pub struct Shortest
 
 impl Routing for Shortest
 {
-	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		let distance=topology.distance(current_router,target_router);
 		if distance==0
 		{
+			let target_server = target_server.expect("target server was not given.");
 			for i in 0..topology.ports(current_router)
 			{
 				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
@@ -49,7 +50,7 @@ impl Routing for Shortest
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
 						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
-						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true};
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true});
 					}
 				}
 			}
@@ -74,7 +75,7 @@ impl Routing for Shortest
 			}
 		}
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
-		RoutingNextCandidates{candidates:r,idempotent:true}
+		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
 }
 
@@ -126,17 +127,18 @@ pub struct Valiant
 
 impl Routing for Valiant
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		let distance=topology.distance(current_router,target_router);
 		if distance==0
 		{
+			let target_server = target_server.expect("target server was not given.");
 			for i in 0..topology.ports(current_router)
 			{
 				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
@@ -146,7 +148,7 @@ impl Routing for Valiant
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
 						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
-						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true}
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
 					}
 				}
 			}
@@ -158,10 +160,10 @@ impl Routing for Valiant
 			None =>
 			{
 				//self.second.next(&meta[1].borrow(),topology,current_router,target_server,num_virtual_channels,rng)
-				let base=self.second.next(&meta[1].borrow(),topology,current_router,target_server,num_virtual_channels,rng);
+				let base=self.second.next(&meta[1].borrow(),topology,current_router,target_router,target_server,num_virtual_channels,rng)?;
 				let idempotent = base.idempotent;
 				let r=base.into_iter().filter(|egress|!self.first_reserved_virtual_channels.contains(&egress.virtual_channel)).collect();
-				RoutingNextCandidates{candidates:r,idempotent}
+				Ok(RoutingNextCandidates{candidates:r,idempotent})
 			}
 			Some(ref s) =>
 			{
@@ -177,11 +179,11 @@ impl Routing for Valiant
 							break;
 						}
 					}
-					x.unwrap()
+					x
 				};
 				let second_distance=topology.distance(middle,target_router);//Only exact if the base routing is shortest.
 				//self.first.next(&meta[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng).into_iter().filter(|egress|!self.second_reserved_virtual_channels.contains(&egress.virtual_channel)).collect()
-				let base = self.first.next(&meta[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng);
+				let base = self.first.next(&meta[0].borrow(),topology,current_router,middle,middle_server,num_virtual_channels,rng)?;
 				let idempotent = base.idempotent;
 				let r=base.into_iter().filter_map(|mut egress|{
 					if self.second_reserved_virtual_channels.contains(&egress.virtual_channel) { None } else {
@@ -192,7 +194,7 @@ impl Routing for Valiant
 						Some(egress)
 					}
 				}).collect();
-				RoutingNextCandidates{candidates:r,idempotent}
+				Ok(RoutingNextCandidates{candidates:r,idempotent})
 			}
 		}
 		// let num_ports=topology.ports(current_router);
@@ -373,16 +375,17 @@ pub struct Mindless
 
 impl Routing for Mindless
 {
-	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		if target_router==current_router
 		{
+			let target_server = target_server.expect("target server was not given.");
 			for i in 0..topology.ports(current_router)
 			{
 				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
@@ -392,7 +395,7 @@ impl Routing for Mindless
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
 						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
-						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true}
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
 					}
 				}
 			}
@@ -409,7 +412,7 @@ impl Routing for Mindless
 				r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
 			}
 		}
-		RoutingNextCandidates{candidates:r,idempotent:true}
+		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
 	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
 	{
@@ -444,20 +447,21 @@ pub struct WeighedShortest
 
 impl Routing for WeighedShortest
 {
-	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		//let distance=topology.distance(current_router,target_router);
 		let distance=*self.distance_matrix.get(current_router,target_router);
 		//let valid = vec![0,1,2,100,101,102];
 		//if !valid.contains(&distance){ panic!("distance={}",distance); }
 		if distance==0
 		{
+			let target_server = target_server.expect("target server was not given.");
 			for i in 0..topology.ports(current_router)
 			{
 				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
@@ -467,7 +471,7 @@ impl Routing for WeighedShortest
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
 						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
-						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true};
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true});
 					}
 				}
 			}
@@ -495,7 +499,7 @@ impl Routing for WeighedShortest
 			}
 		}
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
-		RoutingNextCandidates{candidates:r,idempotent:true}
+		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
 	fn initialize(&mut self, topology:&dyn Topology, _rng: &mut StdRng)
 	{

@@ -503,23 +503,24 @@ pub struct Dragonfly2ColorsRouting
 
 impl Routing for Dragonfly2ColorsRouting
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		if target_router==current_router
 		{
+			let target_server = target_server.expect("target server was not given.");
 			for i in 0..topology.ports(current_router)
 			{
 				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router,i)
 				{
 					if server==target_server
 					{
-						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true}
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
 					}
 				}
 			}
@@ -539,7 +540,7 @@ impl Routing for Dragonfly2ColorsRouting
 				{
 					if other_router == target_router
 					{
-						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true}
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
 					}
 				}
 			}
@@ -572,7 +573,7 @@ impl Routing for Dragonfly2ColorsRouting
 							if bridge == current_router {
 								// If we are in a bridge do not perform local link.
 								// Or maybe we could want to perform a local for balancing considerations??
-								return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true}
+								return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
 							} else {
 								//is_bridge = true;
 								bridges.push(bridge);
@@ -597,7 +598,7 @@ impl Routing for Dragonfly2ColorsRouting
 				}
 			}
 			assert!( !r.is_empty(), "no local links to bridges");
-			return RoutingNextCandidates{candidates:r,idempotent:true};
+			return Ok(RoutingNextCandidates{candidates:r,idempotent:true});
 		}
 		// If we are not in the target group and we have given one hop then we have to advance a global link.
 		for i in 0..topology.ports(current_router)
@@ -607,7 +608,7 @@ impl Routing for Dragonfly2ColorsRouting
 				let (_other_local,other_global)=arrangement_size.unpack(other_router);
 				if other_global == target_global
 				{
-					return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true}
+					return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
 				}
 			}
 		}

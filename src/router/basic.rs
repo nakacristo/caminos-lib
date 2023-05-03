@@ -896,7 +896,7 @@ impl Eventful for Basic
 							Location::RouterPort{router_index,router_port:_} =>router_index,
 							_ => panic!("The server is not attached to a router"),
 						};
-						let routing_candidates=simulation.routing.next(phit.packet.routing_info.borrow().deref(),simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&mut mutable.rng);
+						let routing_candidates=simulation.routing.next(phit.packet.routing_info.borrow().deref(),simulation.network.topology.as_ref(),self.router_index,target_router,Some(target_server),amount_virtual_channels,&mut mutable.rng).unwrap_or_else(|e|panic!("Error {} while routing.",e));
 						let routing_idempotent = routing_candidates.idempotent;
 						if routing_candidates.len()==0
 						{

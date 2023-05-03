@@ -11,7 +11,7 @@ use ::rand::{rngs::StdRng};
 
 use crate::match_object_panic;
 use crate::config_parser::ConfigurationValue;
-use crate::routing::{RoutingBuilderArgument,RoutingInfo,CandidateEgress,RoutingNextCandidates,Routing};
+use crate::routing::prelude::*;
 use crate::topology::{Topology,NeighbourRouterIteratorItem,Location};
 use crate::matrix::Matrix;
 
@@ -24,17 +24,18 @@ pub struct UpDown
 
 impl Routing for UpDown
 {
-	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		let (up_distance, down_distance) = topology.up_down_distance(current_router,target_router).unwrap_or_else(||panic!("The topology does not provide an up/down path from {} to {}",current_router,target_router));
 		if up_distance + down_distance == 0
 		{
+			let target_server = target_server.expect("target server was not given.");
 			for i in 0..topology.ports(current_router)
 			{
 				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
@@ -44,7 +45,7 @@ impl Routing for UpDown
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
 						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
-						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true};
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true});
 					}
 				}
 			}
@@ -67,7 +68,7 @@ impl Routing for UpDown
 			}
 		}
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
-		RoutingNextCandidates{candidates:r,idempotent:true}
+		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
 }
 
@@ -97,16 +98,17 @@ pub struct ExplicitUpDown
 
 impl Routing for ExplicitUpDown
 {
-	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		if current_router == target_router
 		{
+			let target_server = target_server.expect("target server was not given.");
 			for i in 0..topology.ports(current_router)
 			{
 				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
@@ -116,7 +118,7 @@ impl Routing for ExplicitUpDown
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
 						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
-						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true};
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true});
 					}
 				}
 			}
@@ -154,7 +156,7 @@ impl Routing for ExplicitUpDown
 		}
 		//println!("candidates={:?} current_router={current_router} target_router={target_router} up_down_distance={up_down_distance} down_distance={down_distance:?}",r.iter().map(|x|x.port).collect::<Vec<_>>());
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
-		RoutingNextCandidates{candidates:r,idempotent:true}
+		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
 	fn initialize(&mut self, topology:&dyn Topology, _rng: &mut StdRng)
 	{

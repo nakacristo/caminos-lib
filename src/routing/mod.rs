@@ -28,6 +28,7 @@ use crate::topology::cartesian::{DOR,O1TURN,ValiantDOR,OmniDimensionalDeroute};
 use crate::topology::{Topology,Location};
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::{Plugs};
+pub use crate::error::Error;
 
 pub use self::basic::*;
 pub use self::extra::*;
@@ -37,7 +38,7 @@ pub use self::polarized::Polarized;
 
 pub mod prelude
 {
-	pub use super::{Routing,RoutingInfo,RoutingNextCandidates,CandidateEgress,RoutingBuilderArgument};
+	pub use super::{new_routing,Routing,RoutingInfo,RoutingNextCandidates,CandidateEgress,RoutingBuilderArgument,Error};
 }
 
 ///Information stored in the packet for the `Routing` algorithms to operate.
@@ -170,8 +171,14 @@ impl RoutingNextCandidates
 ///A `Routing` does not receive information about the state of buffers or similar. Such a mechanism should be given as a `VirtualChannelPolicy`.
 pub trait Routing : Debug
 {
-	///Compute the list of allowed exits.
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &mut StdRng) -> RoutingNextCandidates;
+	/// Compute the list of allowed exits.
+	/// `routing_info` contains the information in the packet being routed.
+	/// `current_router` is the index of the router in the `topology` that is performing the routing.
+	/// `target_router` is the index of the router towards which we are routing.
+	/// If `target_server` is not None it is the server destination of the packet, which must be attached to `target_router`. A routing that works without this can be more simply used as part of other routing algorithms, as it may be used to route to intermediate routers even on indirect topologies.
+	/// `num_virtual_channels` is the number of virtual channels dedicated to this routing.
+	/// `rng` is the global generator of random numbers.
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>;
 	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize);
 	///Initialize the routing info of the packet. Called when the first phit of the packet leaves the server and enters a router.
 	fn initialize_routing_info(&self, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_server:usize, _rng: &mut StdRng) {}
@@ -445,17 +452,18 @@ impl<R:SourceRouting + Debug> InstantiableSourceRouting for R {}
 
 impl<R:SourceRouting+Debug> Routing for R
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		let distance=topology.distance(current_router,target_router);
 		if distance==0
 		{
+			let target_server = target_server.expect("target server was not given.");
 			for i in 0..topology.ports(current_router)
 			{
 				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
@@ -465,7 +473,7 @@ impl<R:SourceRouting+Debug> Routing for R
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
 						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
-						return RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true};
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true});
 					}
 				}
 			}
@@ -494,7 +502,7 @@ impl<R:SourceRouting+Debug> Routing for R
 			}
 		}
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
-		RoutingNextCandidates{candidates:r,idempotent:true}
+		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{
@@ -540,17 +548,18 @@ pub struct SourceAdaptiveRouting
 
 impl Routing for SourceAdaptiveRouting
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, _rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
-		let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
 		let distance=topology.distance(current_router,target_router);
 		if distance==0
 		{
+			let target_server = target_server.expect("target server was not given.");
 			for i in 0..topology.ports(current_router)
 			{
 				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
@@ -560,10 +569,10 @@ impl Routing for SourceAdaptiveRouting
 					{
 						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
 						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
-						return RoutingNextCandidates{
+						return Ok(RoutingNextCandidates{
 							candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),
 							idempotent:true
-						};
+						});
 					}
 				}
 			}
@@ -598,7 +607,7 @@ impl Routing for SourceAdaptiveRouting
 			}
 		}
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
-		RoutingNextCandidates{candidates:r,idempotent:true}
+		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{

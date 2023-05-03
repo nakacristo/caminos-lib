@@ -16,7 +16,7 @@ use ::rand::{rngs::StdRng};
 use crate::match_object_panic;
 use crate::config_parser::ConfigurationValue;
 use crate::topology::Topology;
-use crate::routing::{RoutingBuilderArgument,RoutingInfo,CandidateEgress,RoutingNextCandidates,Routing,new_routing};
+use crate::routing::prelude::*;
 
 ///Set the virtual channels to use in each hop.
 ///Sometimes the same can be achieved by the router policy `Hops`.
@@ -32,14 +32,14 @@ pub struct ChannelsPerHop
 
 impl Routing for ChannelsPerHop
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
 		//println!("{}",topology.diameter());
 		let vcs = &self.channels[routing_info.hops];
-		let candidates = self.routing.next(routing_info,topology,current_router,target_server,num_virtual_channels,rng);
+		let candidates = self.routing.next(routing_info,topology,current_router,target_router,target_server,num_virtual_channels,rng)?;
 		let idempotent = candidates.idempotent;
 		let r = candidates.into_iter().filter(|c|vcs.contains(&c.virtual_channel)).collect();
-		RoutingNextCandidates{candidates:r,idempotent}
+		Ok(RoutingNextCandidates{candidates:r,idempotent})
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{
@@ -103,10 +103,10 @@ pub struct ChannelsPerHopPerLinkClass
 
 impl Routing for ChannelsPerHopPerLinkClass
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
 		//println!("{}",topology.diameter());
-		let candidates = self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng);
+		let candidates = self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_router,target_server,num_virtual_channels,rng)?;
 		let idempotent = candidates.idempotent;
 		let hops = &routing_info.selections.as_ref().unwrap();
 		let r = candidates.into_iter().filter(|c|{
@@ -120,7 +120,7 @@ impl Routing for ChannelsPerHopPerLinkClass
 			//self.channels[link_class].len()>h && self.channels[link_class][h].contains(&c.virtual_channel)
 			self.channels[link_class][h].contains(&c.virtual_channel)
 		}).collect();
-		RoutingNextCandidates{candidates:r,idempotent}
+		Ok(RoutingNextCandidates{candidates:r,idempotent})
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{
@@ -206,10 +206,10 @@ pub struct AscendantChannelsWithLinkClass
 
 impl Routing for AscendantChannelsWithLinkClass
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, num_virtual_channels:usize, rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
 		//println!("{}",topology.diameter());
-		let candidates = self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_server,num_virtual_channels,rng);
+		let candidates = self.routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(),topology,current_router,target_router,target_server,num_virtual_channels,rng)?;
 		let idempotent = candidates.idempotent;
 		let hops_since = &routing_info.selections.as_ref().unwrap();
 		let r = candidates.into_iter().filter(|c|{
@@ -220,7 +220,7 @@ impl Routing for AscendantChannelsWithLinkClass
 			//if link_class==0 && vc!=hops_since[1] as usize{ println!("hops_since={:?} link_class={} vc={}",hops_since,link_class,vc); }
 			c.virtual_channel == vc
 		}).collect();
-		RoutingNextCandidates{candidates:r,idempotent}
+		Ok(RoutingNextCandidates{candidates:r,idempotent})
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{
@@ -300,11 +300,11 @@ pub struct ChannelMap
 
 impl Routing for ChannelMap
 {
-	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_server:usize, _num_virtual_channels:usize, rng: &mut StdRng) -> RoutingNextCandidates
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, _num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
 		//println!("{}",topology.diameter());
 		//let vcs = &self.channels[routing_info.hops];
-		let candidates = self.routing.next(routing_info,topology,current_router,target_server,self.map.len(),rng);
+		let candidates = self.routing.next(routing_info,topology,current_router,target_router,target_server,self.map.len(),rng)?;
 		let idempotent = candidates.idempotent;
 		//candidates.into_iter().filter(|c|vcs.contains(&c.virtual_channel)).collect()
 		let mut r=Vec::with_capacity(candidates.len());
@@ -317,7 +317,7 @@ impl Routing for ChannelMap
 				r.push(new);
 			}
 		}
-		RoutingNextCandidates{candidates:r,idempotent}
+		Ok(RoutingNextCandidates{candidates:r,idempotent})
 	}
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_server:usize, rng: &mut StdRng)
 	{
