@@ -4,6 +4,7 @@
 
 ### 2023-05-03
 Added `intermediate_bypass` to Valiant routing.
+Added `sbatch_args` so the slurm options to pass an arbitrary list of strings.
 
 ### 2023-04-29
 Update some tests that were still using `RefCell<StdRng<_>>`.

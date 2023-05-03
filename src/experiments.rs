@@ -146,6 +146,7 @@ struct SlurmOptions
 	maximum_jobs: Option<usize>,
 	job_pack_size: Option<usize>,
 	wrapper: Option<PathBuf>,
+	sbatch_args: Vec<String>,
 }
 
 impl Default for SlurmOptions
@@ -158,6 +159,7 @@ impl Default for SlurmOptions
 			maximum_jobs: None,
 			job_pack_size: None,
 			wrapper: None,
+			sbatch_args: vec![],
 		}
 	}
 }
@@ -171,6 +173,7 @@ impl SlurmOptions
 		let mut mem:Option<&str> =None;
 		let mut job_pack_size=None;
 		let mut wrapper = None;
+		let mut sbatch_args : Vec<String> = vec![];
 		for lc in launch_configurations.iter()
 		{
 			match_object_panic!(lc,"Slurm",slurm_value,
@@ -179,6 +182,7 @@ impl SlurmOptions
 				"time" => time=Some(slurm_value.as_str().expect("bad value for time")),
 				"mem" => mem=Some(slurm_value.as_str().expect("bad value for mem")),
 				"wrapper" => wrapper=Some(slurm_value.as_str().expect("bad value for wrapper")),
+				"sbatch_args" => sbatch_args=slurm_value.as_array()?.iter().map(|x|x.as_str().expect("bad value for sbatch_args").to_string()).collect(),
 			);
 		}
 		Ok(SlurmOptions{
@@ -187,6 +191,7 @@ impl SlurmOptions
 			maximum_jobs,
 			job_pack_size,
 			wrapper: wrapper.map(|value|Path::new(&value).to_path_buf()),
+			sbatch_args,
 		})
 	}
 }
@@ -357,12 +362,17 @@ impl Job
 ",prefix=prefix,slurm_time=slurm_options.time,mem_str=mem_str,job_lines=job_lines).unwrap();
 	}
 
-	fn launch_slurm_script(&self, directory:&Path,script_name:&str) -> Result<usize,Error>
+	fn launch_slurm_script(&self, directory:&Path,script_name:&str, slurm_options:&SlurmOptions) -> Result<usize,Error>
 	{
-		let sbatch_output=Command::new("sbatch")
+		let mut sbatch=Command::new("sbatch");
+		sbatch
 			.current_dir(directory)
-			.arg(script_name)
-			.output().map_err(|e|Error::command_not_found(source_location!(),"sbatch".to_string(),e))?;
+			.arg(script_name);
+		for argument in &slurm_options.sbatch_args
+		{
+			sbatch.arg(argument);
+		}
+		let sbatch_output=sbatch.output().map_err(|e|Error::command_not_found(source_location!(),"sbatch".to_string(),e))?;
 		//Should be something like "Submitted batch job 382683"
 		let mut jobids=vec![];
 		//let sbatch_stdout=sbatch_output.stdout.iter().collect::<String>();
@@ -394,7 +404,7 @@ impl Job
 		let launch_script=jobs_path.join(&launch_name);
 		let mut launch_script_file=File::create(&launch_script).expect("Could not create launch file");
 		self.write_slurm_script(&mut launch_script_file,&launch_name,slurm_options,&job_lines);
-		let slurm_job_id=self.launch_slurm_script(jobs_path,&launch_name)?;
+		let slurm_job_id=self.launch_slurm_script(jobs_path,&launch_name,slurm_options)?;
 		//FIXME: we also need the execution ids inside that job.
 		//let execution_id_string=self.execution_id_vec.join(",");
 		//let execution_id_string=self.execution_id_vec.iter().map(|id|format!("{}",id)).zip(repeat(",")).collect::<String>();
