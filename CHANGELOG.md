@@ -2,6 +2,9 @@
 
 ## next  [0.5.5]
 
+### 2023-05-04
+Fixed sbatch arguments.
+
 ### 2023-05-03
 Added `intermediate_bypass` to Valiant routing.
 Added `sbatch_args` so the slurm options to pass an arbitrary list of strings.

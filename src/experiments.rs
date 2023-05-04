@@ -364,14 +364,15 @@ impl Job
 
 	fn launch_slurm_script(&self, directory:&Path,script_name:&str, slurm_options:&SlurmOptions) -> Result<usize,Error>
 	{
+		// sbatch [OPTIONS(0)...] [ : [OPTIONS(N)...]] script(0) [args(0)...]
+		// Arguments to sbatch must be before the job file.
 		let mut sbatch=Command::new("sbatch");
-		sbatch
-			.current_dir(directory)
-			.arg(script_name);
+		sbatch.current_dir(directory);
 		for argument in &slurm_options.sbatch_args
 		{
 			sbatch.arg(argument);
 		}
+		sbatch.arg(script_name);
 		let sbatch_output=sbatch.output().map_err(|e|Error::command_not_found(source_location!(),"sbatch".to_string(),e))?;
 		//Should be something like "Submitted batch job 382683"
 		let mut jobids=vec![];
