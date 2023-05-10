@@ -2,6 +2,9 @@
 
 ## next  [0.5.5]
 
+### 2023-05-10
+Added a `sync` call to the slurm jobs to help them start with an up to date filesystem.
+
 ### 2023-05-04
 Fixed sbatch arguments.
 

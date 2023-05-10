@@ -358,6 +358,7 @@ impl Job
 #SBATCH --ntasks=1
 #SBATCH --time={slurm_time}
 {mem_str}
+sync
 {job_lines}
 ",prefix=prefix,slurm_time=slurm_options.time,mem_str=mem_str,job_lines=job_lines).unwrap();
 	}
