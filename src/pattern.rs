@@ -345,13 +345,9 @@ pub struct UniformPattern
 
 impl Pattern for UniformPattern
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	fn initialize(&mut self, _source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
 		self.size=target_size;
-		if source_size!=target_size
-		{
-			unimplemented!("Different sizes are not yet implemented for UniformPattern");
-		}
 	}
 	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
@@ -360,7 +356,7 @@ impl Pattern for UniformPattern
 		// When discard self, act like self were swapped with the last element.
 		// If it were already the last element it is already outside the random range.
 		let r=rng.gen_range(0..random_size);
-		if r==origin {
+		if discard_self && r==origin {
 			random_size
 		} else {
 			r
@@ -1481,64 +1477,6 @@ impl FixedRandom
 	}
 }
 
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use rand::SeedableRng;
-	#[test]
-	fn fixed_random_self()
-	{
-		let plugs = Plugs::default();
-		let cv = ConfigurationValue::Object("FixedRandom".to_string(),vec![("allow_self".to_string(),ConfigurationValue::True)]);
-		let mut rng=StdRng::seed_from_u64(10u64);
-		use crate::topology::{new_topology,TopologyBuilderArgument};
-		// TODO: topology::dummy?
-		let topo_cv = ConfigurationValue::Object("Hamming".to_string(),vec![("sides".to_string(),ConfigurationValue::Array(vec![])), ("servers_per_router".to_string(),ConfigurationValue::Number(1.0))]);
-		let dummy_topology = new_topology(TopologyBuilderArgument{cv:&topo_cv,plugs:&plugs,rng:&mut rng});
-		
-		for size in [1000]
-		{
-			let mut count = 0;
-			let sizef = size as f64;
-			let sample_size = 100;
-			let expected_unique = sizef* ( (sizef-1.0)/sizef ).powf(sizef-1.0) * sample_size as f64;
-			let mut unique_count = 0;
-			for _ in 0..sample_size
-			{
-				let arg = PatternBuilderArgument{ cv:&cv, plugs:&plugs };
-				let mut with_self = FixedRandom::new(arg);
-				with_self.initialize(size,size,&*dummy_topology,&mut rng);
-				let mut dests = vec![0;size];
-				for origin in 0..size
-				{
-					let destination = with_self.get_destination(origin,&*dummy_topology,&mut rng);
-					if destination==origin
-					{
-						count+=1;
-					}
-					dests[destination]+=1;
-				}
-				unique_count += dests.iter().filter(|&&x|x==1).count();
-			}
-			assert!( count>=sample_size-1,"too few self messages {}, expecting {}",count,sample_size);
-			assert!( count<=sample_size+1,"too many self messages {}, expecting {}",count,sample_size);
-			assert!( (unique_count as f64) >= expected_unique*0.99 ,"too few unique destinations {}, expecting {}",unique_count,expected_unique);
-			assert!( (unique_count as f64) <= expected_unique*1.01 ,"too many unique destinations {}, expecting {}",unique_count,expected_unique);
-		}
-		
-		let cv = ConfigurationValue::Object("FixedRandom".to_string(),vec![("allow_self".to_string(),ConfigurationValue::False)]);
-		for logsize in 1..10
-		{
-			let arg = PatternBuilderArgument{ cv:&cv, plugs:&plugs };
-			let size = 2usize.pow(logsize);
-			let mut without_self = FixedRandom::new(arg);
-			without_self.initialize(size,size,&*dummy_topology,&mut rng);
-			let count = (0..size).filter( |&origin| origin==without_self.get_destination(origin,&*dummy_topology,&mut rng) ).count();
-			assert!(count==0, "Got {} selfs at size {}.", count, size );
-		}
-	}
-}
-
 
 /// Partition the nodes in independent regions, each with its own pattern. Source and target sizes must be equal.
 /// ```ignore
@@ -1838,5 +1776,101 @@ impl RestrictedMiddleUniform
 	}
 }
 
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rand::SeedableRng;
+	#[test]
+	fn uniform_test()
+	{
+		let plugs = Plugs::default();
+		let mut rng=StdRng::seed_from_u64(10u64);
+		use crate::topology::{new_topology,TopologyBuilderArgument};
+		// TODO: topology::dummy?
+		let topo_cv = ConfigurationValue::Object("Hamming".to_string(),vec![("sides".to_string(),ConfigurationValue::Array(vec![])), ("servers_per_router".to_string(),ConfigurationValue::Number(1.0))]);
+		let dummy_topology = new_topology(TopologyBuilderArgument{cv:&topo_cv,plugs:&plugs,rng:&mut rng});
+		for origin_size in [10,20]
+		{
+			for destination_size in [10,20]
+			{
+				for allow_self in [true,false]
+				{
+					let cv_allow_self = if allow_self { ConfigurationValue::True } else { ConfigurationValue::False };
+					let cv = ConfigurationValue::Object("Uniform".to_string(),vec![("allow_self".to_string(),cv_allow_self)]);
+					let arg = PatternBuilderArgument{ cv:&cv, plugs:&plugs };
+					let mut uniform = UniformPattern::new(arg);
+					uniform.initialize(origin_size,destination_size,&*dummy_topology,&mut rng);
+					let sample_size = (origin_size+destination_size)*10;
+					let origin=5;
+					let mut counts = vec![0;destination_size];
+					for _ in 0..sample_size
+					{
+						let destination = uniform.get_destination(origin,&*dummy_topology,&mut rng);
+						assert!(destination<destination_size, "bad destination from {} into {} (allow_self:{}) got {}",origin_size,destination_size,allow_self,destination);
+						counts[destination]+=1;
+					}
+					assert!( (allow_self && counts[origin]>0) || (!allow_self && counts[origin]==0) , "allow_self failing");
+					for (dest,&count) in counts.iter().enumerate()
+					{
+						assert!( dest==origin || count>0, "missing elements at index {} from {} into {} (allow_self:{})",dest,origin_size,destination_size,allow_self);
+					}
+				}
+			}
+		}
+	}
+	#[test]
+	fn fixed_random_self()
+	{
+		let plugs = Plugs::default();
+		let cv = ConfigurationValue::Object("FixedRandom".to_string(),vec![("allow_self".to_string(),ConfigurationValue::True)]);
+		let mut rng=StdRng::seed_from_u64(10u64);
+		use crate::topology::{new_topology,TopologyBuilderArgument};
+		// TODO: topology::dummy?
+		let topo_cv = ConfigurationValue::Object("Hamming".to_string(),vec![("sides".to_string(),ConfigurationValue::Array(vec![])), ("servers_per_router".to_string(),ConfigurationValue::Number(1.0))]);
+		let dummy_topology = new_topology(TopologyBuilderArgument{cv:&topo_cv,plugs:&plugs,rng:&mut rng});
+		
+		for size in [1000]
+		{
+			let mut count = 0;
+			let sizef = size as f64;
+			let sample_size = 100;
+			let expected_unique = sizef* ( (sizef-1.0)/sizef ).powf(sizef-1.0) * sample_size as f64;
+			let mut unique_count = 0;
+			for _ in 0..sample_size
+			{
+				let arg = PatternBuilderArgument{ cv:&cv, plugs:&plugs };
+				let mut with_self = FixedRandom::new(arg);
+				with_self.initialize(size,size,&*dummy_topology,&mut rng);
+				let mut dests = vec![0;size];
+				for origin in 0..size
+				{
+					let destination = with_self.get_destination(origin,&*dummy_topology,&mut rng);
+					if destination==origin
+					{
+						count+=1;
+					}
+					dests[destination]+=1;
+				}
+				unique_count += dests.iter().filter(|&&x|x==1).count();
+			}
+			assert!( count>=sample_size-1,"too few self messages {}, expecting {}",count,sample_size);
+			assert!( count<=sample_size+1,"too many self messages {}, expecting {}",count,sample_size);
+			assert!( (unique_count as f64) >= expected_unique*0.99 ,"too few unique destinations {}, expecting {}",unique_count,expected_unique);
+			assert!( (unique_count as f64) <= expected_unique*1.01 ,"too many unique destinations {}, expecting {}",unique_count,expected_unique);
+		}
+		
+		let cv = ConfigurationValue::Object("FixedRandom".to_string(),vec![("allow_self".to_string(),ConfigurationValue::False)]);
+		for logsize in 1..10
+		{
+			let arg = PatternBuilderArgument{ cv:&cv, plugs:&plugs };
+			let size = 2usize.pow(logsize);
+			let mut without_self = FixedRandom::new(arg);
+			without_self.initialize(size,size,&*dummy_topology,&mut rng);
+			let count = (0..size).filter( |&origin| origin==without_self.get_destination(origin,&*dummy_topology,&mut rng) ).count();
+			assert!(count==0, "Got {} selfs at size {}.", count, size );
+		}
+	}
+}
 
 
