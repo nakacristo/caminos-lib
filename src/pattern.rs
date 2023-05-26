@@ -333,29 +333,15 @@ impl Identity
 
 ///Each destination request will be uniform random among all the range `0..size` minus the `origin`.
 ///Independently of past requests, decisions or origin.
-///TODO: for some meta-patterns it would be useful to allow self-messages.
+///Has an optional configuration argument `allow_self`, default to false.
+///This can be useful for composed patterns, for example, for a group to send uniformly into another group.
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct UniformPattern
 {
 	size: usize,
+	allow_self: bool,
 }
-
-//impl Quantifiable for UniformPattern
-//{
-//	fn total_memory(&self) -> usize
-//	{
-//		return size_of::<Self>();
-//	}
-//	fn print_memory_breakdown(&self)
-//	{
-//		unimplemented!();
-//	}
-//	fn forecast_total_memory(&self) -> usize
-//	{
-//		unimplemented!();
-//	}
-//}
 
 impl Pattern for UniformPattern
 {
@@ -369,15 +355,15 @@ impl Pattern for UniformPattern
 	}
 	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
-		//let mut rng = thread_rng();//FIXME use seed
-		loop
-		{
-			//let r=rng.gen_range(0,self.size);//in rand-0.4
-			let r=rng.gen_range(0..self.size);//in rand-0.8
-			if r!=origin
-			{
-				return r;
-			}
+		let discard_self = !self.allow_self && origin<self.size;
+		let random_size = if discard_self { self.size-1 } else { self.size };
+		// When discard self, act like self were swapped with the last element.
+		// If it were already the last element it is already outside the random range.
+		let r=rng.gen_range(0..random_size);
+		if r==origin {
+			random_size
+		} else {
+			r
 		}
 	}
 }
@@ -386,9 +372,13 @@ impl UniformPattern
 {
 	fn new(arg:PatternBuilderArgument) -> UniformPattern
 	{
-		match_object_panic!(arg.cv,"Uniform",_value);
+		let mut allow_self = false;
+		match_object_panic!(arg.cv,"Uniform",value,
+			"allow_self" => allow_self=value.as_bool().expect("bad value for allow_self"),
+		);
 		UniformPattern{
 			size:0,//to be initialized later
+			allow_self,
 		}
 	}
 }
