@@ -1,6 +1,6 @@
 
 pub mod basic;
-pub mod input_output_monocycle;
+pub mod input_output;
 
 use std::rc::{Rc};
 use std::cell::RefCell;
@@ -13,7 +13,7 @@ use quantifiable_derive::Quantifiable;//the derive macro
 
 use crate::{Phit,Packet,Plugs,error,source_location};
 use self::basic::Basic;
-use self::input_output_monocycle::InputOutputMonocycle;
+use self::input_output::InputOutput;
 use crate::config_parser::ConfigurationValue;
 use crate::topology::{Topology};
 use crate::event::{Eventful};
@@ -100,7 +100,7 @@ pub fn new_router(arg:RouterBuilderArgument) -> Rc<RefCell<dyn Router>>
 		{
 			//"Basic" => Basic::<SimpleVirtualChannels>::new(arg.router_index, arg.cv, arg.plugs, arg.topology, arg.maximum_packet_size),
 			"Basic" => Basic::new(arg),
-			"InputOutputMonocycle" => InputOutputMonocycle::new(arg),
+			"InputOutput" | "InputOutputMonocycle" => InputOutput::new(arg),
 			_ => panic!("Unknown router {}",cv_name),
 		}
 	}

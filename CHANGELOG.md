@@ -2,6 +2,10 @@
 
 ## next  [0.5.5]
 
+### 2023-05-26
+Rename `input_output_monocycle.rs` as just `input_output.rs`. It was never exactly a monocycle.
+And the router called `InputOutput`.
+
 ### 2023-05-10
 Added a `sync` call to the slurm jobs to help them start with an up to date filesystem.
 

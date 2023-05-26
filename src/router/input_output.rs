@@ -25,13 +25,13 @@ enum OutputArbiter
 		port_token: Vec<usize>,
 	},
 }
-pub struct InputOutputMonocycle
+pub struct InputOutput
 {
     ///Weak pointer to itself, see <https://users.rust-lang.org/t/making-a-rc-refcell-trait2-from-rc-refcell-trait1/16086/3>
-	self_rc: Weak<RefCell<InputOutputMonocycle>>,
+	self_rc: Weak<RefCell<InputOutput>>,
 	///If there is an event pending
 	event_pending: bool,
-	///The cycle number of the last time InputOutputMonocycle::process was called. Only for debugging/assertion purposes.
+	///The cycle number of the last time InputOutput::process was called. Only for debugging/assertion purposes.
 	last_process_at_cycle: Option<usize>,
 	///Its index in the topology
 	router_index: usize,
@@ -94,7 +94,7 @@ pub struct InputOutputMonocycle
 	statistics_reception_space_occupation_per_vc: Vec<f64>,
 }
 
-impl Router for InputOutputMonocycle
+impl Router for InputOutput
 {
     fn insert(&mut self, phit:Rc<Phit>, port:usize, rng: &mut StdRng)
     {
@@ -150,9 +150,9 @@ impl Router for InputOutputMonocycle
         {
             if let ConfigurationValue::Object(cv_name,previous_pairs) = previous
             {
-                if cv_name!="InputOutputMonocycle"
+                if cv_name!="InputOutput"
                 {
-                    panic!("incompatible statistics, should be `InputOutputMonocycle` object not `{}`",cv_name);
+                    panic!("incompatible statistics, should be `InputOutput` object not `{}`",cv_name);
                 }
                 for (ref name,ref value) in previous_pairs
                 {
@@ -208,7 +208,7 @@ impl Router for InputOutputMonocycle
                             }
                             _ => panic!("bad value for average_output_buffer_occupation_per_vc"),
                         },
-                        _ => panic!("Nothing to do with field {} in InputOutputMonocycle statistics",name),
+                        _ => panic!("Nothing to do with field {} in InputOutput statistics",name),
                     }
                 }
             }
@@ -254,7 +254,7 @@ impl Router for InputOutputMonocycle
             }
             result_content.push((String::from("average_reception_space_occupation_per_vc"),ConfigurationValue::Array(content.iter().map(|x|ConfigurationValue::Number(*x)).collect())));
         }
-        Some(ConfigurationValue::Object(String::from("InputOutputMonocycle"),result_content))
+        Some(ConfigurationValue::Object(String::from("InputOutput"),result_content))
     }
 
     fn reset_statistics(&mut self, next_cycle:usize)
@@ -283,9 +283,9 @@ impl Router for InputOutputMonocycle
 }
 
 
-impl InputOutputMonocycle
+impl InputOutput
 {
-	pub fn new(arg:RouterBuilderArgument) -> Rc<RefCell<InputOutputMonocycle>>
+	pub fn new(arg:RouterBuilderArgument) -> Rc<RefCell<InputOutput>>
 	{
 		let RouterBuilderArgument{
 			router_index,
@@ -312,7 +312,7 @@ impl InputOutputMonocycle
 		let mut to_server_mechanism=None;
 		let mut from_server_mechanism=None;
 		let mut crossbar_delay=0usize;
-		match_object_panic!(cv,"InputOutputMonocycle",value,
+		match_object_panic!(cv,["InputOutput","InputOutputMonocycle"],value,
 			"virtual_channels" => match value
 			{
 				&ConfigurationValue::Number(f) => virtual_channels=Some(f as usize),
@@ -454,7 +454,7 @@ impl InputOutputMonocycle
 			).collect()
 		};
 		let output_buffer_phits_traversing_crossbar = vec![ vec![ 0 ; virtual_channels ] ; input_ports ];
-		let r=Rc::new(RefCell::new(InputOutputMonocycle{
+		let r=Rc::new(RefCell::new(InputOutput{
 			self_rc: Weak::new(),
 			event_pending: false,
 			last_process_at_cycle: None,
@@ -490,7 +490,7 @@ impl InputOutputMonocycle
 	}
 }
 
-impl InputOutputMonocycle
+impl InputOutput
 {
 	///Whether a phit in an input buffer can advance.
 	///bubble_in_use should be true only for leading phits that require the additional space.
@@ -516,7 +516,7 @@ impl InputOutputMonocycle
 }
 
 
-impl Eventful for InputOutputMonocycle
+impl Eventful for InputOutput
 {
 	///main routine of the router. Do all things that must be done in a cycle, if any.
 	fn process(&mut self, simulation:&SimulationShared, mutable:&mut SimulationMut) -> Vec<EventGeneration>
@@ -527,7 +527,7 @@ impl Eventful for InputOutputMonocycle
 			cycles_span = simulation.cycle - *last;
 			if *last >= simulation.cycle
 			{
-				panic!("Trying to process at cycle {} a router::InputOutputMonocycle already processed at {}",simulation.cycle,last);
+				panic!("Trying to process at cycle {} a router::InputOutput already processed at {}",simulation.cycle,last);
 			}
 			//if *last +1 < simulation.cycle
 			//{
@@ -924,7 +924,7 @@ impl Eventful for InputOutputMonocycle
                         }
                         else
                         {
-                            panic!("InputOutputMonocycle router requires knowledge of available space to apply bubble.");
+                            panic!("InputOutput router requires knowledge of available space to apply bubble.");
                         }
                     }
                     else
@@ -1061,13 +1061,13 @@ impl Eventful for InputOutputMonocycle
 	}
 }
 
-impl Quantifiable for InputOutputMonocycle
+impl Quantifiable for InputOutput
 {
 	fn total_memory(&self) -> usize
 	{
 		//FIXME: redo
-		//return size_of::<InputOutputMonocycle<TM>>() + self.virtual_ports.total_memory() + self.port_token.total_memory();
-		return size_of::<InputOutputMonocycle>();
+		//return size_of::<InputOutput<TM>>() + self.virtual_ports.total_memory() + self.port_token.total_memory();
+		return size_of::<InputOutput>();
 	}
 	fn print_memory_breakdown(&self)
 	{
@@ -1079,14 +1079,14 @@ impl Quantifiable for InputOutputMonocycle
 	}
 }
 
-/// Some things private to InputOutputMonocycle we want to have clearly separated.
+/// Some things private to InputOutput we want to have clearly separated.
 mod internal
 {
 	use super::*;
 	pub struct PhitToOutput
 	{
 		self_rc: Weak<RefCell<PhitToOutput>>,
-		router: Rc<RefCell<InputOutputMonocycle>>,
+		router: Rc<RefCell<InputOutput>>,
 		exit_port: usize,
 		exit_vc: usize,
 		entry_port: usize,
@@ -1095,7 +1095,7 @@ mod internal
 	}
 	pub struct PhitToOutputArgument<'a>
 	{
-		pub router: &'a mut InputOutputMonocycle,
+		pub router: &'a mut InputOutput,
 		pub exit_port: usize,
 		pub exit_vc: usize,
 		pub entry_port: usize,
