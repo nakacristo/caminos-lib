@@ -85,6 +85,14 @@ impl UpDown
 ///Use a shortest up/down path from origin to destination.
 ///But in contrast with UpDown this uses explicit table instead of querying the topology.
 ///Used to define Up*/Down* (UpDownStar), see Autonet, where it is build from some spanning tree.
+///```ignore
+///UpDownStar{
+///	///The switch to select as root.
+///	root: 0,
+///	///Whether to allow travelling cross-branch links that reduce the up/down distance. Defaults to false.
+///	branch_crossing:true,
+///}
+///```
 #[derive(Debug)]
 pub struct ExplicitUpDown
 {
@@ -94,6 +102,8 @@ pub struct ExplicitUpDown
 	up_down_distances: Matrix<Option<u8>>,
 	down_distances: Matrix<Option<u8>>,
 	distance_to_root: Vec<u8>,
+	//other options
+	branch_crossings: bool,
 }
 
 impl Routing for ExplicitUpDown
@@ -143,8 +153,8 @@ impl Routing for ExplicitUpDown
 				} else {
 					if let &Some(new_up_down) = self.up_down_distances.get(router_index,target_router)
 					{
-						//force up
-						new_up_down < up_down_distance && self.distance_to_root[router_index]<self.distance_to_root[current_router]
+						//If brach_crossings is false then force to go upwards.
+						new_up_down < up_down_distance && (self.branch_crossings || self.distance_to_root[router_index]<self.distance_to_root[current_router])
 					} else {
 						false
 					}
@@ -292,14 +302,17 @@ impl ExplicitUpDown
 	pub fn new(arg: RoutingBuilderArgument) -> ExplicitUpDown
 	{
 		let mut root = None;
+		let mut branch_crossings = false;
 		match_object_panic!(arg.cv,"UpDownStar",value,
 			"root" => root=Some(value.as_f64().expect("bad value for root") as usize),
+			"branch_crossings" => branch_crossings = value.as_bool().expect("bad value for branch_crossings"),
 		);
 		ExplicitUpDown{
 			root,
 			up_down_distances: Matrix::constant(None,0,0),
 			down_distances: Matrix::constant(None,0,0),
 			distance_to_root: Vec::new(),
+			branch_crossings,
 		}
 	}
 }

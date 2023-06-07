@@ -2,6 +2,9 @@
 
 ## next  [0.5.5]
 
+### 2023-06-07
+Added cross-branch option to ExplicitUpDown.
+
 ### 2023-05-26
 Rename `input_output_monocycle.rs` as just `input_output.rs`. It was never exactly a monocycle.
 And the router called `InputOutput`.
