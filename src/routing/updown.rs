@@ -343,12 +343,13 @@ mod tests {
 			for destination in 0..n
 			{
 				let origin_ud = uds.up_down_distances.get(origin,destination).expect("missing an up/down distance");
+				let is_down = uds.down_distances.get(origin,destination).is_some();
 				// Count neighbours that reduce the up/down distance.
 				let mut count_improvers = 0;
 				for NeighbourRouterIteratorItem{neighbour_router:neighbour,..} in topology.neighbour_router_iter(origin)
 				{
 					let neighbour_ud = uds.up_down_distances.get(neighbour,destination).expect("missing an up/down distance");
-					if neighbour_ud < origin_ud {
+					if neighbour_ud < origin_ud && (is_down || uds.distance_to_root[origin]==uds.distance_to_root[neighbour]+1) {
 						count_improvers +=1;
 					}
 				}
