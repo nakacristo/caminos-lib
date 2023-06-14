@@ -2,6 +2,9 @@
 
 ## next  [0.5.5]
 
+### 2023-06-14
+Added a test to UpDownStar.
+
 ### 2023-06-07
 Added cross-branch option to ExplicitUpDown.
 

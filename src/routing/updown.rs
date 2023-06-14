@@ -317,3 +317,44 @@ impl ExplicitUpDown
 	}
 }
 
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::Plugs;
+	use rand::SeedableRng;
+	use crate::topology::cartesian::Hamming;
+	#[test]
+	fn up_down_star()
+	{
+		let plugs = Plugs::default();
+		let uds_cv = ConfigurationValue::Object("UpDownStar".to_string(),vec![("root".to_string(),ConfigurationValue::Number(5.0))]);
+		let uds_arg = RoutingBuilderArgument{cv:&uds_cv,plugs:&plugs};
+		let mut uds = ExplicitUpDown::new(uds_arg);
+		let mut rng=StdRng::seed_from_u64(10u64);
+		let hamming_cv = ConfigurationValue::Object("Hamming".to_string(),vec![("sides".to_string(),ConfigurationValue::Array(vec![
+			ConfigurationValue::Number(8.0),
+			ConfigurationValue::Number(8.0),
+		])),("servers_per_router".to_string(),ConfigurationValue::Number(8.0))]);
+		let topology = Hamming::new(&hamming_cv);
+		uds.initialize(&topology,&mut rng);
+		let n = topology.num_routers();
+		for origin in 0..n
+		{
+			for destination in 0..n
+			{
+				let origin_ud = uds.up_down_distances.get(origin,destination).expect("missing an up/down distance");
+				// Count neighbours that reduce the up/down distance.
+				let mut count_improvers = 0;
+				for NeighbourRouterIteratorItem{neighbour_router:neighbour,..} in topology.neighbour_router_iter(origin)
+				{
+					let neighbour_ud = uds.up_down_distances.get(neighbour,destination).expect("missing an up/down distance");
+					if neighbour_ud < origin_ud {
+						count_improvers +=1;
+					}
+				}
+				assert!(origin==destination || count_improvers>=1,"origin={} destination={} ud={}",origin,destination,origin_ud);
+			}
+		}
+	}
+}
+
