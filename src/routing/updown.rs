@@ -89,9 +89,12 @@ impl UpDown
 ///UpDownStar{
 ///	///The switch to select as root.
 ///	root: 0,
-///	///Whether to allow travelling cross-branch links that reduce the up/down distance. Defaults to false.
+///	///Whether to allow travelling horizontal cross-branch links that reduce the up/down distance. Defaults to false.
 ///	branch_crossing:true,
 ///}
+///Note how the `branch_crossing` option would cause deadlock if it were allowed to use down-links. Consider three flows, each flow having
+///a unique posible last (down-link) hop. If this down-link could be used as a cross-branch by the next flow then that flow could block the former.
+///If this were to happen simultaneously with the three flows it would create a deadlock.
 ///```
 #[derive(Debug)]
 pub struct ExplicitUpDown
@@ -154,7 +157,15 @@ impl Routing for ExplicitUpDown
 					if let &Some(new_up_down) = self.up_down_distances.get(router_index,target_router)
 					{
 						//If brach_crossings is false then force to go upwards.
-						new_up_down < up_down_distance && (self.branch_crossings || self.distance_to_root[router_index]<self.distance_to_root[current_router])
+						//new_up_down < up_down_distance && (self.branch_crossings || self.distance_to_root[router_index]<self.distance_to_root[current_router])
+						new_up_down < up_down_distance && if self.branch_crossings {
+							// When branch crossing is allowed we allow horizontal links, but never down-links.
+							// Allowing down-links can mean deadlock.
+							self.distance_to_root[router_index]<=self.distance_to_root[current_router]
+						} else {
+							// If not allowing branch corssing then it must be an up-link.
+							self.distance_to_root[router_index]<self.distance_to_root[current_router]
+						}
 					} else {
 						false
 					}
