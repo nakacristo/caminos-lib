@@ -286,6 +286,9 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 						}
 					};
 					//panic!("There is not member {} in {}",attribute,value);
+					//let value = &value.to_string()[0..3000];
+					let names = attributes.iter().map(|&(ref attr_name,_)|format!("{attr_name}:...")).collect::<Vec<String>>().join(", ");
+					let value = format!("{{{}}}",names);
 					return Err(error!(bad_argument).with_message(format!("There is no member {attribute} in {value}")));
 				},
 				//_ => panic!("There is no member {} in {}",attribute,value),

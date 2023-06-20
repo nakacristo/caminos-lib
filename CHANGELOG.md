@@ -2,6 +2,9 @@
 
 ## next  [0.5.5]
 
+### 2023-06-20
+Improve the content of some message.
+
 ### 2023-06-19
 In UpDownStar, restricted cross branching to horizontal links.
 
