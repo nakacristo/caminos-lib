@@ -100,18 +100,18 @@ impl UpDown
 pub struct ExplicitUpDown
 {
 	//defining factors to be kept up to initialization
-	root: Option<usize>,
+	pub root: Option<usize>,
 	//computed at initialization
-	up_down_distances: Matrix<Option<u8>>,
-	down_distances: Matrix<Option<u8>>,
-	distance_to_root: Vec<u8>,
+	pub up_down_distances: Matrix<Option<u8>>,
+	pub down_distances: Matrix<Option<u8>>,
+	pub distance_to_root: Vec<u8>,
 	//other options
-	branch_crossings_downwards: bool,
-	branch_crossings_upwards: bool,
-	label_up: i32,
-	label_down: i32,
-	label_horizontal_vec: Vec<i32>,
-	label_horizontal_otherwise: i32,
+	pub branch_crossings_downwards: bool,
+	pub branch_crossings_upwards: bool,
+	pub label_up: i32,
+	pub label_down: i32,
+	pub label_horizontal_vec: Vec<i32>,
+	pub label_horizontal_otherwise: i32,
 }
 
 impl Routing for ExplicitUpDown
