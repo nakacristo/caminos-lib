@@ -361,6 +361,10 @@ impl ExplicitUpDown
 		let mut root = None;
 		let mut branch_crossings_downwards = false;
 		let mut branch_crossings_upwards = false;
+		let mut label_down = 0i32;
+		let mut label_up = 0i32;
+		let mut label_horizontal_vec = vec![];
+		let mut label_horizontal_otherwise = 0i32;
 		match_object_panic!(arg.cv,"UpDownStar",value,
 			"root" => root=Some(value.as_f64().expect("bad value for root") as usize),
 			"branch_crossings" => {
@@ -369,6 +373,12 @@ impl ExplicitUpDown
 			},
 			"branch_crossings_upwards" => branch_crossings_upwards=value.as_bool().expect("bad value for branch_crossings_upwards"),
 			"branch_crossings_downwards" => branch_crossings_downwards=value.as_bool().expect("bad value for branch_crossings_downwards"),
+			"label_up" => label_up = value.as_i32().expect("bad value for label_up"),
+			"label_down" => label_down = value.as_i32().expect("bad value for label_down"),
+			"label_horizontal_vec" => label_horizontal_vec = value.as_array().expect("bad value for label_horizontal_vec").iter().map(|x|{
+				x.as_i32().expect("bad value for label_horizontal_vec entry")
+			}).collect(),
+			"label_horizontal_otherwise" => label_horizontal_otherwise = value.as_i32().expect("bad value for label_horizontal_otherwise"),
 		);
 		ExplicitUpDown{
 			root,
@@ -377,10 +387,10 @@ impl ExplicitUpDown
 			distance_to_root: Vec::new(),
 			branch_crossings_downwards,
 			branch_crossings_upwards,
-			label_down: 0i32,
-			label_up: 0i32,
-			label_horizontal_vec: vec![],
-			label_horizontal_otherwise: 0i32,
+			label_down,
+			label_up,
+			label_horizontal_vec,
+			label_horizontal_otherwise,
 		}
 	}
 }

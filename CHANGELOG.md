@@ -4,6 +4,7 @@
 
 ### 2023-06-23
 More options for UpDownStar.
+Added `value.as_i32()`.
 
 ### 2023-06-20
 Improve the content of some message.
