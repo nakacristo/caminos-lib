@@ -106,7 +106,12 @@ pub struct ExplicitUpDown
 	down_distances: Matrix<Option<u8>>,
 	distance_to_root: Vec<u8>,
 	//other options
-	branch_crossings: bool,
+	branch_crossings_downwards: bool,
+	branch_crossings_upwards: bool,
+	label_up: i32,
+	label_down: i32,
+	label_horizontal_vec: Vec<i32>,
+	label_horizontal_otherwise: i32,
 }
 
 impl Routing for ExplicitUpDown
@@ -146,32 +151,73 @@ impl Routing for ExplicitUpDown
 			//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
 			if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,i)
 			{
-				let good = if let Some(down_distance) = down_distance {
+				let mut label = 0i32;
+				let mut new_hops = 0usize;
+				let good = if let &Some(down_distance) = down_distance {
 					//We can already go down
-					if let Some(new_down) = self.down_distances.get(router_index,target_router) {
+					let mut good = if let &Some(new_down) = self.down_distances.get(router_index,target_router) {
+						label = self.label_down;
+						new_hops = new_down.into();
 						new_down < down_distance
 					} else {
 						false
+					};
+					//or there is some shortcut between branches
+					if !good && self.branch_crossings_downwards && self.distance_to_root[router_index]==self.distance_to_root[current_router] {
+						if let &Some(new_up_down) = self.up_down_distances.get(router_index,target_router)
+						{
+							if new_up_down < down_distance
+							{
+								good = true;
+								new_hops = new_up_down.into();
+								let delta = (down_distance-1-new_up_down) as usize;
+								if let Some(&x) = self.label_horizontal_vec.get(delta) {
+									label = x;
+								} else {
+									label = self.label_horizontal_otherwise;
+								}
+							}
+						}
 					}
+					good
 				} else {
 					if let &Some(new_up_down) = self.up_down_distances.get(router_index,target_router)
 					{
 						//If brach_crossings is false then force to go upwards.
-						//new_up_down < up_down_distance && (self.branch_crossings || self.distance_to_root[router_index]<self.distance_to_root[current_router])
-						new_up_down < up_down_distance && if self.branch_crossings {
-							// When branch crossing is allowed we allow horizontal links, but never down-links.
-							// Allowing down-links can mean deadlock.
-							self.distance_to_root[router_index]<=self.distance_to_root[current_router]
-						} else {
-							// If not allowing branch corssing then it must be an up-link.
-							self.distance_to_root[router_index]<self.distance_to_root[current_router]
-						}
+						//new_up_down < up_down_distance && if self.branch_crossings_upwards {
+						//	// When branch crossing is allowed we allow horizontal links, but never down-links.
+						//	// Allowing down-links can mean deadlock.
+						//	self.distance_to_root[router_index]<=self.distance_to_root[current_router]
+						//} else {
+						//	// If not allowing branch corssing then it must be an up-link.
+						//	self.distance_to_root[router_index]<self.distance_to_root[current_router]
+						//}
+						if new_up_down < up_down_distance {
+							label = self.label_up;
+							new_hops = new_up_down.into();
+							let mut good = self.distance_to_root[router_index]<self.distance_to_root[current_router];
+							if !good && self.branch_crossings_upwards && self.distance_to_root[router_index]==self.distance_to_root[current_router] {
+								good = true;
+								let delta = (up_down_distance-1-new_up_down) as usize;
+								if let Some(&x) = self.label_horizontal_vec.get(delta) {
+									label = x;
+								} else {
+									label = self.label_horizontal_otherwise;
+								}
+							}
+							good
+						} else { false }
 					} else {
 						false
 					}
 				};
 				if good{
-					r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+					r.extend((0..num_virtual_channels).map(|vc|{
+						let mut cand = CandidateEgress::new(i,vc);
+						cand.label = label;
+						cand.estimated_remaining_hops = Some(1+new_hops);
+						cand
+					}));
 				}
 			}
 		}
@@ -313,17 +359,28 @@ impl ExplicitUpDown
 	pub fn new(arg: RoutingBuilderArgument) -> ExplicitUpDown
 	{
 		let mut root = None;
-		let mut branch_crossings = false;
+		let mut branch_crossings_downwards = false;
+		let mut branch_crossings_upwards = false;
 		match_object_panic!(arg.cv,"UpDownStar",value,
 			"root" => root=Some(value.as_f64().expect("bad value for root") as usize),
-			"branch_crossings" => branch_crossings = value.as_bool().expect("bad value for branch_crossings"),
+			"branch_crossings" => {
+				branch_crossings_upwards = value.as_bool().expect("bad value for branch_crossings");
+				branch_crossings_downwards = branch_crossings_upwards;
+			},
+			"branch_crossings_upwards" => branch_crossings_upwards=value.as_bool().expect("bad value for branch_crossings_upwards"),
+			"branch_crossings_downwards" => branch_crossings_downwards=value.as_bool().expect("bad value for branch_crossings_downwards"),
 		);
 		ExplicitUpDown{
 			root,
 			up_down_distances: Matrix::constant(None,0,0),
 			down_distances: Matrix::constant(None,0,0),
 			distance_to_root: Vec::new(),
-			branch_crossings,
+			branch_crossings_downwards,
+			branch_crossings_upwards,
+			label_down: 0i32,
+			label_up: 0i32,
+			label_horizontal_vec: vec![],
+			label_horizontal_otherwise: 0i32,
 		}
 	}
 }

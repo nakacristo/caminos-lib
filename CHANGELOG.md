@@ -2,6 +2,9 @@
 
 ## next  [0.5.5]
 
+### 2023-06-23
+More options for UpDownStar.
+
 ### 2023-06-20
 Improve the content of some message.
 
