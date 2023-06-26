@@ -913,7 +913,9 @@ impl Eventful for Basic
 							match self.selected_input[f_port][f_virtual_channel]
 							{
 								//Some((s_port,s_virtual_channel))=> s_port==entry_port && s_virtual_channel==entry_vc,
-								Some(_) => None,
+								//Some(_) => None,
+								// Keep these candidates until EnforceFlowControl, so policies have all information.
+								Some(_) => Some(CandidateEgress{router_allows:Some(false), ..candidate}),
 								None =>
 								{
 									let bubble_in_use= self.bubble && phit.is_begin() && simulation.network.topology.is_direction_change(self.router_index,entry_port,f_port);

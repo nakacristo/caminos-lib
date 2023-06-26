@@ -2,6 +2,11 @@
 
 ## next  [0.5.5]
 
+### 2023-06-26
+Added method `ConfigurationValue::format_terminal` for better formatted output.
+Add format to the configuration shown in latex output.
+BREAKING CHANGE: Routers now set `router_allows` to false instead of just discarding the candidates to queues already in use.
+
 ### 2023-06-23
 More options for UpDownStar.
 Added `value.as_i32()`.

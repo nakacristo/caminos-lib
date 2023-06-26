@@ -1550,7 +1550,7 @@ pub fn file_main(file:&mut File, plugs:&Plugs, mut results_file:Option<File>,fre
 					{
 						for (i,experiment) in experiments.iter().enumerate()
 						{
-							println!("experiment {} of {} is {:?}",i,experiments.len(),experiment);
+							println!("experiment {} of {} is {}",i,experiments.len(),experiment.format_terminal());
 							let mut simulation=Simulation::new(experiment,plugs);
 							simulation.run();
 							match results_file

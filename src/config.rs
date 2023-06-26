@@ -1821,7 +1821,86 @@ impl ConfigurationValue
 			_ => (),
 		}
 	}
+	pub fn depth(&self) -> u32
+	{
+		use ConfigurationValue::*;
+		match self
+		{
+			Literal(_) | Number(_) | True | False | None => 0,
+			Object(ref _name, ref key_val_list) => key_val_list.into_iter().map(|(_key,value)|value.depth()+1).max().unwrap_or(0),
+			Array(ref list) | Experiments(ref list) | NamedExperiments(_, ref list) => list.into_iter().map(|value|value.depth()+1).max().unwrap_or(0),
+			Where(_rc, _expr) => todo!(),
+			Expression(_expr) => todo!(),
+		}
+	}
+	/**
+	A formatter for terminal session.
+	**/
+	pub fn format_terminal(&self) -> String
+	{
+		self.format_terminal_nesting(0)
+	}
+	/**
+	A formatter for terminal session.
+	`nesting` is the number of identations or levels through to the current point.
+	**/
+	pub fn format_terminal_nesting(&self, nesting:u32) -> String
+	{
+		let d = self.depth();
+		let (front_separator,middle_separator,back_separator) = if d<=1 {
+			(format!(" "),format!(", "),format!(" "))
+		} else {
+			let tab:String = (0..(nesting+1)).map(|_|'\t').collect();
+			(format!("\n{tab}"),format!(",\n{tab}"),format!(""))
+		};
+		use ConfigurationValue::*;
+		match self
+		{
+			Literal(ref s) => format!("\"{s}\""),
+			Number(x) => format!("{x}"),
+			Object(ref name, ref key_val_list) => {
+				if key_val_list.is_empty() {
+					format!("{name}")
+				} else {
+					let formatted_list = key_val_list.into_iter().map(|(key,value)|{
+						let formatted_value = value.format_terminal_nesting(nesting+1);
+						format!("{key}: {formatted_value}")
+					}).collect::<Vec<String>>().join(&middle_separator);
+					format!("{name}{{{front_separator}{formatted_list}{back_separator}}}")
+				}
+			},
+			Array(ref list) => {
+				let inner = list.into_iter().map(|value|{
+					value.format_terminal_nesting(nesting+1)
+				}).collect::<Vec<String>>().join(&middle_separator);
+				format!("[{front_separator}{inner}{back_separator}]")
+			},
+			Experiments(ref list) => {
+				let inner = list.into_iter().map(|value|{
+					value.format_terminal_nesting(nesting+1)
+				}).collect::<Vec<String>>().join(&middle_separator);
+				format!("![{front_separator}{inner}{back_separator}]")
+			},
+			NamedExperiments(ref name, ref list) => {
+				let inner = list.into_iter().map(|value|{
+					value.format_terminal_nesting(nesting+1)
+				}).collect::<Vec<String>>().join(&middle_separator);
+				format!("{name}![{front_separator}{inner}{back_separator}]")
+			},
+			True => format!("true"),
+			False => format!("false"),
+			Where(_rc, _expr) => todo!(),
+			Expression(_expr) => todo!(),
+			None => format!("None"),
+		}
+	}
 }
+
+
+
+
+
+
 
 //Perhaps the best would be to implement a trait
 // trait AsConfigurationValue

@@ -1548,7 +1548,7 @@ impl<'a> Experiment<'a>
 				{
 					Action::Local | Action::LocalAndOutput =>
 					{
-						println!("experiment {} of {} is {:?}",experiment_index,self.files.experiments.len(),experiment);
+						println!("experiment {} of {} is {}",experiment_index,self.files.experiments.len(),experiment.format_terminal());
 						let mut simulation=Simulation::new(experiment,self.plugs);
 						simulation.run();
 						simulation.write_result(&mut File::create(&result_path).expect("Could not create the result file."));

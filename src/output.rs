@@ -1673,15 +1673,23 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 	{
 		fs::create_dir(&tmp_path_externalized_legends).expect("Something went wrong when creating the tikz externalized-legends directory.");
 	}
-	let main_cfg_contents=
-	{
-		//let cfg=root.join("main.cfg");
-		//let mut cfg_file=File::open(&cfg).expect("main.cfg could not be opened");
-		//let mut cfg_contents = String::new();
-		//cfg_file.read_to_string(&mut cfg_contents).expect("something went wrong reading main.cfg");
-		//cfg_contents
-		environment.files.cfg_contents.clone().unwrap_or_else(||"There is no main.cfg".to_string())
-	};
+	//let main_cfg_contents=
+	//{
+	//	//let cfg=root.join("main.cfg");
+	//	//let mut cfg_file=File::open(&cfg).expect("main.cfg could not be opened");
+	//	//let mut cfg_contents = String::new();
+	//	//cfg_file.read_to_string(&mut cfg_contents).expect("something went wrong reading main.cfg");
+	//	//cfg_contents
+	//	environment.files.cfg_contents.clone().unwrap_or_else(||"There is no main.cfg".to_string())
+	//};
+	let main_cfg_formatted = if let Some(crate::config_parser::Token::Value(value)) = &environment.files.parsed_cfg {
+		let text = value.format_terminal();
+		format!("\\tt {}",latex_protect_text(&text)
+			.replace("{","\\{")
+			.replace("}","\\}")
+			.replace("\n","\n\\newline ")
+			.replace("\t","\\mbox{}\\hskip 1em "))
+	} else { format!("could not parse configuration") };
 	let all_git_formatted=
 	{
 		if all_git_ids.is_empty() {
@@ -1744,11 +1752,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 {data_string}
 \clearpage\tiny
 {git_ids}
-\begin{{verbatim}}
 {cfg_string}
-\end{{verbatim}}
 \end{{document}}
-"#,shared_prelude=shared_prelude,local_prelude=local_prelude,data_string=tikz,git_ids=all_git_formatted,cfg_string=main_cfg_contents);
+"#,shared_prelude=shared_prelude,local_prelude=local_prelude,data_string=tikz,git_ids=all_git_formatted,cfg_string=main_cfg_formatted);
 	let tmpname=format!("{}-tmp",prefix);
 	let tmpname_tex=format!("{}.tex",&tmpname);
 	let tmpname_pdf=format!("{}.pdf",&tmpname);
