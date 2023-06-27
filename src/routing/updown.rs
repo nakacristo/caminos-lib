@@ -373,8 +373,8 @@ impl ExplicitUpDown
 			},
 			"branch_crossings_upwards" => branch_crossings_upwards=value.as_bool().expect("bad value for branch_crossings_upwards"),
 			"branch_crossings_downwards" => branch_crossings_downwards=value.as_bool().expect("bad value for branch_crossings_downwards"),
-			"label_up" => label_up = value.as_i32().expect("bad value for label_up"),
-			"label_down" => label_down = value.as_i32().expect("bad value for label_down"),
+			"label_up" | "label_upwards" => label_up = value.as_i32().expect("bad value for label_up"),
+			"label_down" | "label_downwards" => label_down = value.as_i32().expect("bad value for label_down"),
 			"label_horizontal_vec" => label_horizontal_vec = value.as_array().expect("bad value for label_horizontal_vec").iter().map(|x|{
 				x.as_i32().expect("bad value for label_horizontal_vec entry")
 			}).collect(),
