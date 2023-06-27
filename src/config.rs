@@ -504,6 +504,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 				{
 					let mut first=None;
 					let mut second=None;
+					let mut integer_division=false;
 					for (key,val) in arguments
 					{
 						match key.as_ref()
@@ -516,6 +517,15 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 							{
 								second=Some(evaluate(val,context,path)?);
 							},
+							"integer" =>
+                            {
+                                integer_division= match evaluate(val,context,path)?
+								{
+									ConfigurationValue::True => true,
+									ConfigurationValue::False => false,
+									_ => panic!("integer argument of div did not evaluate into a Boolean value."),
+								};
+                            },
 							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
 						}
 					}
@@ -531,7 +541,12 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 						ConfigurationValue::Number(x) => x,
 						_ => panic!("second argument of {} evaluated to a non-number ({}:?)",function_name,second),
 					};
-					Ok(ConfigurationValue::Number(first/second))
+					
+					let mut q = first/second;
+					if integer_division {
+						q = q.floor();
+					}
+					Ok(ConfigurationValue::Number(q))
 				}
 				"log" =>
 				{
@@ -683,6 +698,56 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 						ConfigurationValue::Number(total/width as f64)
 					}).collect();
 					Ok(ConfigurationValue::Array(result))
+				}
+				"JainBins" =>
+				{
+					let mut data = None;
+					let mut width = None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"data" => data=Some(evaluate(val,context,path)?),
+							"width" => width=Some(evaluate(val,context,path)?),
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let data=data.expect("data argument of at not given.");
+					let width=width.expect("width argument of at not given.");
+					let data=match data
+					{
+						ConfigurationValue::Array(a) => a,
+						_ => panic!("first argument of AverageBins evaluated to a non-array ({}:?)",data),
+					};
+					let width=match width
+					{
+						ConfigurationValue::Number(x) => x as usize,
+						_ => panic!("width argument of AverageBins evaluated to a non-number ({}:?)",width),
+					};
+					//TODO: do we want to include incomplete bins?
+
+					let n = data.len()/width;
+					let mut iter = data.into_iter();
+					let mut total = 0f64;
+					let mut total2 = 0f64;
+
+					for _ in 0..n
+					{
+						let mut sum = 0f64;
+						for _ in 0..width
+						{
+							sum += match iter.next().unwrap()
+							{
+								ConfigurationValue::Number(x) => x,
+								//x => panic!("AverageBins received {:?}",x),
+								_ => std::f64::NAN,
+							}
+						}
+						total += sum;
+						total2 += sum*sum;
+					}
+
+					Ok(ConfigurationValue::Number(total*total/(total2*n as f64) as f64))
 				}
 				"FileExpression" =>
 				{

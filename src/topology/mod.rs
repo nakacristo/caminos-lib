@@ -820,7 +820,7 @@ The pattern may be the Identity for no change. A RandomPermutation is a shuffle 
 
 Example configuration:
 ```ignore
-RemappedServersTopology{
+RemappedServers{
 	topology: Mesh{sides:[4,4],servers_per_router:1},
 	pattern: RandomPermutation,
 }

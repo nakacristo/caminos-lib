@@ -2,6 +2,9 @@
 
 ## next  [0.5.5]
 
+### 2023-06-27
+Merged some config functions from Alex.
+
 ### 2023-06-26
 Added method `ConfigurationValue::format_terminal` for better formatted output.
 Add format to the configuration shown in latex output.
