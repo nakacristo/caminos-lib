@@ -1959,6 +1959,71 @@ impl ConfigurationValue
 			None => format!("None"),
 		}
 	}
+	/**
+	A formatter for terminal session.
+	**/
+	pub fn format_latex(&self) -> String
+	{
+		let inner  = self.format_latex_nesting(0);
+		format!("\\sloppy\\tt {inner}")
+	}
+	/**
+	A formatter for terminal session.
+	`nesting` is the number of identations or levels through to the current point.
+	**/
+	pub fn format_latex_nesting(&self, nesting:u32) -> String
+	{
+		let d = self.depth();
+		let (front_separator,middle_separator,back_separator) = if d<=1 {
+			(format!(" "),format!(", "),format!(" "))
+		} else {
+			let tab:String = (0..(nesting+1)).map(|_|"\\hskip 1em ").collect();
+			(format!("\n\\newline\\mbox{{}}{tab}"),format!(",\n\\newline\\mbox{{}}{tab}"),format!(""))
+		};
+		use ConfigurationValue::*;
+		use crate::output::latex_protect_text;
+		match self
+		{
+			Literal(ref s) => format!("\"\\verb|{s}|\""),
+			Number(x) => format!("{x}"),
+			Object(ref name, ref key_val_list) => {
+				let latex_name = latex_protect_text(name);
+				if key_val_list.is_empty() {
+					format!("\\textit{{{latex_name}}}")
+				} else {
+					let formatted_list = key_val_list.into_iter().map(|(key,value)|{
+						let formatted_value = value.format_latex_nesting(nesting+1);
+						format!("{{\\bf{{{key}}}}}: {formatted_value}",key=latex_protect_text(key))
+					}).collect::<Vec<String>>().join(&middle_separator);
+					format!("\\textit{{{latex_name}}}\\{{{front_separator}{formatted_list}{back_separator}\\}}")
+				}
+			},
+			Array(ref list) => {
+				let inner = list.into_iter().map(|value|{
+					value.format_latex_nesting(nesting+1)
+				}).collect::<Vec<String>>().join(&middle_separator);
+				format!("[{front_separator}{inner}{back_separator}]")
+			},
+			Experiments(ref list) => {
+				let inner = list.into_iter().map(|value|{
+					value.format_latex_nesting(nesting+1)
+				}).collect::<Vec<String>>().join(&middle_separator);
+				format!("{{\\bf ![}}{front_separator}{inner}{back_separator}{{\\bf]}}")
+			},
+			NamedExperiments(ref name, ref list) => {
+				let latex_name = latex_protect_text(name);
+				let inner = list.into_iter().map(|value|{
+					value.format_latex_nesting(nesting+1)
+				}).collect::<Vec<String>>().join(&middle_separator);
+				format!("{{\\bf {latex_name}![}}{front_separator}{inner}{back_separator}{{\\bf]}}")
+			},
+			True => format!("true"),
+			False => format!("false"),
+			Where(_rc, _expr) => todo!(),
+			Expression(_expr) => todo!(),
+			None => format!("None"),
+		}
+	}
 }
 
 

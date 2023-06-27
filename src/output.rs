@@ -927,7 +927,7 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 }
 
 ///Rewrites text into Latex code that output that text.
-fn latex_protect_text(text:&str) -> String
+pub fn latex_protect_text(text:&str) -> String
 {
 	text.chars().map(|c|match c{
 		'_' => "\\_".to_string(),
@@ -1683,12 +1683,13 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 	//	environment.files.cfg_contents.clone().unwrap_or_else(||"There is no main.cfg".to_string())
 	//};
 	let main_cfg_formatted = if let Some(crate::config_parser::Token::Value(value)) = &environment.files.parsed_cfg {
-		let text = value.format_terminal();
-		format!("\\tt {}",latex_protect_text(&text)
-			.replace("{","\\{")
-			.replace("}","\\}")
-			.replace("\n","\n\\newline ")
-			.replace("\t","\\mbox{}\\hskip 1em "))
+		//let text = value.format_terminal();
+		//format!("\\tt {}",latex_protect_text(&text)
+		//	.replace("{","\\{")
+		//	.replace("}","\\}")
+		//	.replace("\n","\n\\newline ")
+		//	.replace("\t","\\mbox{}\\hskip 1em "))
+		value.format_latex()
 	} else { format!("could not parse configuration") };
 	let all_git_formatted=
 	{
