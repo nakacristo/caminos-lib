@@ -1,6 +1,6 @@
 [package]
 name = "caminos-lib"
-version = "0.5.4"
+version = "0.6.0"
 authors = ["Cristóbal Camarero <cristobal.camarero@unican.es>"]
 # Daniel Postigo has contributed a little.
 edition = "2018"

@@ -1,9 +1,11 @@
 # Change Log
 
-## next  [0.5.5]
+## [0.6.0]
 
 ### 2023-06-29
 New router option `neglect_busy_output`.
+git tag 0.6.0 -m "v0.6.0"
+Publish as 0.6. 
 
 ### 2023-06-27
 Merged some config functions from Alex.
