@@ -2,7 +2,7 @@
 name = "caminos-lib"
 version = "0.6.0"
 authors = ["Cristóbal Camarero <cristobal.camarero@unican.es>"]
-# Daniel Postigo has contributed a little.
+# Daniel Postigo and Alejandro Cano have contributed.
 edition = "2018"
 description = "A modular interconnection network simulator."
 publish = true
