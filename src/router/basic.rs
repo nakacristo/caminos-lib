@@ -54,6 +54,11 @@ pub struct Basic
 	allow_request_busy_port: bool,
 	///Use the labels provided by the routing to sort the petitions in the output arbiter.
 	output_prioritize_lowest_label: bool,
+	///Whether to immediately discard candidate outputs when they are currently receiving from an input.
+	///Otherwise, these candidates are marked as impossible, but they can be processed by the `virtual_channel_policies`.
+	///In particular, [EnforceFlowControl] will filter them out.
+	///Defaults to false.
+	neglect_busy_output: bool,
 	/// `transmission_port_status[port] = status`
 	transmission_port_status: Vec<Box<dyn StatusAtEmissor>>,
 	/// `reception_port_space[port] = space`
@@ -434,6 +439,7 @@ impl Basic
 		let mut transmission_mechanism=None;
 		let mut to_server_mechanism=None;
 		let mut from_server_mechanism=None;
+		let mut neglect_busy_output = false;
 		match_object_panic!(cv,"Basic",value,
 			"virtual_channels" => match value
 			{
@@ -502,6 +508,7 @@ impl Basic
 				&ConfigurationValue::False => output_prioritize_lowest_label=Some(false),
 				_ => panic!("bad value for output_prioritize_lowest_label"),
 			},
+			"neglect_busy_output" => neglect_busy_output = value.as_bool().expect("bad value for neglect_busy_output"),
 			"transmission_mechanism" => match value
 			{
 				&ConfigurationValue::Literal(ref s) => transmission_mechanism = Some(s.to_string()),
@@ -592,6 +599,7 @@ impl Basic
 			intransit_priority,
 			allow_request_busy_port,
 			output_prioritize_lowest_label,
+			neglect_busy_output,
 			buffer_size,
 			transmission_port_status,
 			reception_port_space,
@@ -915,7 +923,7 @@ impl Eventful for Basic
 								//Some((s_port,s_virtual_channel))=> s_port==entry_port && s_virtual_channel==entry_vc,
 								//Some(_) => None,
 								// Keep these candidates until EnforceFlowControl, so policies have all information.
-								Some(_) => Some(CandidateEgress{router_allows:Some(false), ..candidate}),
+								Some(_) => if self.neglect_busy_output {None} else {Some(CandidateEgress{router_allows:Some(false), ..candidate})},
 								None =>
 								{
 									let bubble_in_use= self.bubble && phit.is_begin() && simulation.network.topology.is_direction_change(self.router_index,entry_port,f_port);

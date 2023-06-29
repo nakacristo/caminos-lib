@@ -50,6 +50,11 @@ pub struct InputOutput
 	///To allow to request a port even if some other packet is being transmitted throught it to a different virtual channel (as FSIN does).
 	///It may appear that should obviously be put to `true`, but in practice that just reduces performance.
 	allow_request_busy_port: bool,
+	///Whether to immediately discard candidate outputs when they are currently receiving from an input.
+	///Otherwise, these candidates are marked as impossible, but they can be processed by the `virtual_channel_policies`.
+	///In particular, [EnforceFlowControl] will filter them out.
+	///Defaults to false.
+	neglect_busy_output: bool,
 	/// `transmission_port_status[port] = status`
 	transmission_port_status: Vec<Box<dyn StatusAtEmissor>>,
 	/// `reception_port_space[port] = space`
@@ -82,7 +87,7 @@ pub struct InputOutput
 	//allocator:
 	///The allocator for the croosbar.
 	crossbar_allocator: Box<dyn Allocator>,
-	///Use the labels provided by the routing to sort the petitions in the output arbiter.
+	//Use the labels provided by the routing to sort the petitions in the output arbiter.
 	//output_priorize_lowest_label: bool, // USE RandomPriorityAllocator instead of this parameter.
 
 	//statistics:
@@ -312,6 +317,7 @@ impl InputOutput
 		let mut to_server_mechanism=None;
 		let mut from_server_mechanism=None;
 		let mut crossbar_delay=0usize;
+		let mut neglect_busy_output = false;
 		match_object_panic!(cv,["InputOutput","InputOutputMonocycle"],value,
 			"virtual_channels" => match value
 			{
@@ -371,6 +377,7 @@ impl InputOutput
 				_ => panic!("bad value for output_priorize_lowest_label"),
 			};
 */
+			"neglect_busy_output" => neglect_busy_output = value.as_bool().expect("bad value for neglect_busy_output"),
 			"transmission_mechanism" => match value
 			{
 				&ConfigurationValue::Literal(ref s) => transmission_mechanism = Some(s.to_string()),
@@ -466,6 +473,7 @@ impl InputOutput
 			intransit_priority,
 			allow_request_busy_port,
 //			output_priorize_lowest_label,
+			neglect_busy_output,
 			buffer_size,
 			crossbar_delay,
 			transmission_port_status,
@@ -703,7 +711,7 @@ impl Eventful for InputOutput
 							match self.selected_input[f_port][f_virtual_channel]
 							{
 								// Keep these candidates until EnforceFlowControl, so policies have all information.
-								Some(_) => Some(CandidateEgress{router_allows:Some(false), ..candidate}),
+								Some(_) => if self.neglect_busy_output {None} else {Some(CandidateEgress{router_allows:Some(false), ..candidate})},
 								None =>
 								{
 									let bubble_in_use= self.bubble && phit.is_begin() && simulation.network.topology.is_direction_change(self.router_index,entry_port,f_port);

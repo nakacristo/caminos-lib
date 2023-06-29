@@ -19,7 +19,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 <details>
 
 ## [0.5.0] to [0.X]
-* Removed unnecessary generic parameter TM from routers Basic and InputOutputMonocycle. They now may select [TransmissionMechanism]s to employ.
+* Removed unnecessary generic parameter TM from routers Basic and InputOutput. They now may select [TransmissionMechanism]s to employ.
 * Renamed TransmissionFromServer into TransmissionFromOblivious.
 * Some changes in the Dragonfly struct, to allow for more global arrangements.
 * `Event::process` now receives SimulationShared and SimulationMut for better encapsulation.

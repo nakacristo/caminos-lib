@@ -2,6 +2,9 @@
 
 ## next  [0.5.5]
 
+### 2023-06-29
+New router option `neglect_busy_output`.
+
 ### 2023-06-27
 Merged some config functions from Alex.
 Added some style to the configuration in latex output.
