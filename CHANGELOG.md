@@ -5,6 +5,8 @@
 ### 2023-07-07
 Updated some 0.6 in the README.
 Merged field `random` for CartesianTransform.
+New argument patterns for CartesianTransform.
+New pattern Circulant.
 
 ### 2023-06-29
 New router option `neglect_busy_output`.

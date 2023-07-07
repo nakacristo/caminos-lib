@@ -168,6 +168,8 @@ CartesianTransform{
 	permute: [0,2,1],//optional
 	complement: [false,true,false],//optional
 	project: [false,false,false],//optional
+	//random: [false,false,true],//optional
+	//patterns: [Identity,Identity,Circulant{generators:[1,-1]}]//optional
 	legend_name: "Some lineal transformation over a 8x8 mesh with 4 servers per router",
 }
 ```
@@ -181,6 +183,17 @@ Hotspots{
 	//destinations: [],//default empty
 	extra_random_destinations: 5,//default 0
 	legend_name: "every server send to one of 5 randomly selected hotspots",
+}
+```
+
+### Circulant
+Each node send traffic to the node `current+g`, where `g` is any of the elements given in the vector `generators`. The operations
+being made modulo the destination size. Among the candidates one of them is selected in each call with uniform distribution.
+
+In this example each node `x` send to either `x+1` or `x+2`.
+```ignore
+Circulant{
+	generators: [1,2],
 }
 ```
 
@@ -289,6 +302,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"FixedRandom" => Box::new(FixedRandom::new(arg)),
 			"IndependentRegions" => Box::new(IndependentRegions::new(arg)),
 			"RestrictedMiddleUniform" => Box::new(RestrictedMiddleUniform::new(arg)),
+			"Circulant" => Box::new(Circulant::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -749,10 +763,26 @@ impl ComponentsPattern
 }
 
 
-/// Interpretate the origin as with cartesian coordinates and apply transformations.
-/// May permute the dimensions if they have same side.
-/// May complement the dimensions.
-/// Order of composition is: first shift, second permute, third complement, fourth project.
+/**
+Interpretate the origin as with cartesian coordinates and apply transformations.
+May permute the dimensions if they have same side.
+May complement the dimensions.
+Order of composition is: first shift, second permute, third complement, fourth project.
+
+Example configuration:
+```ignore
+CartesianTransform{
+	sides: [4,8,8],
+	shift: [0,4,0],//optional
+	permute: [0,2,1],//optional
+	complement: [false,true,false],//optional
+	project: [false,false,false],//optional
+	//random: [false,false,true],//optional
+	//patterns: [Identity,Identity,Circulant{generators:[1,-1]}]//optional
+	legend_name: "Some lineal transformation over a 8x8 mesh with 4 servers per router",
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct CartesianTransform
@@ -772,11 +802,13 @@ pub struct CartesianTransform
 	///Indicates dimensions in which to select a random coordinate.
 	///A random roll performed in each call to `get_destination`.
 	random: Option<Vec<bool>>,
+	///Optionally, set a pattern at coordinate. Use Identity for those coordinates with no operation.
+	patterns: Option<Vec<Box<dyn Pattern>>>,
 }
 
 impl Pattern for CartesianTransform
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		if source_size!=target_size
 		{
@@ -786,8 +818,16 @@ impl Pattern for CartesianTransform
 		{
 			panic!("Sizes do not agree on CartesianTransform.");
 		}
+		if let Some(ref mut patterns) = self.patterns
+		{
+			for (index,ref mut pat) in patterns.iter_mut().enumerate()
+			{
+				let coordinate_size = self.cartesian_data.sides[index];
+				pat.initialize(coordinate_size, coordinate_size, topology, rng );
+			}
+		}
 	}
-	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
 		let up_origin=self.cartesian_data.unpack(origin);
 		let up_shifted=match self.shift
@@ -816,7 +856,12 @@ impl Pattern for CartesianTransform
 			Some(ref v) => up_projected.iter().enumerate().map(|(index,&value)|if v[index]{rng.gen_range(0..self.cartesian_data.sides[index])} else {value}).collect(),
 			None => up_projected,
 		};
-		self.cartesian_data.pack(&up_randomized)
+		let up_patterned = match self.patterns
+		{
+			Some(ref v) => up_randomized.iter().enumerate().map(|(index,&value)|v[index].get_destination(value,topology,rng)).collect(),
+			None => up_randomized,
+		};
+		self.cartesian_data.pack(&up_patterned)
 	}
 }
 
@@ -830,6 +875,7 @@ impl CartesianTransform
 		let mut complement=None;
 		let mut project=None;
 		let mut random =None;
+		let mut patterns=None;
 		match_object_panic!(arg.cv,"CartesianTransform",value,
 			"sides" => sides = Some(value.as_array().expect("bad value for sides").iter()
 				.map(|v|v.as_f64().expect("bad value in sides") as usize).collect()),
@@ -843,8 +889,8 @@ impl CartesianTransform
 				.map(|v|v.as_bool().expect("bad value in project")).collect()),
 			"random" => random=Some(value.as_array().expect("bad value for random").iter()
 				.map(|v|v.as_bool().expect("bad value in random")).collect()),
-			//"legend_name" => (),
-			//_ => panic!("Nothing to do with field {} in CartesianTransform",name),
+			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
 		);
 		let sides=sides.expect("There were no sides");
 		//let permute=permute.expect("There were no permute");
@@ -856,6 +902,7 @@ impl CartesianTransform
 			complement,
 			project,
 			random,
+			patterns,
 		}
 	}
 }
@@ -1744,6 +1791,66 @@ impl Pattern for RestrictedMiddleUniform
 		}
 	}
 }
+
+
+/**
+The node at an `index` sends traffic randomly to one of `index+g`, where `g` is any of the declared `generators`.
+These sums are made modulo the destination size, which is intended to be equal the source size.
+the induced communication matrix is a Circulant matrix, hence its name.
+
+In this example each node `x` send to either `x+1` or `x+2`.
+```ignore
+Circulant{
+	generators: [1,2],
+}
+```
+**/
+#[derive(Quantifiable,Debug)]
+struct Circulant
+{
+	//config:
+	///The generators to be employed.
+	generators: Vec<i32>,
+	//intialized:
+	///The size of the destinations set, captured at initialization.
+	size: i32,
+}
+
+impl Pattern for Circulant
+{
+	fn initialize(&mut self, _source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		self.size = target_size as i32;
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		let r = rng.gen_range(0..self.generators.len());
+		let gen = self.generators[r];
+		// Note the '%' operator keeps the argument sign, so we use rem_euclid.
+		(origin as i32+gen).rem_euclid(self.size) as usize
+	}
+}
+
+impl Circulant
+{
+	fn new(arg:PatternBuilderArgument) -> Circulant
+	{
+		let mut generators = vec![];
+		match_object_panic!(arg.cv,"Circulant",value,
+			"generators" => generators=value.as_array().expect("bad value for generators").iter()
+				.map(|v|v.as_i32().expect("bad value in generators")).collect(),
+		);
+		if generators.is_empty()
+		{
+			panic!("cannot build a Circulant pattern with empty set of generators.");
+		}
+		Circulant{
+			generators,
+			size:0,
+		}
+	}
+}
+
 
 impl RestrictedMiddleUniform
 {
