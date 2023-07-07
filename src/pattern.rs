@@ -769,6 +769,9 @@ pub struct CartesianTransform
 	complement: Option<Vec<bool>>,
 	///Indicates dimensions to be projected into 0. This causes incast contention.
 	project: Option<Vec<bool>>,
+	///Indicates dimensions in which to select a random coordinate.
+	///A random roll performed in each call to `get_destination`.
+	random: Option<Vec<bool>>,
 }
 
 impl Pattern for CartesianTransform
@@ -784,7 +787,7 @@ impl Pattern for CartesianTransform
 			panic!("Sizes do not agree on CartesianTransform.");
 		}
 	}
-	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
 		let up_origin=self.cartesian_data.unpack(origin);
 		let up_shifted=match self.shift
@@ -808,7 +811,12 @@ impl Pattern for CartesianTransform
 			Some(ref v) => up_complemented.iter().enumerate().map(|(index,&value)|if v[index]{0} else {value}).collect(),
 			None => up_complemented,
 		};
-		self.cartesian_data.pack(&up_projected)
+		let up_randomized=match self.random
+		{
+			Some(ref v) => up_projected.iter().enumerate().map(|(index,&value)|if v[index]{rng.gen_range(0..self.cartesian_data.sides[index])} else {value}).collect(),
+			None => up_projected,
+		};
+		self.cartesian_data.pack(&up_randomized)
 	}
 }
 
@@ -821,6 +829,7 @@ impl CartesianTransform
 		let mut permute=None;
 		let mut complement=None;
 		let mut project=None;
+		let mut random =None;
 		match_object_panic!(arg.cv,"CartesianTransform",value,
 			"sides" => sides = Some(value.as_array().expect("bad value for sides").iter()
 				.map(|v|v.as_f64().expect("bad value in sides") as usize).collect()),
@@ -832,6 +841,8 @@ impl CartesianTransform
 				.map(|v|v.as_bool().expect("bad value in complement")).collect()),
 			"project" => project=Some(value.as_array().expect("bad value for project").iter()
 				.map(|v|v.as_bool().expect("bad value in project")).collect()),
+			"random" => random=Some(value.as_array().expect("bad value for random").iter()
+				.map(|v|v.as_bool().expect("bad value in random")).collect()),
 			//"legend_name" => (),
 			//_ => panic!("Nothing to do with field {} in CartesianTransform",name),
 		);
@@ -844,6 +855,7 @@ impl CartesianTransform
 			permute,
 			complement,
 			project,
+			random,
 		}
 	}
 }
