@@ -2,6 +2,9 @@
 
 ## [0.6.0]
 
+### 2023-07-07
+Updated some 0.6 in the README.
+
 ### 2023-06-29
 New router option `neglect_busy_output`.
 git tag 0.6.0 -m "v0.6.0"

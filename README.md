@@ -9,7 +9,7 @@ This crate is `caminos-lib`. To use it add `caminos-lib` to your dependencies in
 
 ```toml
 [dependencies]
-caminos-lib = "0.5"
+caminos-lib = "0.6"
 ```
 
 Alternatively, consider whether the binary crate `caminos` fits your intended use.
@@ -18,7 +18,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 
 <details>
 
-## [0.5.0] to [0.X]
+## [0.5.0] to [0.6.0]
 * Removed unnecessary generic parameter TM from routers Basic and InputOutput. They now may select [TransmissionMechanism]s to employ.
 * Renamed TransmissionFromServer into TransmissionFromOblivious.
 * Some changes in the Dragonfly struct, to allow for more global arrangements.
