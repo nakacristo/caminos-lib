@@ -12,6 +12,7 @@ use crate::error::*;
 
 ///Given a list of vectors, `[A1,A2,A3,A4,...]`, `Ai` beging a `Vec<T>` and second vector `b:&Vec<T>=[b1,b2,b3,b4,...]`, each `bi:T`.
 ///It creates a list of vectors with each combination Ai+bj.
+#[allow(dead_code)]
 fn vec_product<T:Clone>(a:&[Vec<T>],b:&[T]) -> Vec<Vec<T>>
 {
 	let mut r=vec![];
@@ -25,6 +26,32 @@ fn vec_product<T:Clone>(a:&[Vec<T>],b:&[T]) -> Vec<Vec<T>>
 		}
 	}
 	r
+}
+
+/**
+Flattening was taking a lot of time for very long arrays. This version avoids many of the clones.
+**/
+fn vec_product_inplace<T:Clone>(a:&mut Vec<Vec<T>>,b:&[T])
+{
+	if b.len() == 1 {
+		for ae in a.iter_mut()
+		{
+			ae.push(b[0].clone());
+		}
+	} else if b.len() == 0 {
+		a.clear();
+	} else {
+		let a_old = std::mem::take(a);
+		for ar in a_old.into_iter()
+		{
+			for be in b.iter()
+			{
+				let mut new = ar.clone();//we could skip last
+				new.push(be.clone());
+				a.push(new);
+			}
+		}
+	}
 }
 
 ///Expands all the inner ConfigurationValue::Experiments given out a single ConfigurationValue::Experiments
@@ -56,7 +83,8 @@ fn flatten_configuration_value_gather_names(value:&ConfigurationValue, names:&mu
 				if let ConfigurationValue::Experiments(vlist) = fv
 				{
 					let factor=vlist.iter().map(|x|(name.clone(),x.clone())).collect::<Vec<(String,ConfigurationValue)>>();
-					r=vec_product(&r,&factor);
+					//r=vec_product(&r,&factor);
+					vec_product_inplace(&mut r, &factor);
 				}
 				else
 				{
@@ -76,9 +104,8 @@ fn flatten_configuration_value_gather_names(value:&ConfigurationValue, names:&mu
 				let fv=flatten_configuration_value_gather_names(v,names);
 				if let ConfigurationValue::Experiments(vlist) = fv
 				{
-					//let factor=vlist.iter().map(|x|x.clone()).collect::<Vec<ConfigurationValue>>();
-					//r=vec_product(&r,&factor);
-					r=vec_product(&r,&vlist);
+					//r=vec_product(&r,&vlist);
+					vec_product_inplace(&mut r, &vlist);
 				}
 				else
 				{
@@ -127,9 +154,8 @@ fn flatten_configuration_value_gather_names(value:&ConfigurationValue, names:&mu
 				let fv=flatten_configuration_value_gather_names(v,names);
 				if let ConfigurationValue::Experiments(vlist) = fv
 				{
-					//let factor=vlist.iter().map(|x|x.clone()).collect::<Vec<ConfigurationValue>>();
-					//r=vec_product(&r,&factor);
-					r=vec_product(&r,&vlist);
+					//r=vec_product(&r,&vlist);
+					vec_product_inplace(&mut r, &vlist);
 				}
 				else
 				{
