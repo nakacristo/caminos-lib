@@ -155,10 +155,10 @@ Expand the `NamedExperiments`. `names[experiment_name]` is the number of entries
 fn expand_named_experiments_range(experiments:ConfigurationValue, names:&BTreeMap<String,usize>) -> ConfigurationValue
 {
 	let mut r = experiments;
-	dbg!(names);
+	//dbg!(names);
 	for name in names.keys()
 	{
-		println!("name={name} current={current}",current=r.format_terminal());
+		//println!("name={name} current={current}",current=r.format_terminal());
 		let size=*names.get(name).unwrap();
 		let partials : Vec<Vec<_>> = (0..size).map(|index|{
 			let mut context : BTreeMap<String,usize> = BTreeMap::new();
