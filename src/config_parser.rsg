@@ -65,8 +65,26 @@ impl ConfigurationValue
 				}
 				writeln!(f,"{}]",is)?;
 			},
-			&ConfigurationValue::Experiments(ref _list) => write!(f,"FIXME")?,
-			&ConfigurationValue::NamedExperiments(ref _name, ref _list) => write!(f,"FIXME")?,
+			&ConfigurationValue::Experiments(ref list) =>
+			{
+				writeln!(f,"![")?;
+				for elem in list.iter()
+				{
+					elem.write(f,indent+1)?;
+					writeln!(f,",")?;
+				}
+				writeln!(f,"{}]",is)?;
+			},
+			&ConfigurationValue::NamedExperiments(ref name, ref list) =>
+			{
+				writeln!(f,"{name}![")?;
+				for elem in list.iter()
+				{
+					elem.write(f,indent+1)?;
+					writeln!(f,",")?;
+				}
+				writeln!(f,"{}]",is)?;
+			},
 			&ConfigurationValue::True => write!(f,"true")?,
 			&ConfigurationValue::False => write!(f,"false")?,
 			&ConfigurationValue::Where(ref cv, ref _expr) => write!(f,"{} where FIXME",cv)?,

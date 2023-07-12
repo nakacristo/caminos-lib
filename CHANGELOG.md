@@ -2,6 +2,10 @@
 
 ## [0.6.0]
 
+### 2023-07-12
+Added tests for flattening configurations.
+Allow flattening for more recursive combinations of Experiments and NamedExperiments.
+
 ### 2023-07-07
 Updated some 0.6 in the README.
 Merged field `random` for CartesianTransform.

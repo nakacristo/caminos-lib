@@ -38,6 +38,11 @@ pub fn flatten_configuration_value(value:&ConfigurationValue) -> ConfigurationVa
 }
 
 
+/**
+Expand those `Experiments` but not `NamedExperiments`. Collects the names of the `NamedExperiments` into the `names` map.
+Panics if some `NamedExperiments` have non-matching size.
+TODO: that should be an Error, not a panic.
+**/
 fn flatten_configuration_value_gather_names(value:&ConfigurationValue, names:&mut BTreeMap<String,usize>) -> ConfigurationValue
 {
 	match value
@@ -115,7 +120,26 @@ fn flatten_configuration_value_gather_names(value:&ConfigurationValue, names:&mu
 			{
 				names.insert(name.to_string(),experiments.len());
 			}
-			value.clone()
+			//value.clone()
+			let mut r=vec![ vec![] ];
+			for v in experiments
+			{
+				let fv=flatten_configuration_value_gather_names(v,names);
+				if let ConfigurationValue::Experiments(vlist) = fv
+				{
+					//let factor=vlist.iter().map(|x|x.clone()).collect::<Vec<ConfigurationValue>>();
+					//r=vec_product(&r,&factor);
+					r=vec_product(&r,&vlist);
+				}
+				else
+				{
+					for x in r.iter_mut()
+					{
+						x.push(fv.clone());
+					}
+				}
+			}
+			ConfigurationValue::Experiments(r.iter().map(|values|ConfigurationValue::NamedExperiments(name.to_string(),values.clone())).collect())
 		},
 		&ConfigurationValue::Where(ref v, ref _expr) =>
 		{
@@ -125,13 +149,18 @@ fn flatten_configuration_value_gather_names(value:&ConfigurationValue, names:&mu
 	}
 }
 
+/**
+Expand the `NamedExperiments`. `names[experiment_name]` is the number of entries in that `NamedExperiment`.
+**/
 fn expand_named_experiments_range(experiments:ConfigurationValue, names:&BTreeMap<String,usize>) -> ConfigurationValue
 {
 	let mut r = experiments;
+	dbg!(names);
 	for name in names.keys()
 	{
+		println!("name={name} current={current}",current=r.format_terminal());
 		let size=*names.get(name).unwrap();
-		let partials = (0..size).map(|index|{
+		let partials : Vec<Vec<_>> = (0..size).map(|index|{
 			let mut context : BTreeMap<String,usize> = BTreeMap::new();
 			context.insert(name.to_string(),index);
 			match particularize_named_experiments_selected(&r,&context)
@@ -139,12 +168,23 @@ fn expand_named_experiments_range(experiments:ConfigurationValue, names:&BTreeMa
 				ConfigurationValue::Experiments(exps) => exps,
 				x => vec![x],
 			}
-		});
-		r=ConfigurationValue::Experiments(partials.flat_map(|t|t.into_iter()).collect());
+		}).collect();
+		let count = (0..size).filter(|&index|partials[index].len()==1 && partials[index][0]==r).count();
+		if count==0 {
+			r=ConfigurationValue::Experiments(partials.into_iter().flat_map(|t|t.into_iter()).collect());
+		} else if count == size {
+			//All are equal, there is no such NamedExperiment at this branch.
+			//Just keep going
+		} else {
+			panic!("Error when expanding {} at name {name}",r.format_terminal());
+		}
 	}
 	r
 }
 
+/**
+Expands in `value` all the `NamedExperiments` with a name in `names` to its value at index `names[name]`.
+**/
 fn particularize_named_experiments_selected(value:&ConfigurationValue, names:&BTreeMap<String,usize>) -> ConfigurationValue
 {
 	match value
@@ -168,11 +208,14 @@ fn particularize_named_experiments_selected(value:&ConfigurationValue, names:&BT
 		{
 			if let Some(&index) = names.get(name)
 			{
-				list[index].clone()
+				//list[index].clone()
+				particularize_named_experiments_selected(&list[index],names)
 			}
 			else
 			{
-				value.clone()
+				//value.clone()
+				let plist = list.iter().map(|x|particularize_named_experiments_selected(x,names)).collect();
+				ConfigurationValue::NamedExperiments(name.to_string(),plist)
 			}
 		},
 		//&ConfigurationValue::Where(ref v, ref _expr) =>
@@ -2176,6 +2219,300 @@ mod tests {
 			}
 			_ => assert!(false),
 		}
+	}
+	#[test]
+	fn flatten_test_simple()
+	{
+		use ConfigurationValue::*;
+		let original = Object("Alpha".to_string(),vec![("a".to_string(),
+			Experiments(vec![Number(1.0),Number(2.0)]),
+		)]);
+		let target = Experiments(vec![
+			Object("Alpha".to_string(),vec![("a".to_string(),Number(1.0))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Number(2.0))]),
+		]);
+		assert_eq!(flatten_configuration_value(&original),target);
+	}
+	#[test]
+	fn flatten_test_named()
+	{
+		use ConfigurationValue::*;
+		let original = Object("Alpha".to_string(),vec![("a".to_string(),
+			NamedExperiments("name".to_string(), vec![Number(1.0),Number(2.0)]),
+		)]);
+		let target = Experiments(vec![
+			Object("Alpha".to_string(),vec![("a".to_string(),Number(1.0))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Number(2.0))]),
+		]);
+		assert_eq!(flatten_configuration_value(&original),target);
+	}
+	#[test]
+	fn flatten_test_nest_anonymous_over_anonymous()
+	{
+		use ConfigurationValue::*;
+		/*
+		Alpha{a:![1.0, ![2.0,3.0]]}
+		*/
+		let original = Object("Alpha".to_string(),vec![("a".to_string(),
+			Experiments(vec![
+				Number(1.0),
+				Experiments(vec![Number(2.0),Number(3.0)]),
+			]),
+		)]);
+		let target = Experiments(vec![
+			Object("Alpha".to_string(),vec![("a".to_string(),Number(1.0))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Number(2.0))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Number(3.0))]),
+		]);
+		assert_eq!(flatten_configuration_value(&original),target);
+	}
+	//FIXME: decide the intended meaning
+	//#[test]
+	//fn flatten_test_nest_anonymous_over_named()
+	//{
+	//	use ConfigurationValue::*;
+	//	/*
+	//		Alpha{a:![ 1.0, name![2.0,3.0] ]}
+	//		->
+	//		![ Alpha{a:1.0}, Alpha{a:name![2.0,3.0]} ]
+	//		->
+	//		![Alpha{a:1.0}, Alpha{a:2.0}, Alpha{a:1.0} Alpha{a:3.0}]
+	//		...
+	//		But we may want to have
+	//		![Alpha{a:1.0}, Alpha{a:2.0}, Alpha{a:3.0}]
+	//	*/
+	//	let original = Object("Alpha".to_string(),vec![("a".to_string(),
+	//		Experiments(vec![
+	//			Number(1.0),
+	//			NamedExperiments("name".to_string(), vec![Number(2.0),Number(3.0)]),
+	//		]),
+	//	)]);
+	//	let target = Experiments(vec![
+	//		Object("Alpha".to_string(),vec![("a".to_string(),Number(1.0))]),
+	//		Object("Alpha".to_string(),vec![("a".to_string(),Number(2.0))]),
+	//		Object("Alpha".to_string(),vec![("a".to_string(),Number(3.0))]),
+	//	]);
+	//	assert_eq!(flatten_configuration_value(&original),target);
+	//}
+	//FIXME: What is the intended meaning??
+	//#[test]
+	//fn flatten_test_nest_named_over_named()
+	//{
+	//	use ConfigurationValue::*;
+	//	/*
+	//		Alpha{a:name1![1.0,name2![2.0,3.0]]}
+	//		->
+	//		![ Alpha{a:1.0}, Alpha{a:name2![2.0,3.0]} ]
+	//		-> ????
+	//		![ Alpha{a:1.0}, Alpha{a:2.0}, Alpha{a:3.0} ]
+	//		If expand name2=2.0 we get
+	//			![ Alpha{a:1.0}, Alpha{a:2.0} ]
+	//		and with name2=3.0 we get
+	//			![ Alpha{a:1.0}, Alpha{a:3.0} ]
+	//		following -> ????
+	//		![ Alpha{a:1.0}, Alpha{a:2.0}, Alpha{a:1.0}, Alpha{a:3.0} ]
+	//	*/
+	//	let original = Object("Alpha".to_string(),vec![("a".to_string(),
+	//		NamedExperiments("name1".to_string(), vec![
+	//			Number(1.0),
+	//			NamedExperiments("name2".to_string(), vec![Number(2.0),Number(3.0)]),
+	//		]),
+	//	)]);
+	//	let target = Experiments(vec![
+	//		Object("Alpha".to_string(),vec![("a".to_string(),Number(1.0))]),
+	//		Object("Alpha".to_string(),vec![("a".to_string(),Number(2.0))]),
+	//		Object("Alpha".to_string(),vec![("a".to_string(),Number(3.0))]),
+	//	]);
+	//	assert_eq!(flatten_configuration_value(&original),target);
+	//}
+	//FIXME: what is the intended meaning.
+	//#[test]
+	//fn flatten_test_nest_named_over_named_reversed()
+	//{
+	//	use ConfigurationValue::*;
+	//	/*
+	//		Alpha{a:name2![1.0,name1![2.0,3.0]]}
+	//		->
+	//		![ Alpha{a:name2![1.0,2.0]]} , Alpha{a:name2![1.0,3.0]]} ]
+	//		->
+	//		![ Alpha{a:1.0}, Alpha{a:1.0}, Alpha{2.0}, Alpha{3.0} ]
+	//		Here the expansion at name2=1.0 is `Alpha{a:1.0}` in both cases and perhaps could be discarded.
+	//	*/
+	//	let original = Object("Alpha".to_string(),vec![("a".to_string(),
+	//		NamedExperiments("name2".to_string(), vec![
+	//			Number(1.0),
+	//			NamedExperiments("name1".to_string(), vec![Number(2.0),Number(3.0)]),
+	//		]),
+	//	)]);
+	//	let target = Experiments(vec![
+	//		Object("Alpha".to_string(),vec![("a".to_string(),Number(1.0))]),
+	//		Object("Alpha".to_string(),vec![("a".to_string(),Number(2.0))]),
+	//		Object("Alpha".to_string(),vec![("a".to_string(),Number(3.0))]),
+	//	]);
+	//	assert_eq!(flatten_configuration_value(&original),target);
+	//}
+	#[test]
+	fn flatten_test_nestarray_anonymous_over_anonymous()
+	{
+		use ConfigurationValue::*;
+		/*
+		Alpha{a:![
+			[1.0, ![2.0,3.0]],
+			[4.0, ![5.0,6.0]],
+		]}
+		->
+		![
+			Alpha{a:[1.0,2.0]},
+			Alpha{a:[1.0,3.0]},
+			Alpha{a:[4.0,5.0]},
+			Alpha{a:[4.0,6.0]},
+		]
+		*/
+		let original = Object("Alpha".to_string(),vec![("a".to_string(),
+			Experiments(vec![
+				Array(vec![Number(1.0),Experiments(vec![Number(2.0),Number(3.0)])]),
+				Array(vec![Number(4.0),Experiments(vec![Number(5.0),Number(6.0)])]),
+			]),
+		)]);
+		let target = Experiments(vec![
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(1.0),Number(2.0)]))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(1.0),Number(3.0)]))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(4.0),Number(5.0)]))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(4.0),Number(6.0)]))]),
+		]);
+		assert_eq!(flatten_configuration_value(&original),target);
+	}
+	#[test]
+	fn flatten_test_nestarray_anonymous_over_named()
+	{
+		use ConfigurationValue::*;
+		/*
+		Alpha{a:![
+			[1.0, !name[2.0,3.0]],
+			[4.0, !name[5.0,6.0]],
+		]}
+		->
+		![
+			Alpha{a:[1.0,2.0]},
+			Alpha{a:[4.0,5.0]},
+			Alpha{a:[1.0,3.0]},
+			Alpha{a:[4.0,6.0]},
+		]
+		The anonymous is expanded first. Then the whole block is expanded at the first index of the named, and then at the second index.
+		*/
+		let original = Object("Alpha".to_string(),vec![("a".to_string(),
+			Experiments(vec![
+				Array(vec![Number(1.0),NamedExperiments("name".to_string(),vec![Number(2.0),Number(3.0)])]),
+				Array(vec![Number(4.0),NamedExperiments("name".to_string(),vec![Number(5.0),Number(6.0)])]),
+			]),
+		)]);
+		let target = Experiments(vec![
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(1.0),Number(2.0)]))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(4.0),Number(5.0)]))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(1.0),Number(3.0)]))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(4.0),Number(6.0)]))]),
+		]);
+		assert_eq!(flatten_configuration_value(&original),target);
+	}
+	//FIXME: What is even the intentended behaviour??
+	//#[test]
+	//fn flatten_test_nestarray_named_over_anonymous()
+	//{
+	//	use ConfigurationValue::*;
+	//	/*
+	//	Alpha{a:!name[
+	//		[1.0, ![2.0,3.0]],
+	//		[4.0, ![5.0,6.0]],
+	//	]}
+	//	->
+	//	![
+	//		Alpha{a:[1.0,2.0]},
+	//		Alpha{a:[1.0,3.0]},
+	//		Alpha{a:[4.0,5.0]},
+	//		Alpha{a:[4.0,6.0]},
+	//	]
+	//	The anonymous is expanded first.
+	//	*/
+	//	let original = Object("Alpha".to_string(),vec![("a".to_string(),
+	//		NamedExperiments("name".to_string(),vec![
+	//			Array(vec![Number(1.0),Experiments(vec![Number(2.0),Number(3.0)])]),
+	//			Array(vec![Number(4.0),Experiments(vec![Number(5.0),Number(6.0)])]),
+	//		]),
+	//	)]);
+	//	let target = Experiments(vec![
+	//		Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(1.0),Number(2.0)]))]),
+	//		Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(1.0),Number(3.0)]))]),
+	//		Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(4.0),Number(5.0)]))]),
+	//		Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(4.0),Number(6.0)]))]),
+	//	]);
+	//	assert_eq!(flatten_configuration_value(&original),target);
+	//}
+	#[test]
+	fn flatten_test_nestarray_named_over_named()
+	{
+		use ConfigurationValue::*;
+		/*
+		Alpha{a:!name1[
+			[1.0, !name2[2.0,3.0]],
+			[4.0, !name2[5.0,6.0]],
+		]}
+		->
+		![
+			Alpha{a:[1.0,2.0]},
+			Alpha{a:[4.0,5.0]},
+			Alpha{a:[1.0,3.0]},
+			Alpha{a:[4.0,6.0]},
+		]
+		names are processed in order.
+		*/
+		let original = Object("Alpha".to_string(),vec![("a".to_string(),
+			NamedExperiments("name1".to_string(),vec![
+				Array(vec![Number(1.0),NamedExperiments("name2".to_string(),vec![Number(2.0),Number(3.0)])]),
+				Array(vec![Number(4.0),NamedExperiments("name2".to_string(),vec![Number(5.0),Number(6.0)])]),
+			]),
+		)]);
+		let target = Experiments(vec![
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(1.0),Number(2.0)]))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(4.0),Number(5.0)]))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(1.0),Number(3.0)]))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(4.0),Number(6.0)]))]),
+		]);
+		assert_eq!(flatten_configuration_value(&original),target);
+	}
+	#[test]
+	fn flatten_test_nestarray_named_over_named_backwards()
+	{
+		use ConfigurationValue::*;
+		/*
+		Alpha{a:name2![
+			[1.0, name1![2.0,3.0]],
+			[4.0, name1![5.0,6.0]],
+		]}
+		->
+		![
+			Alpha{a:[1.0,2.0]},
+			Alpha{a:[1.0,3.0]},
+			Alpha{a:[4.0,5.0]},
+			Alpha{a:[4.0,6.0]},
+		]
+		names are processed in order. First we get ![ Alpha{a:name2![[1.0,2.0],[4.0,5.0]]},  Alpha{a:name2![[1.0,3.0],[4.0,6.0]]} ].
+		Then expanding name2 at first index we get ![ Alpha{a:[1.0,2.0]},  Alpha{a:[1.0,3.0]} ].
+		And at second index ![ Alpha{a:[4.0,5.0]},  Alpha{a:[4.0,6.0]} ].
+		*/
+		let original = Object("Alpha".to_string(),vec![("a".to_string(),
+			NamedExperiments("name2".to_string(),vec![
+				Array(vec![Number(1.0),NamedExperiments("name1".to_string(),vec![Number(2.0),Number(3.0)])]),
+				Array(vec![Number(4.0),NamedExperiments("name1".to_string(),vec![Number(5.0),Number(6.0)])]),
+			]),
+		)]);
+		println!("original={}",original.format_terminal());
+		let target = Experiments(vec![
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(1.0),Number(2.0)]))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(1.0),Number(3.0)]))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(4.0),Number(5.0)]))]),
+			Object("Alpha".to_string(),vec![("a".to_string(),Array(vec![Number(4.0),Number(6.0)]))]),
+		]);
+		assert_eq!(flatten_configuration_value(&original),target);
 	}
 }
 
