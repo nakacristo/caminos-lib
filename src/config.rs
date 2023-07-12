@@ -1954,51 +1954,79 @@ impl ConfigurationValue
 	**/
 	pub fn format_terminal_nesting(&self, nesting:u32) -> String
 	{
-		let d = self.depth();
-		let (front_separator,middle_separator,back_separator) = if d<=1 {
-			(format!(" "),format!(", "),format!(" "))
-		} else {
-			let tab:String = (0..(nesting+1)).map(|_|'\t').collect();
-			(format!("\n{tab}"),format!(",\n{tab}"),format!(""))
-		};
 		use ConfigurationValue::*;
 		match self
 		{
+			Object(..) | Array(..) | Experiments(..) | NamedExperiments(..) => {
+				let d = self.depth();
+				//let (front_separator,middle_separator,back_separator) = if d<=1 {
+				//	(format!(" "),format!(", "),format!(" "))
+				//} else {
+				//	let tab:String = (0..(nesting+1)).map(|_|'\t').collect();
+				//	(format!("\n{tab}"),format!(",\n{tab}"),format!(""))
+				//};
+				let available_columns : usize = (200i32 - nesting as i32*8i32).try_into().unwrap_or(0);
+				/*TODO: We could use some of these
+				let (x, y) = termion::terminal_size().unwrap();
+				let termsize::Size {rows, cols} = termsize::get().unwrap();
+				TODO: Are 8 spaces per indent level a reasonably assumption?
+				*/
+				for try_index in 0..=1 
+				{
+					let (front_separator,middle_separator,back_separator) = if try_index==0 {
+						let spaces:String = (0..d).map(|_|' ').collect();
+						(format!("{spaces}"),format!(",{spaces}"),format!("{spaces}"))
+					} else {
+						let tab:String = (0..(nesting+1)).map(|_|'\t').collect();
+						(format!("\n{tab}"),format!(",\n{tab}"),format!(""))
+					};
+					let content = match self {
+						Object(ref name, ref key_val_list) => {
+							if key_val_list.is_empty() {
+								format!("{name}")
+							} else {
+								let formatted_list = key_val_list.into_iter().map(|(key,value)|{
+									let formatted_value = value.format_terminal_nesting(nesting+1);
+									format!("{key}: {formatted_value}")
+								}).collect::<Vec<String>>().join(&middle_separator);
+								format!("{name}{{{front_separator}{formatted_list}{back_separator}}}")
+							}
+						},
+						Array(ref list) => {
+							let inner = list.into_iter().map(|value|{
+								value.format_terminal_nesting(nesting+1)
+							}).collect::<Vec<String>>().join(&middle_separator);
+							format!("[{front_separator}{inner}{back_separator}]")
+						},
+						Experiments(ref list) => {
+							let inner = list.into_iter().map(|value|{
+								value.format_terminal_nesting(nesting+1)
+							}).collect::<Vec<String>>().join(&middle_separator);
+							format!("![{front_separator}{inner}{back_separator}]")
+						},
+						NamedExperiments(ref name, ref list) => {
+							let inner = list.into_iter().map(|value|{
+								value.format_terminal_nesting(nesting+1)
+							}).collect::<Vec<String>>().join(&middle_separator);
+							format!("{name}![{front_separator}{inner}{back_separator}]")
+						},
+						_ => unreachable!(),
+					};
+					if content.len() < available_columns || try_index == 1 {
+						// Either the first try if it fits on the terminal columns
+						// or on the second try otherwise.
+						return content;
+					}
+				}
+				// We should have returned before.
+				unreachable!();
+			}
 			Literal(ref s) => format!("\"{s}\""),
 			Number(x) => format!("{x}"),
-			Object(ref name, ref key_val_list) => {
-				if key_val_list.is_empty() {
-					format!("{name}")
-				} else {
-					let formatted_list = key_val_list.into_iter().map(|(key,value)|{
-						let formatted_value = value.format_terminal_nesting(nesting+1);
-						format!("{key}: {formatted_value}")
-					}).collect::<Vec<String>>().join(&middle_separator);
-					format!("{name}{{{front_separator}{formatted_list}{back_separator}}}")
-				}
-			},
-			Array(ref list) => {
-				let inner = list.into_iter().map(|value|{
-					value.format_terminal_nesting(nesting+1)
-				}).collect::<Vec<String>>().join(&middle_separator);
-				format!("[{front_separator}{inner}{back_separator}]")
-			},
-			Experiments(ref list) => {
-				let inner = list.into_iter().map(|value|{
-					value.format_terminal_nesting(nesting+1)
-				}).collect::<Vec<String>>().join(&middle_separator);
-				format!("![{front_separator}{inner}{back_separator}]")
-			},
-			NamedExperiments(ref name, ref list) => {
-				let inner = list.into_iter().map(|value|{
-					value.format_terminal_nesting(nesting+1)
-				}).collect::<Vec<String>>().join(&middle_separator);
-				format!("{name}![{front_separator}{inner}{back_separator}]")
-			},
 			True => format!("true"),
 			False => format!("false"),
 			Where(_rc, _expr) => todo!(),
-			Expression(_expr) => todo!(),
+			Expression(expr) => format!("={expr}"),
 			None => format!("None"),
 		}
 	}

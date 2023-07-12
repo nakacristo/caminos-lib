@@ -5,6 +5,7 @@
 ### 2023-07-12
 Added tests for flattening configurations.
 Allow flattening for more recursive combinations of Experiments and NamedExperiments.
+Configuration output in terminal more compact and legible.
 
 ### 2023-07-07
 Updated some 0.6 in the README.
