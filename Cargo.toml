@@ -1,6 +1,6 @@
 [package]
 name = "caminos-lib"
-version = "0.6.0"
+version = "0.6.1"
 authors = ["Cristóbal Camarero <cristobal.camarero@unican.es>"]
 # Daniel Postigo and Alejandro Cano have contributed.
 edition = "2018"
@@ -18,7 +18,7 @@ license = "MIT/Apache-2.0"
 [dependencies]
 
 #Parsing the configuration grammar.
-gramatica = "0.2"
+gramatica = "0.2.1"
 #gramatica = { path = "../../../tutorials/rust/gramatica" }
 
 #Generate random numbers.

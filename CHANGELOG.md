@@ -1,6 +1,10 @@
 # Change Log
 
-## [0.6.0]
+## [0.6.1]
+
+### 2023-07-13
+Update to gramatica-0.2.1, that has updated its regex to 1.9.1, notably improving performance.
+Publish as 0.6.1.
 
 ### 2023-07-12
 Added tests for flattening configurations.
@@ -12,6 +16,8 @@ Updated some 0.6 in the README.
 Merged field `random` for CartesianTransform.
 New argument patterns for CartesianTransform.
 New pattern Circulant.
+
+## [0.6.0]
 
 ### 2023-06-29
 New router option `neglect_busy_output`.

@@ -121,11 +121,11 @@ impl Display for Expr
 }
 
 pub fn parse(source:& str)->Result<Token,ParsingError>{
-Parser::<Token,ParsingTables>::parse(source,None)}
+Parser::<Token,ParsingTables>::parse(source,None,1)}
 
 pub fn parse_expression(source:&str) -> Result<Token,ParsingError>
 {
-	Parser::<Token,ParsingTables>::parse(source,Some(26))
+	Parser::<Token,ParsingTables>::parse(source,Some(26),1)
 }
 
 #[derive(Clone,Debug,PartialEq)]
