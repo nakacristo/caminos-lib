@@ -50,6 +50,8 @@ pub enum Action
 	Pack,
 	///Removes results. Intended to use with `--where` clauses to select the copromised experiments.
 	Discard,
+	///Executes a few cycles of each simulation, to dectect possible runtime failures.
+	QuickTest,
 }
 
 impl FromStr for Action
@@ -72,6 +74,7 @@ impl FromStr for Action
 			"shell" => Ok(Action::Shell),
 			"pack" => Ok(Action::Pack),
 			"discard" => Ok(Action::Discard),
+			"quick_test" => Ok(Action::QuickTest),
 			_ => Err(error!(bad_argument).with_message(format!("String {s} cannot be parsed as an Action."))),
 		}
 	}
@@ -587,9 +590,9 @@ impl ExperimentFiles
 							{
 								to_create.pop();
 							}
-							Err(_) =>
+							Err(e) =>
 							{
-								let parent = dir.parent().ok_or_else(||error!(undetermined).with_message(format!("{:?} has no parent to create",dir)))?.to_owned();
+								let parent = dir.parent().ok_or_else(||error!(remote_file_system_error,e).with_message(format!("{:?} has no parent to create",dir)))?.to_owned();
 								eprintln!("Trying to create its parent directory {:?}",parent);
 								to_create.push(parent);
 							}
@@ -633,7 +636,10 @@ impl ExperimentFiles
 				}
 				runs_path
 			};
-			let runs_path=runs_path.canonicalize().map_err(|e|Error::undetermined(source_location!()).with_message(format!("The runs path \"{:?}\" cannot be resolved (error {})",runs_path,e)))?;
+			let runs_path=runs_path.canonicalize().map_err(|e|{
+				let message=format!("The runs path \"{:?}\" cannot be resolved (error {})",runs_path,e);
+				Error::file_system_error(source_location!(),e).with_message(message)
+			})?;
 			self.runs_path = Some( runs_path );
 		}
 		Ok(())
@@ -771,7 +777,7 @@ impl ExperimentFiles
 			let remote_cfg_path = other.root.as_ref().unwrap().join("main.cfg");
 			let username = other.username.as_ref().unwrap();
 			let host = other.host.as_ref().unwrap();
-			return Err(Error::undetermined(source_location!()).with_message(format!("The configurations do not match.\nYou may try$ vimdiff {:?} scp://{}@{}/{:?}\n",cfg,username,host,remote_cfg_path)));
+			return Err(Error::incompatible_configurations(source_location!()).with_message(format!("The configurations do not match.\nYou may try$ vimdiff {:?} scp://{}@{}/{:?}\n",cfg,username,host,remote_cfg_path)));
 		}
 	}
 	pub fn build_packed_results(&mut self)
@@ -1290,6 +1296,7 @@ impl<'a> Experiment<'a>
 			Action::Shell => (),
 			Action::Pack => (),
 			Action::Discard => (),
+			Action::QuickTest => (),
 		};
 
 		//Remove mutabiity to prevent mistakes.
@@ -1532,7 +1539,7 @@ impl<'a> Experiment<'a>
 					{
 						if silent || keyboard.ask_confirmation(&format!("remove file {result_path:?} for experiment {experiment_index}."))?
 						{
-							std::fs::remove_file(&result_path).map_err(|e|error!(undetermined).with_message(format!("could not delete file {result_path:?} because {e:?}")))?;
+							std::fs::remove_file(&result_path).map_err(|e|error!(file_system_error,e).with_message(format!("could not delete file {result_path:?}")))?;
 						}
 					}
 					progress.discarded+=1;
@@ -1701,6 +1708,16 @@ impl<'a> Experiment<'a>
 							}
 						}
 					}
+					Action::QuickTest =>
+					{
+						//println!("experiment {} of {} is {}",experiment_index,self.files.experiments.len(),experiment.format_terminal());
+						let mut simulation=Simulation::new(experiment,self.plugs);
+						//simulation.run();
+						//simulation.write_result(&mut File::create(&result_path).expect("Could not create the result file."));
+						for _ in 0..20 {
+							simulation.advance();
+						}
+					},
 					Action::Output | Action::RemoteCheck | Action::Push | Action::SlurmCancel | Action::Shell | Action::Pack | Action::Discard =>
 					{
 					},

@@ -86,6 +86,16 @@ pub enum ErrorKind
 		filepath: PathBuf,
 		error: std::io::Error,
 	},
+	/// Some general error in the local filesystem.
+	FileSystemError{
+		error: std::io::Error,
+	},
+	/// Some general error in a remote filesystem.
+	RemoteFileSystemError{
+		error:ssh2::Error,
+	},
+	/// The local configuration does not match the remote one.
+	IncompatibleConfigurations,
 	/// Some method received a bad argument. There should be an attached message with further explanation.
 	BadArgument,
 	/// Any other error. Better to add new types than to use this thing.
@@ -239,6 +249,34 @@ impl Error
 			message:None,
 		}
 	}
+	pub fn file_system_error(source_location:SourceLocation,error:std::io::Error)->Error
+	{
+		Error{
+			source_location,
+			kind: FileSystemError{
+				error,
+			},
+			message:None,
+		}
+	}
+	pub fn remote_file_system_error(source_location:SourceLocation,error:ssh2::Error)->Error
+	{
+		Error{
+			source_location,
+			kind: RemoteFileSystemError{
+				error,
+			},
+			message:None,
+		}
+	}
+	pub fn incompatible_configurations(source_location:SourceLocation) -> Error
+	{
+		Error{
+			source_location,
+			kind: IncompatibleConfigurations,
+			message:None,
+		}
+	}
 	pub fn bad_argument(source_location:SourceLocation)->Error
 	{
 		Error{
@@ -318,6 +356,18 @@ impl Display for ErrorKind
 			CouldNotGenerateFile{filepath,error} =>
 			{
 				writeln!(formatter,"CouldNotGenerateFile error: The file {:?} could not be created.\nerror: {}",filepath,error)?;
+			},
+			FileSystemError{error} =>
+			{
+				writeln!(formatter,"FileSystemError: Error in the local filesystem.\nerror: {}",error)?;
+			},
+			RemoteFileSystemError{error} =>
+			{
+				writeln!(formatter,"RemoteFileSystemError: Error in a remote filesystem.\nerror: {}",error)?;
+			},
+			IncompatibleConfigurations =>
+			{
+				writeln!(formatter,"IncompatibleConfigurations: The two configurations do not match.")?;
 			},
 			BadArgument =>
 			{

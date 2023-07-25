@@ -1,5 +1,13 @@
 # Change Log
 
+## next [0.6.2]
+
+### 2023-07-25
+New action QuickTest.
+
+### 2023-07-17
+New error IncompatibleConfigurations, FileSystemError, RemoteFileSystemError.
+
 ## [0.6.1]
 
 ### 2023-07-13
