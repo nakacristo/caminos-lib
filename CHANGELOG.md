@@ -2,6 +2,16 @@
 
 ## next [0.6.2]
 
+### 2023-09-11
+Allow different frequencies in links and the InputOuput router.
+The tentative configuration parameter `transference_speed` in links have been removed in favor of `frequency_divisor`, now functional.
+
+### 2023-09-08
+More work on frequencies.
+
+### 2023-09-07
+Adding ways to divide the frequency of components.
+
 ### 2023-07-25
 New action QuickTest.
 

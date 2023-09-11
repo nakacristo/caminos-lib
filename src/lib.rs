@@ -354,7 +354,7 @@ use topology::{Topology,new_topology,TopologyBuilderArgument,Location,
 use traffic::{Traffic,new_traffic,TrafficBuilderArgument,TrafficError};
 use router::{Router,new_router,RouterBuilderArgument};
 use routing::{RoutingInfo,Routing,new_routing,RoutingBuilderArgument};
-use event::{EventQueue,Event};
+use event::{EventQueue,Event,EventGeneration};
 use quantify::Quantifiable;
 use experiments::{Experiment,Action,ExperimentOptions};
 use policies::{VirtualChannelPolicy,VCPolicyBuilderArgument};
@@ -569,6 +569,9 @@ pub struct LinkClass
 	pub delay: usize,
 	//(x,y) means x phits each y cycles ??
 	//transference_speed: (usize,usize)
+	///A phit can enter the link only in those cycles multiple of `frequency_divisor`.
+	///By default it is set a value of 0, value which will be replaced with the global frequency divisor of the simulation (whose default is 1).
+	frequency_divisor: usize,
 }
 
 impl LinkClass
@@ -576,13 +579,15 @@ impl LinkClass
 	fn new(cv:&ConfigurationValue) -> LinkClass
 	{
 		let mut delay=None;
+		let mut frequency_divisor = 0;
 		match_object_panic!(cv,"LinkClass",value,
-			"delay" => delay=Some(value.as_f64().expect("bad value for delay") as usize),
-			"transference_speed" => (),//FIXME
+			"delay" => delay=Some(value.as_usize().expect("bad value for delay")),
+			"frequency_divisor" => frequency_divisor = value.as_usize().expect("bad value for frequency_divisor"),
 		);
 		let delay=delay.expect("There were no delay");
 		LinkClass{
 			delay,
+			frequency_divisor,
 		}
 	}
 }
@@ -604,6 +609,40 @@ pub struct SimulationShared
 	pub link_classes: Vec<LinkClass>,
 	///The maximum size in phits that network packets can have. Any message greater than this is broken into several packets.
 	pub maximum_packet_size: usize,
+	/// The base period of operation for the components. Defaults to 1, to allow having events every cycle.
+	/// Components using this value will only execute at cycles multiple of it.
+	/// This parameter allows to reduce the global frequency, allowing in turn to override some component to have greater frequency than the rest.
+	pub general_frequency_divisor: usize,
+}
+
+impl SimulationShared
+{
+	/**
+		Whether the current cycle is a multiple of the frequency divisor of the given `link_class`.
+		These are the cycles in which it is allowed to send a phit through the link.
+		The phit reception event should then be scheduled normally at cycle+delay.
+	**/
+	pub fn is_link_cycle(&self, link_class: usize) -> bool
+	{
+		self.cycle % self.link_classes[link_class].frequency_divisor == 0
+	}
+	/**
+		Schedule an event to be executed at the arrival accross a link.
+		Counts both the wait for the tiem slot and the delay.
+	**/
+	pub fn schedule_link_arrival(&self, link_class:usize, event:Event) -> EventGeneration
+	{
+		let link = &self.link_classes[link_class];
+		use std::convert::TryInto;
+		let c:i32 = self.cycle.try_into().unwrap();
+		let slot = event::round_to_multiple(c,link.frequency_divisor.try_into().unwrap());
+		let wait = slot - c;
+		EventGeneration{
+			delay: (wait + link.delay as i32) as usize,
+			position: event::CyclePosition::Begin,
+			event,
+		}
+	}
 }
 
 /**
@@ -669,19 +708,20 @@ impl<'a> Simulation<'a>
 		let mut statistics_packet_definitions:Vec< (Vec<Expr>,Vec<Expr>) > = vec![];
 		let mut server_queue_size = None;
 		let mut memory_report_period = None;
+		let mut general_frequency_divisor = 1;
 		match_object_panic!(cv,"Configuration",value,
-			"random_seed" => seed=Some(value.as_f64().expect("bad value for random_seed") as usize),
-			"warmup" => warmup=Some(value.as_f64().expect("bad value for warmup") as usize),
-			"measured" => measured=Some(value.as_f64().expect("bad value for measured") as usize),
+			"random_seed" => seed=Some(value.as_usize().expect("bad value for random_seed")),
+			"warmup" => warmup=Some(value.as_usize().expect("bad value for warmup")),
+			"measured" => measured=Some(value.as_usize().expect("bad value for measured")),
 			"topology" => topology=Some(value),
 			"traffic" => traffic=Some(value),
-			"maximum_packet_size" => maximum_packet_size=Some(value.as_f64().expect("bad value for maximum_packet_size") as usize),
-			"server_queue_size" => server_queue_size=Some(value.as_f64().expect("bad value for server_queue_size") as usize),
+			"maximum_packet_size" => maximum_packet_size=Some(value.as_usize().expect("bad value for maximum_packet_size")),
+			"server_queue_size" => server_queue_size=Some(value.as_usize().expect("bad value for server_queue_size")),
 			"router" => router_cfg=Some(value),
 			"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,plugs})),
 			"link_classes" => link_classes = Some(value.as_array().expect("bad value for link_classes").iter()
 				.map(LinkClass::new).collect()),
-			"statistics_temporal_step" => statistics_temporal_step=value.as_f64().expect("bad value for statistics_temporal_step") as usize,
+			"statistics_temporal_step" => statistics_temporal_step=value.as_usize().expect("bad value for statistics_temporal_step"),
 			"launch_configurations" => launch_configurations = value.as_array().expect("bad value for launch_configurations").clone(),
 			"statistics_server_percentiles" => statistics_server_percentiles = value
 				.as_array().expect("bad value for statistics_server_percentiles").iter()
@@ -719,7 +759,8 @@ impl<'a> Simulation<'a>
 				}).collect(),
 				_ => panic!("bad value for statistics_packet_definitions"),
 			}
-			"memory_report_period" => memory_report_period=Some(value.as_f64().expect("bad value for memory_report_period") as usize),
+			"memory_report_period" => memory_report_period=Some(value.as_usize().expect("bad value for memory_report_period")),
+			"general_frequency_divisor" => general_frequency_divisor = value.as_usize().expect("bad value for general_frequency_divisor"),
 		);
 		let seed=seed.expect("There were no random_seed");
 		let warmup=warmup.expect("There were no warmup");
@@ -731,7 +772,14 @@ impl<'a> Simulation<'a>
 		assert!(server_queue_size>0, "we need space in the servers to store generated messages.");
 		let router_cfg=router_cfg.expect("There were no router");
 		let mut routing=routing.expect("There were no routing");
-		let link_classes:Vec<LinkClass>=link_classes.expect("There were no link_classes");
+		let mut link_classes:Vec<LinkClass>=link_classes.expect("There were no link_classes");
+		for link_class in link_classes.iter_mut()
+		{
+			if link_class.frequency_divisor == 0
+			{
+				link_class.frequency_divisor = general_frequency_divisor;
+			}
+		}
 		//This has been changed from rand-0.4 to rand-0.8
 		let mut rng=StdRng::seed_from_u64(seed as u64);
 		let topology=new_topology(TopologyBuilderArgument{
@@ -750,6 +798,7 @@ impl<'a> Simulation<'a>
 			plugs,
 			topology:topology.as_ref(),
 			maximum_packet_size,
+			general_frequency_divisor,
 			statistics_temporal_step,
 			rng:&mut rng,
 		})).collect();
@@ -807,6 +856,7 @@ impl<'a> Simulation<'a>
 				routing,
 				link_classes,
 				maximum_packet_size,
+				general_frequency_divisor,
 			},
 			mutable: SimulationMut{
 				rng,
@@ -900,10 +950,9 @@ impl<'a> Simulation<'a>
 							brouter.insert(phit.clone(),port,&mut self.mutable.rng);
 							if brouter.pending_events()==0
 							{
-								brouter.add_pending_event();
-								//self.event_queue.enqueue_end(Event::Generic(self.shared.network.routers[router]),0);
-								//self.event_queue.enqueue_end(Event::Generic(self.shared.network.routers[router] as Rc<RefCell<Eventful>>),0);
-								self.event_queue.enqueue_end(Event::Generic(brouter.as_eventful().upgrade().expect("missing router")),0);
+								//brouter.add_pending_event();
+								//self.event_queue.enqueue_end(Event::Generic(brouter.as_eventful().upgrade().expect("missing router")),0);
+								self.event_queue.enqueue(brouter.schedule(0));
 							}
 							match previous
 							{
@@ -952,8 +1001,9 @@ impl<'a> Simulation<'a>
 						brouter.acknowledge(router_port,ack_message);
 						if brouter.pending_events()==0
 						{
-							brouter.add_pending_event();
-							self.event_queue.enqueue_end(Event::Generic(brouter.as_eventful().upgrade().expect("missing router")),0);
+							//brouter.add_pending_event();
+							//self.event_queue.enqueue_end(Event::Generic(brouter.as_eventful().upgrade().expect("missing router")),0);
+							self.event_queue.enqueue(brouter.schedule(0));
 						}
 					},
 					Location::ServerPort(server) => self.shared.network.servers[server].router_status.acknowledge(ack_message),
@@ -1118,26 +1168,30 @@ impl<'a> Simulation<'a>
 							}
 						}
 					}
-					if let Some(vc) = server.outcoming_virtual_channel
+					// if self.shared.is_link_cycle(link_class) // XXX we cannot call this since we are mutating the servers.
+					if self.shared.cycle % self.shared.link_classes[link_class].frequency_divisor == 0
 					{
-						if server.router_status.can_transmit(phit,vc)
+						if let Some(vc) = server.outcoming_virtual_channel
 						{
-							let phit=server.stored_phits.pop_front().expect("There are not phits");
-							*phit.virtual_channel.borrow_mut() = Some(vc);
-							if phit.is_end()
+							if server.router_status.can_transmit(phit,vc)
 							{
-								server.outcoming_virtual_channel = None;
+								let phit=server.stored_phits.pop_front().expect("There are not phits");
+								*phit.virtual_channel.borrow_mut() = Some(vc);
+								if phit.is_end()
+								{
+									server.outcoming_virtual_channel = None;
+								}
+								let event=Event::PhitToLocation{
+									phit,
+									previous: Location::ServerPort(iserver),
+									new: Location::RouterPort{router_index:index,router_port:port},
+								};
+								//self.statistics.created_phits+=1;
+								self.statistics.track_created_phit(self.shared.cycle);
+								server.statistics.track_created_phit(self.shared.cycle);
+								self.event_queue.enqueue_begin(event,self.shared.link_classes[link_class].delay);
+								server.router_status.notify_outcoming_phit(vc,self.shared.cycle);
 							}
-							let event=Event::PhitToLocation{
-								phit,
-								previous: Location::ServerPort(iserver),
-								new: Location::RouterPort{router_index:index,router_port:port},
-							};
-							//self.statistics.created_phits+=1;
-							self.statistics.track_created_phit(self.shared.cycle);
-							server.statistics.track_created_phit(self.shared.cycle);
-							self.event_queue.enqueue_begin(event,self.shared.link_classes[link_class].delay);
-							server.router_status.notify_outcoming_phit(vc,self.shared.cycle);
 						}
 					}
 				}

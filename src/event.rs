@@ -21,6 +21,20 @@ pub trait Eventful
 	fn clear_pending_events(&mut self);
 	///Extract the eventful from the implementing class. Required since `as Rc<RefCell<Eventful>>` does not work.
 	fn as_eventful(&self)->Weak<RefCell<dyn Eventful>>;
+	///Schedule this component to be executed after `delay` cycles as soon as possible.
+	///This should include waits to synchronize with the component's internal clock.
+	///Call with 0 to schedule as soon as possible, including the current cycle.
+	///Call with 1 to schedule in a future cycle as soon as popssible.
+	fn schedule(&mut self, delay:usize) -> EventGeneration
+	{
+		self.add_pending_event();
+		let event = Event::Generic(self.as_eventful().upgrade().expect("missing component"));
+		EventGeneration{
+			delay: delay,
+			position: CyclePosition::End,
+			event,
+		}
+	}
 }
 
 ///The events stored in the event queue.
@@ -210,4 +224,42 @@ impl EventQueue
 		};
 	}
 }
+
+
+/**
+ Find the lowest number which is strictly greater than the input `x` and multiple of `divisor`.
+**/
+pub fn next_multiple(x:i32, divisor:i32) -> i32
+{
+	// Note `rem_euclid` is different for negative `x`.
+	x - x.rem_euclid(divisor) + divisor
+}
+
+/**
+ Find the lowest number which is greater or equal to the input `x` and multiple of `divisor`.
+**/
+pub fn round_to_multiple(x:i32, divisor: i32) -> i32
+{
+	next_multiple(x-1,divisor)
+}
+
+#[cfg(test)]
+mod tests
+{
+	use super::*;
+    #[test]
+	fn multiples()
+	{
+		assert_eq!( next_multiple(10,5) , 15 );
+		assert_eq!( next_multiple(2,5) , 5 );
+		assert_eq!( next_multiple(-2,5) , 0 );
+		assert_eq!( next_multiple(-5,5) , 0 );
+		assert_eq!( round_to_multiple(10,5) , 10 );
+		assert_eq!( round_to_multiple(12,5) , 15 );
+		assert_eq!( round_to_multiple(-2,5) , 0 );
+		assert_eq!( round_to_multiple(-5,5) , -5 );
+	}
+}
+
+
 

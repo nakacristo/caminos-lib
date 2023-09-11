@@ -80,6 +80,10 @@ pub struct RouterBuilderArgument<'a>
 	pub topology: &'a dyn Topology,
 	///The maximum number of phits that packet gonna have.
 	pub maximum_packet_size: usize,
+	///The corresponding value of the `SimulationShared` struct.
+	///Available to the router as a default value.
+	///We do not directly receive a `SimulationShared` because it cannot have been built, as it would contain the routers.
+	pub general_frequency_divisor: usize,
 	///The corresponding value of the `Statistics` struct.
 	///Available to the router for the case it want to use the same period.
 	pub statistics_temporal_step: usize,
