@@ -413,11 +413,11 @@ impl Routing for Mindless
 		}
 		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
-	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	fn statistics(&self, _cycle:Time) -> Option<ConfigurationValue>
 	{
 		return None;
 	}
-	fn reset_statistics(&mut self, _next_cycle:usize)
+	fn reset_statistics(&mut self, _next_cycle:Time)
 	{
 	}
 }

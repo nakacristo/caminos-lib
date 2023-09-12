@@ -2,11 +2,16 @@
 use std::rc::{Rc,Weak};
 use std::cell::RefCell;
 use std::mem::{size_of};
+use std::convert::TryInto;
+
 use crate::{Phit,SimulationShared,SimulationMut};
 use crate::topology::Location;
 use crate::quantify::Quantifiable;
 use crate::router::{AcknowledgeMessage};
 use quantifiable_derive::Quantifiable;//the derive macro
+
+/// An amount of cycles.
+pub type Time = u64;
 
 ///A trait to be implemented for generic objects to be inserted in the event queue.
 pub trait Eventful
@@ -25,7 +30,7 @@ pub trait Eventful
 	///This should include waits to synchronize with the component's internal clock.
 	///Call with 0 to schedule as soon as possible, including the current cycle.
 	///Call with 1 to schedule in a future cycle as soon as popssible.
-	fn schedule(&mut self, delay:usize) -> EventGeneration
+	fn schedule(&mut self, _current_cycle:Time, delay:Time) -> EventGeneration
 	{
 		self.add_pending_event();
 		let event = Event::Generic(self.as_eventful().upgrade().expect("missing component"));
@@ -103,7 +108,7 @@ pub enum CyclePosition
 pub struct EventGeneration
 {
 	///To insert the event after `delay` cycles.
-	pub delay: usize,
+	pub delay: Time,
 	///Whether the event should be processed at the begin or the end of its cycle.
 	pub position: CyclePosition,
 	///The actual event to be inserted.
@@ -117,6 +122,7 @@ pub struct EventQueue
 	//Would be better to have `Vec<(Vec<Event>,Vec<Event>)>` ?
 	event_begin_circle: Vec<Vec<Event>>,//Events to be processed at the beginning of a cycle (mostly arrivals of phits)
 	event_end_circle: Vec<Vec<Event>>,//Events to be processed at the end of a cycle (mostly decisions on where to send phits)
+	//offset currently being accessed.
 	current: usize,
 }
 
@@ -195,23 +201,25 @@ impl EventQueue
 		}
 	}
 	///Adds an event to the list of events to be executed at the begin of the cycle `current_cycle + delay`.
-	pub fn enqueue_begin(&mut self, event:Event, delay: usize)
+	pub fn enqueue_begin(&mut self, event:Event, delay: Time)
 	{
+		let delay : usize = delay.try_into().unwrap();
 		if delay>=self.event_begin_circle.len()
 		{
 			panic!("Delay too long");
 		}
-		let position=(self.current+delay)%self.event_begin_circle.len();
+		let position=(self.current+delay) % self.event_begin_circle.len();
 		self.event_begin_circle[position].push(event);
 	}
 	///Adds an event to the list of events to be executed at the end of the cycle `current_cycle + delay`.
-	pub fn enqueue_end(&mut self, event:Event, delay: usize)
+	pub fn enqueue_end(&mut self, event:Event, delay: Time)
 	{
+		let delay : usize = delay.try_into().unwrap();
 		if delay>=self.event_end_circle.len()
 		{
 			panic!("Delay too long");
 		}
-		let position=(self.current+delay)%self.event_end_circle.len();
+		let position=(self.current+delay) % self.event_end_circle.len();
 		self.event_end_circle[position].push(event);
 	}
 	///Adds an event as it requests.
@@ -229,16 +237,16 @@ impl EventQueue
 /**
  Find the lowest number which is strictly greater than the input `x` and multiple of `divisor`.
 **/
-pub fn next_multiple(x:i32, divisor:i32) -> i32
+pub fn next_multiple(x:Time, divisor:Time) -> Time
 {
-	// Note `rem_euclid` is different for negative `x`.
+	// Note `rem_euclid` is different for negative `x`. Depends on whther we use signed integers.
 	x - x.rem_euclid(divisor) + divisor
 }
 
 /**
  Find the lowest number which is greater or equal to the input `x` and multiple of `divisor`.
 **/
-pub fn round_to_multiple(x:i32, divisor: i32) -> i32
+pub fn round_to_multiple(x:Time, divisor: Time) -> Time
 {
 	next_multiple(x-1,divisor)
 }

@@ -7,6 +7,7 @@ use std::fs::File;
 //use std::rc::Rc;
 
 use crate::config_parser::{self,ConfigurationValue,Expr};
+use crate::event::Time;
 use crate::{error,source_location};
 use crate::error::*;
 
@@ -1889,6 +1890,26 @@ impl ConfigurationValue
 		{
 			&ConfigurationValue::Number(x) =>{
 				let res =  x as i32;
+				// Casting from a float to an integer will round the float towards zero
+				// overflows and underflows will saturate
+				// Casting from an integer to float will produce the closest possible float
+				let y = res as f64;
+				let tolerance = 1e-5;
+				if x-y > tolerance || x-y < -tolerance {
+					Err(error!(ill_formed_configuration, self.clone()))
+				} else {
+					Ok( res )
+				}
+			},
+			_ => Err(error!(ill_formed_configuration, self.clone() )),
+		}
+	}
+	pub fn as_time(&self) -> Result<Time,Error>
+	{
+		match self
+		{
+			&ConfigurationValue::Number(x) =>{
+				let res =  x as Time;
 				// Casting from a float to an integer will round the float towards zero
 				// overflows and underflows will saturate
 				// Casting from an integer to float will produce the closest possible float

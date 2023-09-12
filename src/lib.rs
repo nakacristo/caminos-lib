@@ -364,6 +364,7 @@ use measures::{Statistics,ServerStatistics};
 use error::{Error,SourceLocation};
 use allocator::{Allocator,AllocatorBuilderArgument};
 pub use packet::{Phit,Packet,Message,PacketExtraInfo,PacketRef};
+pub use event::Time;
 
 ///The objects that create and consume traffic to/from the network.
 #[derive(Quantifiable)]
@@ -392,7 +393,7 @@ pub struct Server
 impl Server
 {
 	///Consumes a phit
-	fn consume(&mut self, phit:Rc<Phit>, traffic:&mut dyn Traffic, statistics:&mut Statistics, cycle:usize, topology:&dyn Topology, rng: &mut StdRng)
+	fn consume(&mut self, phit:Rc<Phit>, traffic:&mut dyn Traffic, statistics:&mut Statistics, cycle:Time, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		self.statistics.track_consumed_phit(cycle);
 		statistics.track_consumed_phit(cycle);
@@ -566,12 +567,12 @@ impl Network
 pub struct LinkClass
 {
 	///Cycles the phit needs to move from one endpoint to the other endpoint.
-	pub delay: usize,
+	pub delay: Time,
 	//(x,y) means x phits each y cycles ??
 	//transference_speed: (usize,usize)
 	///A phit can enter the link only in those cycles multiple of `frequency_divisor`.
 	///By default it is set a value of 0, value which will be replaced with the global frequency divisor of the simulation (whose default is 1).
-	frequency_divisor: usize,
+	frequency_divisor: Time,
 }
 
 impl LinkClass
@@ -581,8 +582,8 @@ impl LinkClass
 		let mut delay=None;
 		let mut frequency_divisor = 0;
 		match_object_panic!(cv,"LinkClass",value,
-			"delay" => delay=Some(value.as_usize().expect("bad value for delay")),
-			"frequency_divisor" => frequency_divisor = value.as_usize().expect("bad value for frequency_divisor"),
+			"delay" => delay=Some(value.as_time().expect("bad value for delay")),
+			"frequency_divisor" => frequency_divisor = value.as_time().expect("bad value for frequency_divisor"),
 		);
 		let delay=delay.expect("There were no delay");
 		LinkClass{
@@ -598,7 +599,7 @@ Part of Simulation that is intended to be exposed to the `Eventful::process` API
 pub struct SimulationShared
 {
 	///The current cycle, i.e, the current discrete time.
-	pub cycle:usize,
+	pub cycle:Time,
 	///The instantiated network. It constains the routers and servers connected according to the topology.
 	pub network: Network,
 	///The traffic being generated/consumed by the servers.
@@ -612,7 +613,7 @@ pub struct SimulationShared
 	/// The base period of operation for the components. Defaults to 1, to allow having events every cycle.
 	/// Components using this value will only execute at cycles multiple of it.
 	/// This parameter allows to reduce the global frequency, allowing in turn to override some component to have greater frequency than the rest.
-	pub general_frequency_divisor: usize,
+	pub general_frequency_divisor: Time,
 }
 
 impl SimulationShared
@@ -633,12 +634,10 @@ impl SimulationShared
 	pub fn schedule_link_arrival(&self, link_class:usize, event:Event) -> EventGeneration
 	{
 		let link = &self.link_classes[link_class];
-		use std::convert::TryInto;
-		let c:i32 = self.cycle.try_into().unwrap();
-		let slot = event::round_to_multiple(c,link.frequency_divisor.try_into().unwrap());
-		let wait = slot - c;
+		let slot = event::round_to_multiple(self.cycle,link.frequency_divisor);
+		let wait = slot - self.cycle;
 		EventGeneration{
-			delay: (wait + link.delay as i32) as usize,
+			delay: wait + link.delay,
 			position: event::CyclePosition::Begin,
 			event,
 		}
@@ -668,9 +667,9 @@ pub struct Simulation<'a>
 	///Encapsulated data intended to be mutable by any.
 	pub mutable: SimulationMut,
 	///Cycles of preparation before the actual measured execution
-	pub warmup: usize,
+	pub warmup: Time,
 	///Cycles of measurement
-	pub measured: usize,
+	pub measured: Time,
 	///Maximum number of messages for generation to store in each server. Its default value is 20 messages.
 	///Attemps to generate traffic that fails because of the limit are tracked into the `missed_generations` statistic.
 	///Note that packets are not generated until it is the turn for the message to be sent to a router.
@@ -685,7 +684,7 @@ pub struct Simulation<'a>
 	///Plugged functions to build traffics, routers, etc.
 	pub plugs: &'a Plugs,
 	///Number of cycles to wait between reports of memory usage.
-	pub memory_report_period: Option<usize>,
+	pub memory_report_period: Option<Time>,
 }
 
 impl<'a> Simulation<'a>
@@ -711,8 +710,8 @@ impl<'a> Simulation<'a>
 		let mut general_frequency_divisor = 1;
 		match_object_panic!(cv,"Configuration",value,
 			"random_seed" => seed=Some(value.as_usize().expect("bad value for random_seed")),
-			"warmup" => warmup=Some(value.as_usize().expect("bad value for warmup")),
-			"measured" => measured=Some(value.as_usize().expect("bad value for measured")),
+			"warmup" => warmup=Some(value.as_time().expect("bad value for warmup")),
+			"measured" => measured=Some(value.as_time().expect("bad value for measured")),
 			"topology" => topology=Some(value),
 			"traffic" => traffic=Some(value),
 			"maximum_packet_size" => maximum_packet_size=Some(value.as_usize().expect("bad value for maximum_packet_size")),
@@ -721,7 +720,7 @@ impl<'a> Simulation<'a>
 			"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,plugs})),
 			"link_classes" => link_classes = Some(value.as_array().expect("bad value for link_classes").iter()
 				.map(LinkClass::new).collect()),
-			"statistics_temporal_step" => statistics_temporal_step=value.as_usize().expect("bad value for statistics_temporal_step"),
+			"statistics_temporal_step" => statistics_temporal_step=value.as_time().expect("bad value for statistics_temporal_step"),
 			"launch_configurations" => launch_configurations = value.as_array().expect("bad value for launch_configurations").clone(),
 			"statistics_server_percentiles" => statistics_server_percentiles = value
 				.as_array().expect("bad value for statistics_server_percentiles").iter()
@@ -759,8 +758,8 @@ impl<'a> Simulation<'a>
 				}).collect(),
 				_ => panic!("bad value for statistics_packet_definitions"),
 			}
-			"memory_report_period" => memory_report_period=Some(value.as_usize().expect("bad value for memory_report_period")),
-			"general_frequency_divisor" => general_frequency_divisor = value.as_usize().expect("bad value for general_frequency_divisor"),
+			"memory_report_period" => memory_report_period=Some(value.as_time().expect("bad value for memory_report_period")),
+			"general_frequency_divisor" => general_frequency_divisor = value.as_time().expect("bad value for general_frequency_divisor"),
 		);
 		let seed=seed.expect("There were no random_seed");
 		let warmup=warmup.expect("There were no warmup");
@@ -952,7 +951,7 @@ impl<'a> Simulation<'a>
 							{
 								//brouter.add_pending_event();
 								//self.event_queue.enqueue_end(Event::Generic(brouter.as_eventful().upgrade().expect("missing router")),0);
-								self.event_queue.enqueue(brouter.schedule(0));
+								self.event_queue.enqueue(brouter.schedule(self.shared.cycle,0));
 							}
 							match previous
 							{
@@ -1003,7 +1002,7 @@ impl<'a> Simulation<'a>
 						{
 							//brouter.add_pending_event();
 							//self.event_queue.enqueue_end(Event::Generic(brouter.as_eventful().upgrade().expect("missing router")),0);
-							self.event_queue.enqueue(brouter.schedule(0));
+							self.event_queue.enqueue(brouter.schedule(self.shared.cycle,0));
 						}
 					},
 					Location::ServerPort(server) => self.shared.network.servers[server].router_status.acknowledge(ack_message),
@@ -1245,8 +1244,8 @@ impl<'a> Simulation<'a>
 		let average_link_utilization = total_arrivals as f64 / cycles as f64 / total_links as f64;
 		let maximum_arrivals:usize = self.statistics.link_statistics.iter().map(|rls|rls.iter().map(|ls|ls.phit_arrivals).max().unwrap()).max().unwrap();
 		let maximum_link_utilization = maximum_arrivals as f64 / cycles as f64;
-		let server_average_cycle_last_created_phit : f64 = (self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).sum::<usize>() as f64)/(self.shared.network.servers.len() as f64);
-		let server_average_cycle_last_consumed_message : f64 = (self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).sum::<usize>() as f64)/(self.shared.network.servers.len() as f64);
+		let server_average_cycle_last_created_phit : f64 = (self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).sum::<Time>() as f64)/(self.shared.network.servers.len() as f64);
+		let server_average_cycle_last_consumed_message : f64 = (self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).sum::<Time>() as f64)/(self.shared.network.servers.len() as f64);
 		let server_average_missed_generations : f64 = (self.shared.network.servers.iter().map(|s|s.statistics.current_measurement.missed_generations).sum::<usize>() as f64)/(self.shared.network.servers.len() as f64);
 		let servers_with_missed_generations : usize = self.shared.network.servers.iter().map(|s|if s.statistics.current_measurement.missed_generations > 0 {1} else {0}).sum::<usize>();
 		let virtual_channel_usage: Vec<_> =measurement.virtual_channel_usage.iter().map(|&count|
@@ -1353,8 +1352,8 @@ impl<'a> Simulation<'a>
 			let mut servers_injected_load : Vec<f64> = self.shared.network.servers.iter().map(|s|s.statistics.current_measurement.created_phits as f64/cycles as f64).collect();
 			let mut servers_accepted_load : Vec<f64> = self.shared.network.servers.iter().map(|s|s.statistics.current_measurement.consumed_phits as f64/cycles as f64).collect();
 			let mut servers_average_message_delay : Vec<f64> = self.shared.network.servers.iter().map(|s|s.statistics.current_measurement.total_message_delay as f64/s.statistics.current_measurement.consumed_messages as f64).collect();
-			let mut servers_cycle_last_created_phit : Vec<usize> = self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).collect();
-			let mut servers_cycle_last_consumed_message : Vec<usize> = self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).collect();
+			let mut servers_cycle_last_created_phit : Vec<Time> = self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).collect();
+			let mut servers_cycle_last_consumed_message : Vec<Time> = self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).collect();
 			let mut servers_missed_generations : Vec<usize> = self.shared.network.servers.iter().map(|s|s.statistics.current_measurement.missed_generations).collect();
 			//XXX There are more efficient ways to find percentiles than to sort them, but should not be notable in any case. See https://en.wikipedia.org/wiki/Selection_algorithm
 			servers_injected_load.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
@@ -1385,9 +1384,9 @@ impl<'a> Simulation<'a>
 		}
 		if !self.statistics.packet_percentiles.is_empty()
 		{
-			let mut packets_delay : Vec<usize> = self.statistics.packet_statistics.iter().map(|ps|ps.delay).collect();
+			let mut packets_delay : Vec<Time> = self.statistics.packet_statistics.iter().map(|ps|ps.delay).collect();
 			let mut packets_hops : Vec<usize> = self.statistics.packet_statistics.iter().map(|ps|ps.hops).collect();
-			let mut packets_consumed_cycle: Vec<usize> = self.statistics.packet_statistics.iter().map(|ps|ps.consumed_cycle).collect();
+			let mut packets_consumed_cycle: Vec<Time> = self.statistics.packet_statistics.iter().map(|ps|ps.consumed_cycle).collect();
 			packets_delay.sort_unstable();
 			packets_hops.sort_unstable();
 			packets_consumed_cycle.sort_unstable();

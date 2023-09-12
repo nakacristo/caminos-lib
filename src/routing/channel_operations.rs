@@ -57,11 +57,11 @@ impl Routing for ChannelsPerHop
 	{
 		self.routing.performed_request(requested,routing_info,topology,current_router,target_router,target_server,num_virtual_channels,rng);
 	}
-	fn statistics(&self, cycle:usize) -> Option<ConfigurationValue>
+	fn statistics(&self, cycle:Time) -> Option<ConfigurationValue>
 	{
 		self.routing.statistics(cycle)
 	}
-	fn reset_statistics(&mut self, next_cycle:usize)
+	fn reset_statistics(&mut self, next_cycle:Time)
 	{
 		self.routing.reset_statistics(next_cycle)
 	}
@@ -154,11 +154,11 @@ impl Routing for ChannelsPerHopPerLinkClass
 	{
 		self.routing.performed_request(requested,&routing_info.borrow().meta.as_ref().unwrap()[0],topology,current_router,target_router,target_server,num_virtual_channels,rng);
 	}
-	fn statistics(&self, cycle:usize) -> Option<ConfigurationValue>
+	fn statistics(&self, cycle:Time) -> Option<ConfigurationValue>
 	{
 		self.routing.statistics(cycle)
 	}
-	fn reset_statistics(&mut self, next_cycle:usize)
+	fn reset_statistics(&mut self, next_cycle:Time)
 	{
 		self.routing.reset_statistics(next_cycle)
 	}
@@ -258,11 +258,11 @@ impl Routing for AscendantChannelsWithLinkClass
 	{
 		self.routing.performed_request(requested,&routing_info.borrow().meta.as_ref().unwrap()[0],topology,current_router,target_router,target_server,num_virtual_channels,rng);
 	}
-	fn statistics(&self, cycle:usize) -> Option<ConfigurationValue>
+	fn statistics(&self, cycle:Time) -> Option<ConfigurationValue>
 	{
 		self.routing.statistics(cycle)
 	}
-	fn reset_statistics(&mut self, next_cycle:usize)
+	fn reset_statistics(&mut self, next_cycle:Time)
 	{
 		self.routing.reset_statistics(next_cycle)
 	}
@@ -335,11 +335,11 @@ impl Routing for ChannelMap
 	{
 		self.routing.performed_request(requested,routing_info,topology,current_router,target_router,target_server,self.map.len(),rng);
 	}
-	fn statistics(&self, cycle:usize) -> Option<ConfigurationValue>
+	fn statistics(&self, cycle:Time) -> Option<ConfigurationValue>
 	{
 		self.routing.statistics(cycle)
 	}
-	fn reset_statistics(&mut self, next_cycle:usize)
+	fn reset_statistics(&mut self, next_cycle:Time)
 	{
 		self.routing.reset_statistics(next_cycle)
 	}

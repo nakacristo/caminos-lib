@@ -302,7 +302,7 @@ impl Routing for SumRouting
 		//	routing.performed_request(requested,&meta[s],topology,current_router,target_server,num_virtual_channels,rng);
 		//}
 	}
-	fn statistics(&self, cycle:usize) -> Option<ConfigurationValue>
+	fn statistics(&self, cycle:Time) -> Option<ConfigurationValue>
 	{
 		if self.enabled_statistics {
 			let tracked_hops = self.tracked_hops.borrow();
@@ -323,7 +323,7 @@ impl Routing for SumRouting
 			None
 		}
 	}
-	fn reset_statistics(&mut self, _next_cycle:usize)
+	fn reset_statistics(&mut self, _next_cycle:Time)
 	{
 	}
 }

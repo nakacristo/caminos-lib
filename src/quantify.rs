@@ -127,6 +127,7 @@ macro_rules! quantifiable_simple
 quantifiable_simple!(bool);
 quantifiable_simple!(u8);
 quantifiable_simple!(i32);
+quantifiable_simple!(u64);
 quantifiable_simple!(usize);
 quantifiable_simple!(String);
 //impl Quantifiable for usize

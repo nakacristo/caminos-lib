@@ -218,7 +218,7 @@ impl Routing for Polarized
 	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 	}
-	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	fn statistics(&self, _cycle:Time) -> Option<ConfigurationValue>
 	{
 		if self.enable_statistics{
 			let mut content = Vec::with_capacity(2);
@@ -241,7 +241,7 @@ impl Routing for Polarized
 			None
 		}
 	}
-	fn reset_statistics(&mut self, _next_cycle:usize)
+	fn reset_statistics(&mut self, _next_cycle:Time)
 	{
 		if self.enable_statistics
 		{

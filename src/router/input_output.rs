@@ -10,7 +10,7 @@ use crate::router::RouterBuilderArgument;
 use crate::topology::{Location,Topology};
 use crate::routing::CandidateEgress;
 use crate::policies::{RequestInfo,VirtualChannelPolicy,new_virtual_channel_policy,VCPolicyBuilderArgument};
-use crate::event::{Event,Eventful,EventGeneration,CyclePosition};
+use crate::event::{Event,Eventful,EventGeneration,CyclePosition,Time};
 use crate::{Phit,SimulationShared,SimulationMut};
 use crate::quantify::Quantifiable;
 use crate::match_object_panic;
@@ -32,7 +32,7 @@ pub struct InputOutput
 	///If there is an event pending
 	event_pending: bool,
 	///The cycle number of the last time InputOutput::process was called. Only for debugging/assertion purposes.
-	last_process_at_cycle: Option<usize>,
+	last_process_at_cycle: Option<Time>,
 	///Its index in the topology
 	router_index: usize,
 	///The mechanism to select virtual channels
@@ -44,7 +44,7 @@ pub struct InputOutput
 	///Size of each input buffer.
 	buffer_size: usize,
 	///Delay in cycles to traverse the crossbar. In pipeline.
-	crossbar_delay: usize,
+	crossbar_delay: Time,
 	///Give priority to in-transit packets over packets in injection queues.
 	intransit_priority: bool,
 	///To allow to request a port even if some other packet is being transmitted throught it to a different virtual channel (as FSIN does).
@@ -85,7 +85,7 @@ pub struct InputOutput
 	maximum_packet_size: usize,
 	///Divisor of the cycles in which the crossbar operates.
 	///Without other overrides, the quotient `general_frequency_divisor/crossbar_frequency_divisor` is the internal speedup.
-	crossbar_frequency_divisor: usize,
+	crossbar_frequency_divisor: Time,
 
 	//allocator:
 	///The allocator for the croosbar.
@@ -95,7 +95,7 @@ pub struct InputOutput
 
 	//statistics:
 	///The first cycle included in the statistics.
-	statistics_begin_cycle: usize,
+	statistics_begin_cycle: Time,
 	///Accumulated over time, averaged per port.
 	statistics_output_buffer_occupation_per_vc: Vec<f64>,
 	///Accumulated over time, averaged per port.
@@ -143,7 +143,7 @@ impl Router for InputOutput
 	{
 		Some(self.router_index)
 	}
-	fn aggregate_statistics(&self, statistics:Option<ConfigurationValue>, router_index:usize, total_routers:usize, cycle:usize) -> Option<ConfigurationValue>
+	fn aggregate_statistics(&self, statistics:Option<ConfigurationValue>, router_index:usize, total_routers:usize, cycle:Time) -> Option<ConfigurationValue>
 	{
 		//let n_ports = self.selected_input.len();
 		//let n_vcs = self.selected_input[0].len();
@@ -265,7 +265,7 @@ impl Router for InputOutput
 		Some(ConfigurationValue::Object(String::from("InputOutput"),result_content))
 	}
 
-	fn reset_statistics(&mut self, next_cycle:usize)
+	fn reset_statistics(&mut self, next_cycle:Time)
 	{
 		self.statistics_begin_cycle=next_cycle;
 		for x in self.statistics_output_buffer_occupation_per_vc.iter_mut()
@@ -320,7 +320,7 @@ impl InputOutput
 		let mut transmission_mechanism=None;
 		let mut to_server_mechanism=None;
 		let mut from_server_mechanism=None;
-		let mut crossbar_delay=0usize;
+		let mut crossbar_delay: Time =0;
 		let mut neglect_busy_output = false;
 		let mut crossbar_frequency_divisor = general_frequency_divisor;
 		match_object_panic!(cv,["InputOutput","InputOutputMonocycle"],value,
@@ -341,7 +341,7 @@ impl InputOutput
 				})).collect()),
 				_ => panic!("bad value for permute"),
 			}
-			"crossbar_delay" | "delay" => crossbar_delay = value.as_usize().expect("bad value for crossbar_delay"),
+			"crossbar_delay" | "delay" => crossbar_delay = value.as_time().expect("bad value for crossbar_delay"),
 			"buffer_size" => match value
 			{
 				&ConfigurationValue::Number(f) => buffer_size=Some(f as usize),
@@ -399,7 +399,7 @@ impl InputOutput
 				_ => panic!("bad value for from_server_mechanism"),
 			},
 			"allocator" => allocator_value=Some(value.clone()),
-			"crossbar_frequency_divisor" => crossbar_frequency_divisor = value.as_usize().expect("bad value for crossbar_frequency_divisor"),
+			"crossbar_frequency_divisor" => crossbar_frequency_divisor = value.as_time().expect("bad value for crossbar_frequency_divisor"),
 		);
 		//let sides=sides.expect("There were no sides");
 		let virtual_channels=virtual_channels.expect("There were no virtual_channels");
@@ -549,6 +549,9 @@ impl Eventful for InputOutput
 			//	println!("INFO: {} cycles since last processing router {}, cycle={}",simulation.cycle-*last,self.router_index,simulation.cycle);
 			//}
 		}
+		if cycles_span>=2 {
+			println!("Processing router {index} at cycle {cycle} span={cycles_span}.",cycle=simulation.cycle,index=self.router_index);
+		}
 		self.last_process_at_cycle = Some(simulation.cycle);
 		let is_crossbar_cycle : bool = (simulation.cycle%self.crossbar_frequency_divisor) == 0;
 		let mut request:Vec<VCARequest>=vec![];
@@ -560,14 +563,14 @@ impl Eventful for InputOutput
 		{
 			for vc in 0..amount_virtual_channels
 			{
-				self.statistics_reception_space_occupation_per_vc[vc]+=(port_space.occupied_dedicated_space(vc).unwrap_or(0)*cycles_span) as f64 / self.reception_port_space.len() as f64;
+				self.statistics_reception_space_occupation_per_vc[vc]+=(port_space.occupied_dedicated_space(vc).unwrap_or(0)*cycles_span as usize) as f64 / self.reception_port_space.len() as f64;
 			}
 		}
 		for output_port in self.output_buffers.iter()
 		{
 			for (vc,buffer) in output_port.iter().enumerate()
 			{
-				self.statistics_output_buffer_occupation_per_vc[vc]+=(buffer.len()*cycles_span) as f64 / self.output_buffers.len() as f64;
+				self.statistics_output_buffer_occupation_per_vc[vc]+=(buffer.len()*cycles_span as usize) as f64 / self.output_buffers.len() as f64;
 			}
 		}
 
@@ -608,7 +611,7 @@ impl Eventful for InputOutput
 			}
 			is_busy
 		}).collect();
-		let port_last_transmission:Option<Vec<usize>> = if self.virtual_channel_policies.iter().any(|policy|policy.need_port_last_transmission())
+		let port_last_transmission:Option<Vec<Time>> = if self.virtual_channel_policies.iter().any(|policy|policy.need_port_last_transmission())
 		{
 			Some(self.transmission_port_status.iter().map(|ref p|
 				//p.iter().map(|ref vp|vp.last_transmission).max().unwrap()
@@ -1052,9 +1055,9 @@ impl Eventful for InputOutput
 			}
 		}
 		//TODO: what to do with probabilistic requests???
-		if undecided_channels>0 || moved_phits>0 || events.len()>0 || request.len()>0
+		//if undecided_channels>0 || moved_phits>0 || events.len()>0 || request.len()>0
 		//if undecided_channels>0 || moved_phits>0 || events.len()>0
-		//if true
+		if true
 		{
 			//Repeat at next cycle
 			//events.push(EventGeneration{
@@ -1062,7 +1065,7 @@ impl Eventful for InputOutput
 			//	position:CyclePosition::End,
 			//	event:Event::Generic(self.as_eventful().upgrade().expect("missing router")),
 			//});
-			events.push(self.schedule(1));
+			events.push(self.schedule(simulation.cycle,1));
 		}
 		else
 		{
@@ -1086,7 +1089,7 @@ impl Eventful for InputOutput
 	{
 		self.self_rc.clone()
 	}
-	fn schedule(&mut self, delay:usize) -> EventGeneration
+	fn schedule(&mut self, _current_cycle:Time, delay:Time) -> EventGeneration
 	{
 		// We schedule every cycle.
 		// Some cycles may be just crossbar or just link trasmission.

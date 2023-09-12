@@ -826,11 +826,11 @@ impl Routing for DOR
 	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 	}
-	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	fn statistics(&self, _cycle:Time) -> Option<ConfigurationValue>
 	{
 		return None;
 	}
-	fn reset_statistics(&mut self, _next_cycle:usize)
+	fn reset_statistics(&mut self, _next_cycle:Time)
 	{
 	}
 }
@@ -1203,11 +1203,11 @@ impl Routing for ValiantDOR
 	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 	}
-	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	fn statistics(&self, _cycle:Time) -> Option<ConfigurationValue>
 	{
 		return None;
 	}
-	fn reset_statistics(&mut self, _next_cycle:usize)
+	fn reset_statistics(&mut self, _next_cycle:Time)
 	{
 	}
 }
@@ -1418,11 +1418,11 @@ impl Routing for O1TURN
 	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 	}
-	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	fn statistics(&self, _cycle:Time) -> Option<ConfigurationValue>
 	{
 		return None;
 	}
-	fn reset_statistics(&mut self, _next_cycle:usize)
+	fn reset_statistics(&mut self, _next_cycle:Time)
 	{
 	}
 }
@@ -1631,11 +1631,11 @@ impl Routing for OmniDimensionalDeroute
 	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 	}
-	fn statistics(&self, _cycle:usize) -> Option<ConfigurationValue>
+	fn statistics(&self, _cycle:Time) -> Option<ConfigurationValue>
 	{
 		return None;
 	}
-	fn reset_statistics(&mut self, _next_cycle:usize)
+	fn reset_statistics(&mut self, _next_cycle:Time)
 	{
 	}
 }

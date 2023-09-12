@@ -2,6 +2,9 @@
 
 ## next [0.6.2]
 
+### 2023-09-12
+BREAKING CHANGE: All cycles are now represented by a `Time` alias of `u64`; instead of `usize`.
+
 ### 2023-09-11
 Allow different frequencies in links and the InputOuput router.
 The tentative configuration parameter `transference_speed` in links have been removed in favor of `frequency_divisor`, now functional.

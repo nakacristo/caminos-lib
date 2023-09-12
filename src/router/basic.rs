@@ -4,13 +4,14 @@ use std::rc::{Rc,Weak};
 use std::ops::{Deref};
 use std::mem::{size_of};
 use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom};
+use std::convert::TryInto;
 
 use super::{Router,AbstractTransmissionMechanism,StatusAtEmissor,SpaceAtReceptor,AugmentedBuffer,AcknowledgeMessage,RouterBuilderArgument,new_transmission_mechanism,TransmissionMechanismBuilderArgument};
 use crate::config_parser::ConfigurationValue;
 use crate::topology::{Location,Topology};
 use crate::routing::CandidateEgress;
 use crate::policies::{RequestInfo,VirtualChannelPolicy,new_virtual_channel_policy,VCPolicyBuilderArgument};
-use crate::event::{Event,Eventful,EventGeneration,CyclePosition};
+use crate::event::{Event,Eventful,EventGeneration,CyclePosition,Time};
 use crate::{Phit,Packet,SimulationShared,SimulationMut};
 use crate::quantify::Quantifiable;
 use crate::packet::PacketRef;
@@ -36,7 +37,7 @@ pub struct Basic
 	///If there is an event pending
 	event_pending: bool,
 	///The cycle number of the last time Basic::process was called. Only for debugging/assertion purposes.
-	last_process_at_cycle: Option<usize>,
+	last_process_at_cycle: Option<Time>,
 	///Its index in the topology
 	router_index: usize,
 	///The mechanism to select virtual channels
@@ -89,7 +90,7 @@ pub struct Basic
 	maximum_packet_size: usize,
 
 	//statistics:
-	statistics_temporal_step: usize,
+	statistics_temporal_step: Time,
 	principal_measurement: BasicRouterMeasurement,
 	temporal_statistics: Vec<BasicRouterMeasurement>,
 }
@@ -98,7 +99,7 @@ pub struct Basic
 pub struct BasicRouterMeasurement
 {
 	///The first cycle included in the statistics.
-	pub begin_cycle: usize,
+	pub begin_cycle: Time,
 	///Accumulated over time, averaged per port.
 	pub output_buffer_occupation_per_vc: Vec<f64>,
 	///Accumulated over time, averaged per port.
@@ -176,7 +177,7 @@ impl Router for Basic
 	{
 		Some(self.router_index)
 	}
-	fn aggregate_statistics(&self, statistics:Option<ConfigurationValue>, router_index:usize, total_routers:usize, cycle:usize) -> Option<ConfigurationValue>
+	fn aggregate_statistics(&self, statistics:Option<ConfigurationValue>, router_index:usize, total_routers:usize, cycle:Time) -> Option<ConfigurationValue>
 	{
 		//let n_ports = self.selected_input.len();
 		//let n_vcs = self.selected_input[0].len();
@@ -383,7 +384,7 @@ impl Router for Basic
 		}
 		Some(ConfigurationValue::Object(String::from("Basic"),result_content))
 	}
-	fn reset_statistics(&mut self, next_cycle:usize)
+	fn reset_statistics(&mut self, next_cycle:Time)
 	{
 		self.principal_measurement.begin_cycle=next_cycle;
 		for x in self.principal_measurement.output_buffer_occupation_per_vc.iter_mut()
@@ -673,21 +674,21 @@ impl Basic
 			available_internal_space >= necessary_credits
 		}
 	}
-	fn get_current_temporal_measurement(&mut self, cycle:usize) -> Option<usize>
+	fn get_current_temporal_measurement(&mut self, cycle:Time) -> Option<usize>
 	{
 		if self.statistics_temporal_step>0
 		{
-			let index = cycle / self.statistics_temporal_step;
+			let index : usize = (cycle / self.statistics_temporal_step).try_into().unwrap();
 			if self.temporal_statistics.len() <= index
 			{
 				let vcs=self.num_virtual_channels();
 				self.temporal_statistics.resize_with(index+1,||BasicRouterMeasurement::new(vcs));
-				self.temporal_statistics[index].begin_cycle = index*self.statistics_temporal_step;
+				self.temporal_statistics[index].begin_cycle = index as Time*self.statistics_temporal_step;
 			}
 			Some(index)
 		} else { None }
 	}
-	fn gather_cycle_statistics(&mut self, cycle:usize, cycles_span:usize)
+	fn gather_cycle_statistics(&mut self, cycle:Time, cycles_span:Time)
 	{
 		let amount_virtual_channels=self.num_virtual_channels();
 		let current_temporal_index = self.get_current_temporal_measurement(cycle);
@@ -696,7 +697,7 @@ impl Basic
 			for vc in 0..amount_virtual_channels
 			{
 				//self.principal_measurement.reception_space_occupation_per_vc[vc]+=(port_space.occupied_dedicated_space(vc).unwrap_or(0)*cycles_span) as f64 / self.reception_port_space.len() as f64;
-				let increment = (port_space.occupied_dedicated_space(vc).unwrap_or(0)*cycles_span) as f64 / self.reception_port_space.len() as f64;
+				let increment = (port_space.occupied_dedicated_space(vc).unwrap_or(0)*cycles_span as usize) as f64 / self.reception_port_space.len() as f64;
 				self.principal_measurement.reception_space_occupation_per_vc[vc]+= increment;
 				if let Some(mindex)=current_temporal_index
 				{
@@ -710,7 +711,7 @@ impl Basic
 			for (vc,buffer) in output_port.iter().enumerate()
 			{
 				//self.principal_measurement.output_buffer_occupation_per_vc[vc]+=(buffer.len()*cycles_span) as f64 / self.output_buffers.len() as f64;
-				let increment = (buffer.len()*cycles_span) as f64 / self.output_buffers.len() as f64;
+				let increment = (buffer.len()*cycles_span as usize) as f64 / self.output_buffers.len() as f64;
 				self.principal_measurement.output_buffer_occupation_per_vc[vc]+= increment;
 				if let Some(mindex)=current_temporal_index
 				{
@@ -793,7 +794,7 @@ impl Eventful for Basic
 			}
 			is_busy
 		}).collect();
-		let port_last_transmission:Option<Vec<usize>> = if self.virtual_channel_policies.iter().any(|policy|policy.need_port_last_transmission())
+		let port_last_transmission:Option<Vec<Time>> = if self.virtual_channel_policies.iter().any(|policy|policy.need_port_last_transmission())
 		{
 			Some(self.transmission_port_status.iter().map(|p|
 				//p.iter().map(|ref vp|vp.last_transmission).max().unwrap()

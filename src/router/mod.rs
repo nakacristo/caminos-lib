@@ -16,7 +16,7 @@ use self::basic::Basic;
 use self::input_output::InputOutput;
 use crate::config_parser::ConfigurationValue;
 use crate::topology::{Topology};
-use crate::event::{Eventful};
+use crate::event::{Eventful,Time};
 use crate::quantify::Quantifiable;
 use crate::error::{Error,SourceLocation};
 
@@ -59,9 +59,9 @@ pub trait Router: Eventful + Quantifiable
 	///Each router receives the aggregate of the statistics of the previous routers.
 	///In the frist router we have `statistics=None` and `router_index=0`.
 	///In the last router we have `router_index+1==total_routers==topology.routers.len()`, that may be used for final normalizations.
-	fn aggregate_statistics(&self, statistics:Option<ConfigurationValue>, router_index:usize, total_routers:usize, cycle:usize) -> Option<ConfigurationValue>;
+	fn aggregate_statistics(&self, statistics:Option<ConfigurationValue>, router_index:usize, total_routers:usize, cycle:Time) -> Option<ConfigurationValue>;
 	///Clears all collected statistics
-	fn reset_statistics(&mut self,next_cycle:usize);
+	fn reset_statistics(&mut self,next_cycle:Time);
 	///Build a status for an element that sends packets directly to the router ports.
 	///This is intended to build the status of the servers.
 	fn build_emissor_status(&self, port:usize, topology:&dyn Topology) -> Box<dyn StatusAtEmissor+'static>;
@@ -83,10 +83,10 @@ pub struct RouterBuilderArgument<'a>
 	///The corresponding value of the `SimulationShared` struct.
 	///Available to the router as a default value.
 	///We do not directly receive a `SimulationShared` because it cannot have been built, as it would contain the routers.
-	pub general_frequency_divisor: usize,
+	pub general_frequency_divisor: Time,
 	///The corresponding value of the `Statistics` struct.
 	///Available to the router for the case it want to use the same period.
-	pub statistics_temporal_step: usize,
+	pub statistics_temporal_step: Time,
 	///The random number generator.
 	pub rng: &'a mut StdRng,
 }
@@ -234,7 +234,7 @@ pub trait StatusAtEmissor : Quantifiable
 	///Receive a phit acknowledge from the receiving endpoint.
 	fn acknowledge(&mut self, message:AcknowledgeMessage);
 	///Keep track of a outcoming phit.
-	fn notify_outcoming_phit(&mut self, virtual_channel: usize, cycle:usize);
+	fn notify_outcoming_phit(&mut self, virtual_channel: usize, cycle:Time);
 	///Check if we can transmit a given phit.
 	fn can_transmit(&self, phit:&Rc<Phit>, virtual_channel:usize)->bool;
 	///Check if we can surely transmit and store the whole remaining of the packet.
@@ -242,7 +242,7 @@ pub trait StatusAtEmissor : Quantifiable
 	///Consult available space. This includes dedicated and shared space.
 	fn known_available_space_for_virtual_channel(&self,virtual_channel:usize)->Option<usize>;
 	///Get timestamp of last transmission.
-	fn get_last_transmission(&self)->usize;
+	fn get_last_transmission(&self)->Time;
 }
 
 ///A structure to store incoming phits.
@@ -382,7 +382,7 @@ struct CreditCounterVector
 	///The known available space in the next router by the given index (usually for virtual channel).
 	pub neighbour_credits: Vec<usize>,
 	///Cycle in which the last phit was trasmitted out of this port.
-	last_transmission:usize,
+	last_transmission:Time,
 	///Credits required in the next router's virtual port to begin the transmission
 	flit_size: usize,
 }
@@ -400,7 +400,7 @@ impl StatusAtEmissor for CreditCounterVector
 		self.neighbour_credits[message.virtual_channel.expect("there is no virtual channel in the message")]+=1;
 	}
 	
-	fn notify_outcoming_phit(&mut self, virtual_channel: usize, cycle:usize)
+	fn notify_outcoming_phit(&mut self, virtual_channel: usize, cycle:Time)
 	{
 		self.neighbour_credits[virtual_channel]-=1;
 		self.last_transmission=cycle;
@@ -427,7 +427,7 @@ impl StatusAtEmissor for CreditCounterVector
 		Some(self.neighbour_credits[virtual_channel])
 	}
 	
-	fn get_last_transmission(&self)->usize
+	fn get_last_transmission(&self)->Time
 	{
 		self.last_transmission
 	}
@@ -598,7 +598,7 @@ impl StatusAtEmissor for EmptyStatus
 	{
 	}
 
-	fn notify_outcoming_phit(&mut self, _virtual_channel: usize, _cycle:usize)
+	fn notify_outcoming_phit(&mut self, _virtual_channel: usize, _cycle:Time)
 	{
 	}
 
@@ -618,7 +618,7 @@ impl StatusAtEmissor for EmptyStatus
 		Some(1000)
 	}
 
-	fn get_last_transmission(&self)->usize
+	fn get_last_transmission(&self)->Time
 	{
 		//FIXME: this is not true, but is only used for servers...
 		0
@@ -718,7 +718,7 @@ impl StatusAtEmissor for StatusAtServer
 		self.available_size = self.available_size.max(new_available_size);
 	}
 
-	fn notify_outcoming_phit(&mut self, _virtual_channel: usize, _cycle:usize)
+	fn notify_outcoming_phit(&mut self, _virtual_channel: usize, _cycle:Time)
 	{
 		self.available_size-=1;
 		//if self.available_size <= 16 { dbg!("notify_outcoming_phit",self.available_size); }
@@ -747,7 +747,7 @@ impl StatusAtEmissor for StatusAtServer
 		Some(self.available_size)
 	}
 
-	fn get_last_transmission(&self)->usize
+	fn get_last_transmission(&self)->Time
 	{
 		unimplemented!()
 	}

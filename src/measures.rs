@@ -29,8 +29,9 @@ the message was created until the cycle in its consumption was completed. Note t
 
 
 use std::path::Path;
+use std::convert::TryInto;
 
-use crate::{Quantifiable,Packet,Phit,Network,Topology,ConfigurationValue,Expr};
+use crate::{Quantifiable,Packet,Phit,Network,Topology,ConfigurationValue,Expr,Time};
 use crate::config;
 
 #[derive(Clone,Quantifiable)]
@@ -38,11 +39,11 @@ pub struct ServerStatistics
 {
 	pub current_measurement: ServerMeasurement,
 	///The last cycle in which this server created a phit and sent it to a router. Or 0
-	pub cycle_last_created_phit: usize,
+	pub cycle_last_created_phit: Time,
 	///The last cycle in that the last phit of a message has been consumed by this server. Or 0.
-	pub cycle_last_consumed_message: usize,
+	pub cycle_last_consumed_message: Time,
 	///If non-zero then creates statistics for intervals of the given number of cycles.
-	pub temporal_step: usize,
+	pub temporal_step: Time,
 	///The periodic measurements requested by non-zero statistics_temporal_step.
 	pub temporal_statistics: Vec<ServerMeasurement>,
 }
@@ -51,18 +52,18 @@ pub struct ServerStatistics
 pub struct ServerMeasurement
 {
 	///The number of the first cycle included in the statistics.
-	pub begin_cycle: usize,
+	pub begin_cycle: Time,
 	pub created_phits: usize,
 	pub consumed_phits: usize,
 	pub consumed_messages: usize,
-	pub total_message_delay: usize,
+	pub total_message_delay: Time,
 	///Number of times the traffic returned true from `should_generate`, but it could not be stored.
 	pub missed_generations: usize,
 }
 
 impl ServerStatistics
 {
-	pub fn new(temporal_step:usize)->ServerStatistics
+	pub fn new(temporal_step:Time)->ServerStatistics
 	{
 		ServerStatistics{
 			current_measurement: ServerMeasurement::default(),
@@ -72,13 +73,13 @@ impl ServerStatistics
 			temporal_statistics: vec![],
 		}
 	}
-	fn reset(&mut self, next_cycle:usize)
+	fn reset(&mut self, next_cycle: Time)
 	{
 		self.current_measurement=ServerMeasurement::default();
 		self.current_measurement.begin_cycle=next_cycle;
 	}
 	/// Called each time a server consumes a phit.
-	pub fn track_consumed_phit(&mut self, cycle:usize)
+	pub fn track_consumed_phit(&mut self, cycle:Time)
 	{
 		self.current_measurement.consumed_phits+=1;
 		if let Some(m) = self.current_temporal_measurement(cycle)
@@ -87,7 +88,7 @@ impl ServerStatistics
 		}
 	}
 	/// Called when a server consumes the last phit from a message.
-	pub fn track_consumed_message(&mut self, cycle:usize)
+	pub fn track_consumed_message(&mut self, cycle: Time)
 	{
 		self.cycle_last_consumed_message = cycle;
 		self.current_measurement.consumed_messages+=1;
@@ -97,7 +98,7 @@ impl ServerStatistics
 		}
 	}
 	/// Called each time the server creates a phit.
-	pub fn track_created_phit(&mut self, cycle:usize)
+	pub fn track_created_phit(&mut self, cycle: Time)
 	{
 		self.current_measurement.created_phits+=1;
 		self.cycle_last_created_phit = cycle;
@@ -108,7 +109,7 @@ impl ServerStatistics
 	}
 	/// Called when a server consumes the last phit from a message.
 	/// XXX: Perhaps this should be part of `track_consumed_message`.
-	pub fn track_message_delay(&mut self, delay:usize, cycle:usize)
+	pub fn track_message_delay(&mut self, delay:Time, cycle: Time)
 	{
 		self.current_measurement.total_message_delay+= delay;
 		if let Some(m) = self.current_temporal_measurement(cycle)
@@ -117,7 +118,7 @@ impl ServerStatistics
 		}
 	}
 	/// Called when the server should have generated a new message but it did not have space in queue.
-	pub fn track_missed_generation(&mut self, cycle:usize)
+	pub fn track_missed_generation(&mut self, cycle: Time)
 	{
 		self.current_measurement.missed_generations+=1;
 		if let Some(m) = self.current_temporal_measurement(cycle)
@@ -125,15 +126,15 @@ impl ServerStatistics
 			m.missed_generations+=1;
 		}
 	}
-	pub fn current_temporal_measurement(&mut self, cycle:usize) -> Option<&mut ServerMeasurement>
+	pub fn current_temporal_measurement(&mut self, cycle: Time) -> Option<&mut ServerMeasurement>
 	{
 		if self.temporal_step>0
 		{
-			let index = cycle / self.temporal_step;
+			let index : usize = (cycle / self.temporal_step).try_into().unwrap();
 			if self.temporal_statistics.len()<=index
 			{
 				self.temporal_statistics.resize_with(index+1,Default::default);
-				self.temporal_statistics[index].begin_cycle = index*self.temporal_step;
+				self.temporal_statistics[index].begin_cycle = index as Time * self.temporal_step;
 			}
 			Some(&mut self.temporal_statistics[index])
 		} else { None }
@@ -167,7 +168,7 @@ impl LinkStatistics
 pub struct StatisticMeasurement
 {
 	///The number of the first cycle included in the statistics.
-	pub begin_cycle: usize,
+	pub begin_cycle: Time,
 	///The number of phits that servers have sent to routers.
 	pub created_phits: usize,
 	///Number of phits that have reached their destination server (called consume).
@@ -177,9 +178,9 @@ pub struct StatisticMeasurement
 	///Number of messages for which all their phits have beeen consumed.
 	pub consumed_messages: usize,
 	///Accumulated delay of al messages. From message creation (in traffic.rs) to server consumption.
-	pub total_message_delay: usize,
+	pub total_message_delay: Time,
 	///Accumulated network delay for all packets. From the leading phit being inserted into a router to the consumption of the tail phit.
-	pub total_packet_network_delay: usize,
+	pub total_packet_network_delay: Time,
 	///Accumulated count of hops made for all consumed packets.
 	pub total_packet_hops: usize,
 	///Count of consumed packets indexed by the number of hops it made.
@@ -251,11 +252,11 @@ pub fn jain<I:Iterator<Item=f64>>(iter:I) -> f64
 pub struct StatisticPacketMeasurement
 {
 	///The cycle in which the packet was consumed, including its tail phit.
-	pub consumed_cycle: usize,
+	pub consumed_cycle: Time,
 	///The number of router-to-router links the packet has traversed.
 	pub hops: usize,
 	///The number of cycles since the packet was created until it was consumed.
-	pub delay: usize,
+	pub delay: Time,
 }
 
 ///All the global statistics captured.
@@ -269,7 +270,7 @@ pub struct Statistics
 	///Specific statistics of the links. Indexed by router and port.
 	pub link_statistics: Vec<Vec<LinkStatistics>>,
 	///If non-zero then creates statistics for intervals of the given number of cycles.
-	pub temporal_step: usize,
+	pub temporal_step: Time,
 	///The periodic measurements requested by non-zero statistics_temporal_step.
 	pub temporal_statistics: Vec<StatisticMeasurement>,
 	///For each percentile `perc` write server statistics for that percentile. This is, the lowest value such that `perc`% of the servers have lower value.
@@ -295,7 +296,7 @@ pub struct Statistics
 
 impl Statistics
 {
-	pub fn new(statistics_temporal_step:usize, server_percentiles: Vec<u8>, packet_percentiles: Vec<u8>, statistics_packet_definitions:Vec<(Vec<Expr>,Vec<Expr>)>, topology: &dyn Topology)->Statistics
+	pub fn new(statistics_temporal_step:Time, server_percentiles: Vec<u8>, packet_percentiles: Vec<u8>, statistics_packet_definitions:Vec<(Vec<Expr>,Vec<Expr>)>, topology: &dyn Topology)->Statistics
 	{
 		let packet_defined_statistics_measurement = vec![ vec![]; statistics_packet_definitions.len() ];
 		Statistics{
@@ -337,7 +338,7 @@ impl Statistics
 		println!("{}",report);
 	}
 	///Print in stdout the current values of the statistical columns indicated to be periodically printed.
-	pub fn print(&self, next_cycle:usize, network:&Network)
+	pub fn print(&self, next_cycle:Time, network:&Network)
 	{
 		//let cycles=next_cycle-self.begin_cycle+1;
 		//let injected_load=self.created_phits as f32/cycles as f32/network.servers.len() as f32;
@@ -349,7 +350,7 @@ impl Statistics
 		println!("{}",report);
 	}
 	///Forgets all captured statistics and began capturing again.
-	pub fn reset(&mut self,next_cycle:usize, network:&mut Network)
+	pub fn reset(&mut self,next_cycle:Time, network:&mut Network)
 	{
 		//self.begin_cycle=next_cycle;
 		//self.created_phits=0;
@@ -378,7 +379,7 @@ impl Statistics
 		}
 	}
 	/// Called each time a server consumes a phit.
-	pub fn track_consumed_phit(&mut self, cycle:usize)
+	pub fn track_consumed_phit(&mut self, cycle: Time)
 	{
 		self.current_measurement.consumed_phits+=1;
 		if let Some(m) = self.current_temporal_measurement(cycle)
@@ -387,7 +388,7 @@ impl Statistics
 		}
 	}
 	/// Called when a server consumes a tail phit.
-	pub fn track_consumed_packet(&mut self, cycle:usize, packet:&Packet)
+	pub fn track_consumed_packet(&mut self, cycle: Time, packet:&Packet)
 	{
 		self.current_measurement.consumed_packets+=1;
 		let network_delay = cycle-*packet.cycle_into_network.borrow();
@@ -458,7 +459,7 @@ impl Statistics
 		}
 	}
 	/// Called when a server consumes the last phit from a message.
-	pub fn track_consumed_message(&mut self, cycle:usize)
+	pub fn track_consumed_message(&mut self, cycle: Time)
 	{
 		self.current_measurement.consumed_messages+=1;
 		if let Some(m) = self.current_temporal_measurement(cycle)
@@ -467,7 +468,7 @@ impl Statistics
 		}
 	}
 	/// Called each time a phit is created.
-	pub fn track_created_phit(&mut self, cycle:usize)
+	pub fn track_created_phit(&mut self, cycle: Time)
 	{
 		self.current_measurement.created_phits+=1;
 		if let Some(m) = self.current_temporal_measurement(cycle)
@@ -477,7 +478,7 @@ impl Statistics
 	}
 	/// Called when a server consumes the last phit from a message.
 	/// XXX: Perhaps this should be part of `track_consumed_message`.
-	pub fn track_message_delay(&mut self, delay:usize, cycle:usize)
+	pub fn track_message_delay(&mut self, delay:Time, cycle: Time)
 	{
 		self.current_measurement.total_message_delay+= delay;
 		if let Some(m) = self.current_temporal_measurement(cycle)
@@ -486,7 +487,7 @@ impl Statistics
 		}
 	}
 	/// Called with a hop from router to router
-	pub fn track_phit_hop(&mut self, phit:&Phit, cycle:usize)
+	pub fn track_phit_hop(&mut self, phit:&Phit, cycle: Time)
 	{
 		let vc:usize = phit.virtual_channel.borrow().unwrap();
 		if self.current_measurement.virtual_channel_usage.len() <= vc
@@ -503,7 +504,7 @@ impl Statistics
 			m.virtual_channel_usage[vc]+=1;
 		}
 	}
-	//fn track_packet_hops(&mut self, hops:usize, cycle:usize)
+	//fn track_packet_hops(&mut self, hops:usize, cycle: Time)
 	//{
 	//	self.current_measurement.total_packet_hops+=hops;
 	//	if self.current_measurement.total_packet_per_hop_count.len() <= hops
@@ -523,15 +524,15 @@ impl Statistics
 	//		//Is total_packet_per_hop_count too much here?
 	//	}
 	//}
-	pub fn current_temporal_measurement(&mut self, cycle:usize) -> Option<&mut StatisticMeasurement>
+	pub fn current_temporal_measurement(&mut self, cycle: Time) -> Option<&mut StatisticMeasurement>
 	{
 		if self.temporal_step>0
 		{
-			let index = cycle / self.temporal_step;
+			let index : usize = (cycle / self.temporal_step).try_into().unwrap();
 			if self.temporal_statistics.len()<=index
 			{
 				self.temporal_statistics.resize_with(index+1,Default::default);
-				self.temporal_statistics[index].begin_cycle = index*self.temporal_step;
+				self.temporal_statistics[index].begin_cycle = index as Time * self.temporal_step;
 			}
 			Some(&mut self.temporal_statistics[index])
 		} else { None }
@@ -598,7 +599,7 @@ impl ReportColumn
 		let base = self.kind.name();
 		format!("{name:width$}",name=base,width=self.width)
 	}
-	fn format(&self, statistics: &Statistics, next_cycle:usize, network:&Network) -> String
+	fn format(&self, statistics: &Statistics, next_cycle: Time, network:&Network) -> String
 	{
 		let cycles=next_cycle-statistics.current_measurement.begin_cycle+1;
 		let value = match self.kind

@@ -17,6 +17,7 @@ use std::cell::RefCell;
 use std::ops::Deref;
 
 use crate::routing::RoutingInfo;
+use crate::event::Time;
 
 ///Minimal unit to be processed by the network.
 ///Not to be confused with flits.
@@ -39,7 +40,7 @@ pub struct PacketExtraInfo
 {
 	pub link_classes: Vec<usize>,
 	pub entry_virtual_channels: Vec<Option<usize>>,
-	pub cycle_per_hop: Vec<usize>,
+	pub cycle_per_hop: Vec<Time>,
 }
 
 ///A portion of a message. They are divided into phits.
@@ -58,7 +59,7 @@ pub struct Packet
 	pub index: usize,
 	///The cycle when the packet has touched the first router. This is, the packet leading phit has been inserted into a router.
 	///We set it to 0 if the packet has not entered the network yet.
-	pub cycle_into_network: RefCell<usize>,
+	pub cycle_into_network: RefCell<Time>,
 	///Extra info tracked for some special statistics.
 	pub extra: RefCell<Option<PacketExtraInfo>>,
 }
@@ -104,7 +105,7 @@ pub struct Message
 	///Number of phits.
 	pub size: usize,
 	///Cycle when the message was created.
-	pub creation_cycle: usize,
+	pub creation_cycle: Time,
 }
 
 impl Phit

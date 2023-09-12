@@ -26,6 +26,7 @@ use ::rand::{rngs::StdRng,Rng,prelude::SliceRandom};
 use crate::config_parser::ConfigurationValue;
 use crate::topology::cartesian::{DOR,O1TURN,ValiantDOR,OmniDimensionalDeroute};
 use crate::topology::{Topology,Location};
+pub use crate::event::Time;
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::{Plugs};
 pub use crate::error::Error;
@@ -38,7 +39,7 @@ pub use self::polarized::Polarized;
 
 pub mod prelude
 {
-	pub use super::{new_routing,Routing,RoutingInfo,RoutingNextCandidates,CandidateEgress,RoutingBuilderArgument,Error};
+	pub use super::{new_routing,Routing,RoutingInfo,RoutingNextCandidates,CandidateEgress,RoutingBuilderArgument,Error,Time};
 }
 
 ///Information stored in the packet for the `Routing` algorithms to operate.
@@ -189,9 +190,9 @@ pub trait Routing : Debug
 	///To be called by the router when one of the candidates is requested.
 	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng) {}
 	///To optionally write routing statistics into the simulation output.
-	fn statistics(&self,_cycle:usize) -> Option<ConfigurationValue>{ None }
+	fn statistics(&self,_cycle:Time) -> Option<ConfigurationValue>{ None }
 	///Clears all collected statistics
-	fn reset_statistics(&mut self,_next_cycle:usize) {}
+	fn reset_statistics(&mut self,_next_cycle:Time) {}
 }
 
 ///The argument of a builder function for `Routings`.

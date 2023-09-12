@@ -13,6 +13,7 @@ use crate::routing::CandidateEgress;
 use crate::router::Router;
 use crate::topology::{Topology,Location};
 use crate::{Plugs,Phit,match_object_panic};
+use crate::event::Time;
 
 use std::fmt::Debug;
 use std::convert::TryInto;
@@ -37,7 +38,7 @@ pub struct RequestInfo<'a>
 	///port_average_neighbour_queue_length: for each port the average queue length in the queues of the port in the neighbour router.
 	pub port_average_neighbour_queue_length: Option<&'a Vec<f32>>,
 	///port_last_transmission: a timestamp for each port of the last time that it was used.
-	pub port_last_transmission: Option<&'a Vec<usize>>,
+	pub port_last_transmission: Option<&'a Vec<Time>>,
 	///Number of phits currently in the output space of the current router at the indexed port.
 	pub port_occupied_output_space: Option<&'a Vec<usize>>,
 	///Number of available phits in the output space of the current router at the indexed port.
@@ -49,7 +50,7 @@ pub struct RequestInfo<'a>
 	///Number of cycles at the front of input space,
 	pub time_at_front: Option<usize>,
 	///current_cycle: The current cycle of the simulation.
-	pub current_cycle: usize,
+	pub current_cycle: Time,
 	///The phit for which we are requesting an egress.
 	pub phit: Rc<Phit>,
 }
