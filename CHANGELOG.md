@@ -4,6 +4,8 @@
 
 ### 2023-09-12
 BREAKING CHANGE: All cycles are now represented by a `Time` alias of `u64`; instead of `usize`.
+BREAKING CHANGE: Removed methods `pending_events`, `add_pending_event`, and `clear_pending_events` from the Eventful trait in favor of the `schedule` method.
+Added TryLinkTraversal to InputOutput router to decouple the scheduling of the crossbar and the output links.
 
 ### 2023-09-11
 Allow different frequencies in links and the InputOuput router.

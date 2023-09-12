@@ -25,7 +25,7 @@ pub mod prelude
 {
 	pub use super::{Router,StatusAtEmissor,SpaceAtReceptor,AcknowledgeMessage,Buffer,RouterBuilderArgument,TransmissionFromOblivious,TransmissionMechanism};
 	pub use crate::quantify::Quantifiable;
-	pub use crate::event::{Eventful,EventGeneration,Event};
+	pub use crate::event::{Eventful,EventGeneration,Event,Time};
 	pub use crate::{SimulationShared,SimulationMut};
 	pub use crate::topology::Topology;
 	pub use crate::config_parser::ConfigurationValue;

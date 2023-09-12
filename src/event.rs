@@ -18,27 +18,28 @@ pub trait Eventful
 {
 	///Method to ve called to process the events.
 	fn process(&mut self, simulation:&SimulationShared, simulation_mut:&mut SimulationMut) -> Vec<EventGeneration>;
-	///Number of pending events.
-	fn pending_events(&self)->usize;
-	///Mark the eventful as having another pending event. It should also be added to some queue.
-	fn add_pending_event(&mut self);
-	///Mark the eventful as having no pending events. Perhaps it is not necessary, since it is being done by the `process` method.
-	fn clear_pending_events(&mut self);
+	//Number of pending events.
+	//fn pending_events(&self)->usize;
+	//Mark the eventful as having another pending event. It should also be added to some queue.
+	//fn add_pending_event(&mut self);
+	//Mark the eventful as having no pending events. Perhaps it is not necessary, since it is being done by the `process` method.
+	//fn clear_pending_events(&mut self);
 	///Extract the eventful from the implementing class. Required since `as Rc<RefCell<Eventful>>` does not work.
 	fn as_eventful(&self)->Weak<RefCell<dyn Eventful>>;
 	///Schedule this component to be executed after `delay` cycles as soon as possible.
 	///This should include waits to synchronize with the component's internal clock.
 	///Call with 0 to schedule as soon as possible, including the current cycle.
 	///Call with 1 to schedule in a future cycle as soon as popssible.
-	fn schedule(&mut self, _current_cycle:Time, delay:Time) -> EventGeneration
+	///Returns None if the component decides against to be scheduled. For example due to already being scheduled.
+	fn schedule(&mut self, _current_cycle:Time, delay:Time) -> Option<EventGeneration>
 	{
-		self.add_pending_event();
+		//self.add_pending_event();
 		let event = Event::Generic(self.as_eventful().upgrade().expect("missing component"));
-		EventGeneration{
+		Some(EventGeneration{
 			delay: delay,
 			position: CyclePosition::End,
 			event,
-		}
+		})
 	}
 }
 

@@ -10,7 +10,7 @@ use crate::router::RouterBuilderArgument;
 use crate::topology::{Location,Topology};
 use crate::routing::CandidateEgress;
 use crate::policies::{RequestInfo,VirtualChannelPolicy,new_virtual_channel_policy,VCPolicyBuilderArgument};
-use crate::event::{Event,Eventful,EventGeneration,CyclePosition,Time};
+use crate::event::{self,Event,Eventful,EventGeneration,CyclePosition,Time};
 use crate::{Phit,SimulationShared,SimulationMut};
 use crate::quantify::Quantifiable;
 use crate::match_object_panic;
@@ -29,8 +29,8 @@ pub struct InputOutput
 {
 	///Weak pointer to itself, see <https://users.rust-lang.org/t/making-a-rc-refcell-trait2-from-rc-refcell-trait1/16086/3>
 	self_rc: Weak<RefCell<InputOutput>>,
-	///If there is an event pending
-	event_pending: bool,
+	///When is the next scheduled event. Stack with the soonner event the last.
+	next_events: Vec<Time>,
 	///The cycle number of the last time InputOutput::process was called. Only for debugging/assertion purposes.
 	last_process_at_cycle: Option<Time>,
 	///Its index in the topology
@@ -71,6 +71,7 @@ pub struct InputOutput
 	///Specifically, `output_buffer_phits_traversing_crossbar[output_port][output_vc]` counts phits that are going to be inserted
 	///into `output_buffers[output_port][output_vc]` at some point.
 	output_buffer_phits_traversing_crossbar: Vec<Vec<usize>>,
+	output_schedulers: Vec<Rc<RefCell<internal::TryLinkTraversal>>>,
 	///If not None then the input port+virtual_channel which is either sending by this port+virtual_channel or writing to this output buffer.
 	///We keep the packet for debugging/check considerations.
 	selected_input: Vec<Vec<Option<(usize,usize)>>>,
@@ -111,6 +112,8 @@ impl Router for InputOutput
 	fn acknowledge(&mut self, port:usize, ack_message:AcknowledgeMessage)
 	{
 		self.transmission_port_status[port].acknowledge(ack_message);
+		// XXX we need to awake the output port.
+		// self.output_schedulers[port].schedule(current_cycle??,0);
 	}
 	fn num_virtual_channels(&self) -> usize
 	{
@@ -469,7 +472,7 @@ impl InputOutput
 		let output_buffer_phits_traversing_crossbar = vec![ vec![ 0 ; virtual_channels ] ; input_ports ];
 		let r=Rc::new(RefCell::new(InputOutput{
 			self_rc: Weak::new(),
-			event_pending: false,
+			next_events: vec![],
 			last_process_at_cycle: None,
 			router_index,
 			//routing,
@@ -488,6 +491,7 @@ impl InputOutput
 			output_buffer_size,
 			output_buffers,
 			output_buffer_phits_traversing_crossbar,
+			output_schedulers: vec![],
 			selected_input,
 			selected_output,
 			time_at_input_head,
@@ -536,6 +540,18 @@ impl Eventful for InputOutput
 	///main routine of the router. Do all things that must be done in a cycle, if any.
 	fn process(&mut self, simulation:&SimulationShared, mutable:&mut SimulationMut) -> Vec<EventGeneration>
 	{
+		if self.output_schedulers.is_empty()
+		{
+			self.output_schedulers = (0..self.output_buffers.len()).map(|exit_port|{
+				let (_location,link_class)=simulation.network.topology.neighbour(self.router_index,exit_port);
+				let link = simulation.link_classes[link_class].clone();
+				internal::TryLinkTraversalArgument{
+					router:self,
+					exit_port,
+					link,
+				}.into()
+			}).collect();
+		}
 		let mut cycles_span = 1;//cycles since last checked
 		if let Some(ref last)=self.last_process_at_cycle
 		{
@@ -549,9 +565,10 @@ impl Eventful for InputOutput
 			//	println!("INFO: {} cycles since last processing router {}, cycle={}",simulation.cycle-*last,self.router_index,simulation.cycle);
 			//}
 		}
-		if cycles_span>=2 {
-			println!("Processing router {index} at cycle {cycle} span={cycles_span}.",cycle=simulation.cycle,index=self.router_index);
-		}
+		//if cycles_span>=2
+		//{
+		//	println!("Processing router {index} at cycle {cycle} span={cycles_span}.",cycle=simulation.cycle,index=self.router_index);
+		//}
 		self.last_process_at_cycle = Some(simulation.cycle);
 		let is_crossbar_cycle : bool = (simulation.cycle%self.crossbar_frequency_divisor) == 0;
 		let mut request:Vec<VCARequest>=vec![];
@@ -682,8 +699,9 @@ impl Eventful for InputOutput
 		};
 
 		//-- Routing and requests.
+		let mut next_delay = None;
 		let mut undecided_channels=0;//just as indicator if the router has pending work.
-		let mut moved_phits=0;//another indicator of pending work.
+		let mut moved_input_phits=0;//another indicator of pending work.
 		if is_crossbar_cycle
 		{
 			//Iterate over the reception space to find phits that request to advance.
@@ -870,7 +888,8 @@ impl Eventful for InputOutput
 			let mut cand_in_transit=false;
 //			let mut undo_selected_input=Vec::with_capacity(nvc);
 			let (new_location,link_class)=simulation.network.topology.neighbour(self.router_index,exit_port);
-			let is_link_cycle = simulation.is_link_cycle(link_class);
+			//let is_link_cycle = simulation.is_link_cycle(link_class);
+			let is_link_cycle = false;
 			for exit_vc in 0..nvc
 			{
 				if is_crossbar_cycle
@@ -886,7 +905,7 @@ impl Eventful for InputOutput
 							{
 								panic!("Trying to move into a full output buffer.");
 							}
-							moved_phits+=1;
+							moved_input_phits+=1;
 							self.time_at_input_head[entry_port][entry_vc]=0;
 							*phit.virtual_channel.borrow_mut()=Some(exit_vc);
 							if let Some(message)=ack_message
@@ -1044,6 +1063,7 @@ impl Eventful for InputOutput
 						new: new_location,
 					},
 				});
+				next_delay = Some(next_delay.unwrap_or(link.frequency_divisor).min(link.frequency_divisor));
 				self.transmission_port_status[exit_port].notify_outcoming_phit(selected_virtual_channel,simulation.cycle);
 				if phit.is_end()
 				{
@@ -1054,54 +1074,61 @@ impl Eventful for InputOutput
 				}
 			}
 		}
+		self.next_events.pop();//remove the event that was served.
 		//TODO: what to do with probabilistic requests???
 		//if undecided_channels>0 || moved_phits>0 || events.len()>0 || request.len()>0
 		//if undecided_channels>0 || moved_phits>0 || events.len()>0
-		if true
-		{
-			//Repeat at next cycle
-			//events.push(EventGeneration{
-			//	delay:1,
-			//	position:CyclePosition::End,
-			//	event:Event::Generic(self.as_eventful().upgrade().expect("missing router")),
-			//});
-			events.push(self.schedule(simulation.cycle,1));
+		let recheck_crossbar = undecided_channels>0 || moved_input_phits>0 || request.len()>0;//Needs to check the crossbar in its next slot.
+		if recheck_crossbar {
+			let target = event::round_to_multiple(simulation.cycle+1,self.crossbar_frequency_divisor) - simulation.cycle;
+			next_delay = Some(next_delay.unwrap_or(target).min(target));
 		}
-		else
+		//next_delay=Some(1);
+		if let Some(next) = next_delay
 		{
-			self.clear_pending_events();
+			//Repeat at next slot.
+			if let Some(event) = self.schedule(simulation.cycle,next)
+			{
+				events.push(event);
+			}
 		}
 		events
 	}
-	fn pending_events(&self)->usize
-	{
-		if self.event_pending { 1 } else { 0 }
-	}
-	fn add_pending_event(&mut self)
-	{
-		self.event_pending=true;
-	}
-	fn clear_pending_events(&mut self)
-	{
-		self.event_pending=false;
-	}
+	//fn pending_events(&self)->usize
+	//{
+	//	if self.event_pending { 1 } else { 0 }
+	//}
+	//fn add_pending_event(&mut self)
+	//{
+	//	self.event_pending=true;
+	//}
+	//fn clear_pending_events(&mut self)
+	//{
+	//	self.event_pending=false;
+	//}
 	fn as_eventful(&self)->Weak<RefCell<dyn Eventful>>
 	{
 		self.self_rc.clone()
 	}
-	fn schedule(&mut self, _current_cycle:Time, delay:Time) -> EventGeneration
+	fn schedule(&mut self, current_cycle:Time, delay:Time) -> Option<EventGeneration>
 	{
 		// We schedule every cycle.
 		// Some cycles may be just crossbar or just link trasmission.
 		// Could be better to have events for the output queues, so they are scheduled separately.
-		self.add_pending_event();
-		let event = Event::Generic(self.as_eventful().upgrade().expect("missing component"));
-		//use std::convert::TryInto;
-		EventGeneration{
-			//delay: event::round_to_multiple(delay.try_into().unwrap(),self.crossbar_frequency_divisor.try_into().unwrap()).try_into().unwrap(),
-			delay,
-			position: CyclePosition::End,
-			event,
+		let target = current_cycle+delay;
+		if self.next_events.is_empty() || target<*self.next_events.last().unwrap() {
+			//self.add_pending_event();
+			self.next_events.push(target);
+			let event = Event::Generic(self.as_eventful().upgrade().expect("missing component"));
+			//use std::convert::TryInto;
+			Some(EventGeneration{
+				//delay: event::round_to_multiple(delay.try_into().unwrap(),self.crossbar_frequency_divisor.try_into().unwrap()).try_into().unwrap(),
+				delay,
+				position: CyclePosition::End,
+				event,
+			})
+		} else {
+			None
 		}
 	}
 }
@@ -1128,6 +1155,9 @@ impl Quantifiable for InputOutput
 mod internal
 {
 	use super::*;
+	/**
+	Insert a phit into an output queue. Created when the phits are extracted from the input at a crossbar time slot.
+	**/
 	pub struct PhitToOutput
 	{
 		self_rc: Weak<RefCell<PhitToOutput>>,
@@ -1185,7 +1215,7 @@ mod internal
 	//}
 	impl Eventful for PhitToOutput
 	{
-		fn process(&mut self, _simulation:&SimulationShared, _mutable:&mut SimulationMut) -> Vec<EventGeneration>
+		fn process(&mut self, simulation:&SimulationShared, _mutable:&mut SimulationMut) -> Vec<EventGeneration>
 		{
 			let mut router = self.router.borrow_mut();
 			if router.output_buffers[self.exit_port][self.exit_vc].len()>=router.output_buffer_size
@@ -1194,38 +1224,250 @@ mod internal
 			}
 			router.output_buffer_phits_traversing_crossbar[self.exit_port][self.exit_vc]-=1;
 			router.output_buffers[self.exit_port][self.exit_vc].push(self.phit.clone(),(self.entry_port,self.entry_vc));
-			if router.event_pending {
-				vec![]
+			//if router.event_pending {
+			//if !router.next_events.is_empty() && *router.next_events.last().unwrap()==simulation.cycle{
+			//	vec![]
+			//} else {
+			//	// When a phit moves into an output buffer, ensure the router executes this cycle.
+			//	//router.event_pending=true;
+			//	router.next_events.push(simulation.cycle);
+			//	vec![EventGeneration{
+			//		delay:0,
+			//		position:CyclePosition::End,
+			//		event:Event::Generic(router.as_eventful().upgrade().expect("missing router")),
+			//	}]
+			//}
+			//if let Some(event) = router.schedule(simulation.cycle,0) {
+			let mut output_scheduler = router.output_schedulers[self.exit_port].borrow_mut();
+			if let Some(event) = output_scheduler.schedule(simulation.cycle,0) {
+				vec![event]
 			} else {
-				// When a phit moves into an output buffer, ensure the router executes this cycle.
-				router.event_pending=true;
-				vec![EventGeneration{
-					delay:0,
-					position:CyclePosition::End,
-					event:Event::Generic(router.as_eventful().upgrade().expect("missing router")),
-				}]
+				vec![]
 			}
 		}
-		///Number of pending events.
-		fn pending_events(&self)->usize
-		{
-			// This event should always be just once.
-			1
-		}
-		///Mark the eventful as having another pending event. It should also be added to some queue.
-		fn add_pending_event(&mut self)
-		{
-			// This event should always be just once.
-		}
-		///Mark the eventful as having no pending events. Perhaps it is not necessary, since it is being done by the `process` method.
-		fn clear_pending_events(&mut self)
-		{
-			// This event should always be just once.
-		}
+		/////Number of pending events.
+		//fn pending_events(&self)->usize
+		//{
+		//	// This event should always be just once.
+		//	1
+		//}
+		/////Mark the eventful as having another pending event. It should also be added to some queue.
+		//fn add_pending_event(&mut self)
+		//{
+		//	// This event should always be just once.
+		//}
+		/////Mark the eventful as having no pending events. Perhaps it is not necessary, since it is being done by the `process` method.
+		//fn clear_pending_events(&mut self)
+		//{
+		//	// This event should always be just once.
+		//}
 		///Extract the eventful from the implementing class. Required since `as Rc<RefCell<Eventful>>` does not work.
 		fn as_eventful(&self)->Weak<RefCell<dyn Eventful>>
 		{
 			self.self_rc.clone()
+		}
+	}
+	/**
+	Process an output port and, if possible, extract some phit to send through the link.
+	Scheduled at the link frequency.
+	**/
+	use crate::LinkClass;
+	pub struct TryLinkTraversal
+	{
+		self_rc: Weak<RefCell<TryLinkTraversal>>,
+		router: Rc<RefCell<InputOutput>>,
+		exit_port: usize,
+		link:LinkClass,
+		amount_virtual_channels: usize,
+		pending_event:bool,
+	}
+	pub struct TryLinkTraversalArgument<'a>
+	{
+		pub router: &'a mut InputOutput,
+		pub exit_port: usize,
+		pub link: LinkClass
+	}
+	impl<'a> From<TryLinkTraversalArgument<'a>> for Rc<RefCell<TryLinkTraversal>>
+	{
+		fn from(arg:TryLinkTraversalArgument) -> Rc<RefCell<TryLinkTraversal>>
+		{
+			let amount_virtual_channels = arg.router.num_virtual_channels();
+			let this = Rc::new(RefCell::new(TryLinkTraversal{
+				self_rc: Weak::new(),
+				router: arg.router.self_rc.upgrade().unwrap(),
+				exit_port: arg.exit_port,
+				link: arg.link,
+				amount_virtual_channels,
+				pending_event:false,
+			}));
+			this.borrow_mut().self_rc=Rc::<_>::downgrade(&this);
+			this
+		}
+	}
+	impl Eventful for TryLinkTraversal
+	{
+		fn process(&mut self, simulation:&SimulationShared, mutable:&mut SimulationMut) -> Vec<EventGeneration>
+		{
+			let mut events=vec![];
+			let mut router = self.router.borrow_mut();
+			let nvc= self.amount_virtual_channels;
+			//Gather the list of all vc that can advance
+			let mut cand=Vec::with_capacity(nvc);
+			let mut cand_in_transit=false;
+//			let mut undo_selected_input=Vec::with_capacity(nvc);
+			//let is_link_cycle = simulation.is_link_cycle(link_class);
+			for exit_vc in 0..nvc
+			{
+				//Candidates when using output ports.
+				if let Some( (phit,(entry_port,_entry_vc))) = router.output_buffers[self.exit_port][exit_vc].front()
+				{
+					let bubble_in_use= router.bubble && phit.is_begin() && simulation.network.topology.is_direction_change(router.router_index,entry_port,self.exit_port);
+					let status=&router.transmission_port_status[self.exit_port];
+					let can_transmit = if bubble_in_use
+					{
+						//router.transmission_port_status[self.exit_port].can_transmit_whole_packet(&phit,exit_vc)
+						if let Some(space)=status.known_available_space_for_virtual_channel(exit_vc)
+						{
+							status.can_transmit(&phit,exit_vc) && space>= phit.packet.size + router.maximum_packet_size
+						}
+						else
+						{
+							panic!("InputOutput router requires knowledge of available space to apply bubble.");
+						}
+					}
+					else
+					{
+						status.can_transmit(&phit,exit_vc)
+					};
+					if can_transmit
+					{
+						if cand_in_transit
+						{
+							if !phit.is_begin()
+							{
+								cand.push(exit_vc);
+							}
+						}
+						else
+						{
+							if phit.is_begin()
+							{
+								cand.push(exit_vc);
+							}
+							else
+							{
+								cand=vec![exit_vc];
+								cand_in_transit=true;
+							}
+						}
+					}
+					else
+					{
+						if 0<phit.index && phit.index<router.flit_size
+						{
+							panic!("cannot transmit phit (index={}) but it should (flit_size={})",phit.index,router.flit_size);
+						}
+					}
+				}
+			}
+			//for selected_virtual_channel in 0..nvc
+			if !cand.is_empty()
+			{
+				//Then select one of the vc candidates (either in input or output buffer) to actually use the physical port.
+				let selected_virtual_channel = match router.output_arbiter
+				{
+					OutputArbiter::Random=> cand[mutable.rng.gen_range(0..cand.len())],
+					OutputArbiter::Token{ref mut port_token}=>
+					{
+						//Or by tokens as in fsin
+						//let nvc=router.virtual_ports[self.exit_port].len() as i64;
+						let nvc= self.amount_virtual_channels as i64;
+						let token= port_token[self.exit_port] as i64;
+						let mut best=0;
+						let mut bestd=nvc;
+						for vc in cand
+						{
+							let mut d:i64 = vc as i64 - token;
+							if d<0
+							{
+								d+=nvc;
+							}
+							if d<bestd
+							{
+								best=vc;
+								bestd=d;
+							}
+						}
+						port_token[self.exit_port]=best;
+						best
+					},
+				};
+				//move phits around.
+				let (phit,original_port) =
+				{
+					//If we get the phit from an output buffer there is little to do.
+					let (phit,(entry_port,_entry_vc))=router.output_buffers[self.exit_port][selected_virtual_channel].pop().expect("incorrect selected_input");
+					(phit,entry_port)
+				};
+				//Send the phit to the other link endpoint.
+				let (new_location,_link_class)=simulation.network.topology.neighbour(router.router_index,self.exit_port);
+				//let link = &simulation.link_classes[link_class];
+				events.push(EventGeneration{
+					delay: self.link.delay,
+					position:CyclePosition::Begin,
+					event:Event::PhitToLocation{
+						phit: phit.clone(),
+						previous: Location::RouterPort{
+							router_index: router.router_index,
+							router_port: original_port,
+						},
+						new: new_location,
+					},
+				});
+				//next_delay = Some(next_delay.unwrap_or(link.frequency_divisor).min(link.frequency_divisor));
+				router.transmission_port_status[self.exit_port].notify_outcoming_phit(selected_virtual_channel,simulation.cycle);
+				if phit.is_end()
+				{
+					if let OutputArbiter::Token{ref mut port_token}=router.output_arbiter
+					{
+						port_token[self.exit_port]=(port_token[self.exit_port]+1)% self.amount_virtual_channels;
+					}
+				}
+			}
+			drop(router);//to be able to mutate self
+			self.pending_event = false;
+			// XXX we should avoid to reschedule when it is not necessary.
+			// Are we sure that if we have not being able to advance and nothing changes then we are indefinitely idle?
+			// It is important that the acks received by the router may trigger the scheduling.
+			//if !events.is_empty()
+			{
+				if let Some(event) = self.schedule(simulation.cycle,1)
+				{
+					events.push(event);
+				}
+			}
+			events
+		}
+		fn as_eventful(&self)->Weak<RefCell<dyn Eventful>>
+		{
+			self.self_rc.clone()
+		}
+		fn schedule(&mut self, current_cycle:Time, delay:Time) -> Option<EventGeneration>
+		{
+			if !self.pending_event {
+				self.pending_event=true;
+				let event = Event::Generic(self.as_eventful().upgrade().expect("missing component"));
+				let target = current_cycle+delay;
+				let target = event::round_to_multiple(target,self.link.frequency_divisor);
+				let delay = target - current_cycle;
+				Some(EventGeneration{
+					delay,
+					position: CyclePosition::End,
+					event,
+				})
+			} else {
+				None
+			}
 		}
 	}
 }

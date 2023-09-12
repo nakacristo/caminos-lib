@@ -564,6 +564,7 @@ impl Network
 ///For example, the links to servers could have a different delay.
 ///The topologies can set additional classes. For example, a mesh/torus can diffentiate horizontal/vertical links.
 ///And a dragonfly topology can differentiate local from global links.
+#[derive(Debug,Clone)]
 pub struct LinkClass
 {
 	///Cycles the phit needs to move from one endpoint to the other endpoint.
@@ -947,11 +948,9 @@ impl<'a> Simulation<'a>
 							}
 							let mut brouter=self.shared.network.routers[router].borrow_mut();
 							brouter.insert(phit.clone(),port,&mut self.mutable.rng);
-							if brouter.pending_events()==0
+							if let Some(event) = brouter.schedule(self.shared.cycle,0)
 							{
-								//brouter.add_pending_event();
-								//self.event_queue.enqueue_end(Event::Generic(brouter.as_eventful().upgrade().expect("missing router")),0);
-								self.event_queue.enqueue(brouter.schedule(self.shared.cycle,0));
+								self.event_queue.enqueue(event);
 							}
 							match previous
 							{
@@ -998,11 +997,9 @@ impl<'a> Simulation<'a>
 						let mut brouter=self.shared.network.routers[router_index].borrow_mut();
 						//brouter.acknowledge(router_port,virtual_channel);
 						brouter.acknowledge(router_port,ack_message);
-						if brouter.pending_events()==0
+						if let Some(event) = brouter.schedule(self.shared.cycle,0)
 						{
-							//brouter.add_pending_event();
-							//self.event_queue.enqueue_end(Event::Generic(brouter.as_eventful().upgrade().expect("missing router")),0);
-							self.event_queue.enqueue(brouter.schedule(self.shared.cycle,0));
+							self.event_queue.enqueue(event);
 						}
 					},
 					Location::ServerPort(server) => self.shared.network.servers[server].router_status.acknowledge(ack_message),

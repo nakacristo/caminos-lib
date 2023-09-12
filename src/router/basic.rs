@@ -1371,22 +1371,22 @@ impl Eventful for Basic
 		}
 		else
 		{
-			self.clear_pending_events();
+			//self.clear_pending_events();
 		}
 		events
 	}
-	fn pending_events(&self)->usize
-	{
-		if self.event_pending { 1 } else { 0 }
-	}
-	fn add_pending_event(&mut self)
-	{
-		self.event_pending=true;
-	}
-	fn clear_pending_events(&mut self)
-	{
-		self.event_pending=false;
-	}
+	//fn pending_events(&self)->usize
+	//{
+	//	if self.event_pending { 1 } else { 0 }
+	//}
+	//fn add_pending_event(&mut self)
+	//{
+	//	self.event_pending=true;
+	//}
+	//fn clear_pending_events(&mut self)
+	//{
+	//	self.event_pending=false;
+	//}
 	fn as_eventful(&self)->Weak<RefCell<dyn Eventful>>
 	{
 		self.self_rc.clone()
