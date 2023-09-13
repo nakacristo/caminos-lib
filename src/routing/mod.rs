@@ -24,7 +24,7 @@ use std::convert::TryFrom;
 use ::rand::{rngs::StdRng,Rng,prelude::SliceRandom};
 
 use crate::config_parser::ConfigurationValue;
-use crate::topology::cartesian::{DOR,O1TURN,ValiantDOR,OmniDimensionalDeroute, OmniDOR, GENERALTURN};
+use crate::topology::cartesian::{DOR,O1TURN,ValiantDOR,OmniDimensionalDeroute, OmniDOR, GENERALTURN, Valiant4Hamming};
 use crate::topology::{Topology,Location};
 pub use crate::event::Time;
 use quantifiable_derive::Quantifiable;//the derive macro
@@ -419,6 +419,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"GeneralTurn" => Box::new(GENERALTURN::new(arg)),
 			"OmniDimensionalDeroute" => Box::new(OmniDimensionalDeroute::new(arg)),
 			"OmniDOR" => Box::new(OmniDOR::new(arg)),
+			"Valiant4Hamming" => Box::new(Valiant4Hamming::new(arg)),
 			"Shortest" => Box::new(Shortest::new(arg)),
 			"Valiant" => Box::new(Valiant::new(arg)),
 			"ValiantDOR" => Box::new(ValiantDOR::new(arg)),

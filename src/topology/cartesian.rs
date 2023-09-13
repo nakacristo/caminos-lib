@@ -7,6 +7,8 @@ use crate::topology::{Topology,Location};
 //use crate::routing::{RoutingInfo,Routing,CandidateEgress,RoutingBuilderArgument,RoutingNextCandidates};
 use crate::routing::prelude::*;
 use crate::routing::RoutingAnnotation;
+use crate::match_object_panic;
+use crate::pattern::*; //For Valiant
 
 extern crate itertools;
 use itertools::Itertools;
@@ -2218,6 +2220,376 @@ impl OmniDOR
 
 		OmniDOR{
 			order
+		}
+	}
+}
+
+
+///Special Valiant for Ugal routing in Hamming networks
+#[derive(Debug)]
+pub struct Valiant4Hamming
+{
+	first: Box<dyn Routing>,
+	second: Box<dyn Routing>,
+	///Whether to avoid selecting routers without attached servers. This helps to apply it to indirect networks.
+	selection_exclude_indirect_routers: bool,
+	//pattern to select intermideate nodes
+	pattern:Box<dyn Pattern>,
+	first_reserved_virtual_channels: Vec<usize>,
+	second_reserved_virtual_channels: Vec<usize>,
+	min_src_first:bool,
+	min_target_first:bool,
+	remove_target_dimensions_aligment: Vec<Vec<usize>>,
+	remove_source_dimensions_aligment: Vec<Vec<usize>>,
+	allow_unaligned: bool,
+}
+
+impl Routing for Valiant4Hamming
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
+	{
+		/*let (target_location,_link_class)=topology.server_neighbour(target_server);
+		let target_router=match target_location
+		{
+			Location::RouterPort{router_index,router_port:_} =>router_index,
+			_ => panic!("The server is not attached to a router"),
+		};*/
+		let distance=topology.distance(current_router,target_router);
+		if distance==0 //careful here
+		{
+			for i in 0..topology.ports(current_router)
+			{
+				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router,i)
+				{
+					if server==target_server.expect("There sould be a server here")
+					{
+						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
+					}
+				}
+			}
+			unreachable!();
+		}
+		let meta=routing_info.meta.as_ref().unwrap();
+		match routing_info.selections
+		{
+			None =>
+				{
+					//self.second.next(&meta[1].borrow(),topology,current_router,target_server,num_virtual_channels,rng)
+					let base=self.second.next(&meta[1].borrow(),topology,current_router,target_router, target_server,num_virtual_channels,rng)?;
+					let idempotent = base.idempotent;
+					let r=base.into_iter().filter_map(|egress|
+						{
+							if !self.first_reserved_virtual_channels.contains(&egress.virtual_channel)
+							{
+								Some(egress)
+							}else{
+								None
+							}
+						}).collect();
+
+					Ok(RoutingNextCandidates{candidates:r,idempotent})
+				}
+			Some(ref s) =>
+				{
+					let middle=s[0] as usize;
+					let middle_server=
+						{
+							let mut x=None;
+							for i in 0..topology.ports(middle)
+							{
+								if let (Location::ServerPort(server),_link_class)=topology.neighbour(middle,i)
+								{
+									x=Some(server);
+									break;
+								}
+							}
+							x.unwrap()
+						};
+
+					let second_distance=topology.distance(middle,target_router);//Only exact if the base routing is shortest.
+					//self.first.next(&meta[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng).into_iter().filter(|egress|!self.second_reserved_virtual_channels.contains(&egress.virtual_channel)).collect()
+					let base = self.first.next(&meta[0].borrow(),topology,current_router, middle, Some(middle_server),  num_virtual_channels,rng)?;
+					let idempotent = base.idempotent;
+					let r=base.into_iter().filter_map(|mut egress|{
+						//egress.hops = Some(routing_info.hops);
+						if self.second_reserved_virtual_channels.contains(&egress.virtual_channel) { //may not be the best way....
+							None
+							/*if let Some(ref mut eh)=egress.estimated_remaining_hops
+                            {
+                                *eh += second_distance;
+                            }
+                            Some(egress)*/
+
+						} else {
+							if let Some(ref mut eh)=egress.estimated_remaining_hops
+							{
+								*eh += second_distance;
+							}
+							Some(egress)
+						}
+					}).collect();
+					Ok(RoutingNextCandidates{candidates:r,idempotent})
+				}
+		}
+
+	}
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, _target_server:Option<usize>, rng: &mut StdRng)
+	{
+		let port = topology.degree(current_router);
+		let (server_source_location,_link_class) = topology.neighbour(current_router, port);
+		let source_server=match server_source_location
+		{
+			Location::ServerPort(server) =>server,
+			_ => panic!("The server is not attached to a router"),
+		};
+
+		let cartesian_data = topology.cartesian_data().expect("Should be a cartesian data");//.expect("something").unpack(current_router)[1] ==
+
+		let src_coord = cartesian_data.unpack(current_router);
+		let trg_coord = cartesian_data.unpack(target_router);
+
+		let middle_server = self.pattern.get_destination(source_server,topology, rng);
+		let (middle_location,_link_class)=topology.server_neighbour(middle_server);
+		let mut middle_router=match middle_location
+		{
+			Location::RouterPort{router_index,router_port:_} =>router_index,
+			_ => panic!("The server is not attached to a router"),
+		};
+
+		let mut middle_coord = cartesian_data.unpack(middle_router);
+		let mut not_valid_middle = true;
+
+		while not_valid_middle
+		{
+			not_valid_middle = false;
+			let middle_server = self.pattern.get_destination(source_server,topology, rng);
+			let (middle_location,_link_class)=topology.server_neighbour(middle_server);
+			middle_router=match middle_location
+			{
+				Location::RouterPort{router_index,router_port:_} =>router_index,
+				_ => panic!("The server is not attached to a router"),
+			};
+			middle_coord = cartesian_data.unpack(middle_router);
+
+			if middle_router ==  current_router || middle_router == target_router
+			{
+				not_valid_middle=true;
+			}
+
+			for i in 0..self.remove_target_dimensions_aligment.len()
+			{
+				let dimensions = self.remove_target_dimensions_aligment[i].clone();
+				let mut differ = false;
+				for z in 0..dimensions.len()
+				{
+					if trg_coord[dimensions[z]] != middle_coord[dimensions[z]]
+					{
+						differ = true;
+					}
+				}
+				if !differ
+				{
+					not_valid_middle = true;
+					break; //the inner loop
+				}
+			}
+
+			for i in 0..self.remove_source_dimensions_aligment.len()
+			{
+				let dimensions = self.remove_source_dimensions_aligment[i].clone();
+				let mut differ = false;
+				for z in 0..dimensions.len()
+				{
+					if src_coord[dimensions[z]] != middle_coord[dimensions[z]]
+					{
+						differ = true;
+					}
+				}
+				if !differ
+				{
+					not_valid_middle = true;
+					break; //the inner loop
+				}
+			}
+
+			/*let diff = src_coord.iter().zip(middle_coord.iter()).map(|(a,b)|a-b).collect::<Vec<_>>();
+
+			for z in 0..self.remove_source_dimensions_aligment.len()
+			{
+				if diff[z] != 0
+				{
+					let valid = false;
+					for i in  0..self.diff.len()
+					{
+						if i != z && diff[i] != 0
+                        {
+							valid = true;
+                        }
+					}
+					not_valid_middle = valid;
+				}
+			}*/
+		}
+
+		if !self.allow_unaligned
+		{
+			for i in 0..src_coord.len()
+			{
+				if src_coord[i] == trg_coord[i]
+				{
+					middle_coord[i] = trg_coord[i];
+				}
+			}
+		}
+		middle_router = cartesian_data.pack(&middle_coord);
+
+
+		let mut bri=routing_info.borrow_mut();
+		bri.visited_routers=Some(vec![current_router]);
+		bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
+
+		bri.selections=Some(vec![middle_router as i32]);
+		self.first.initialize_routing_info(&bri.meta.as_ref().unwrap()[0],topology,current_router,middle_router,None,rng)
+
+	}
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
+	{
+		let mut bri=routing_info.borrow_mut();
+		let middle = bri.selections.as_ref().map(|s| s[0] as usize);
+		match middle
+		{
+			None =>
+				{
+					//Already towards true destination
+					let meta=bri.meta.as_mut().unwrap();
+					meta[1].borrow_mut().hops+=1;
+					self.second.update_routing_info(&meta[1],topology,current_router,current_port,target_router,target_server,rng);
+				}
+			Some(middle) =>
+				{
+					let at_middle = current_router == middle;
+
+					if at_middle
+					{
+						bri.selections=None;
+						let meta=bri.meta.as_ref().unwrap();
+						self.second.initialize_routing_info(&meta[1],topology,current_router,target_router,target_server,rng);
+					}
+					else
+					{
+						let meta=bri.meta.as_mut().unwrap();
+						meta[0].borrow_mut().hops+=1;
+						self.first.update_routing_info(&meta[0],topology,current_router,current_port,middle,None,rng);
+					}
+				}
+		};
+
+
+		match bri.visited_routers
+		{
+			Some(ref mut v) =>
+				{
+					v.push(current_router);
+				}
+			None => panic!("visited_routers not initialized"),
+		};
+
+
+	}
+	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		self.first.initialize(topology,rng);
+		self.second.initialize(topology,rng);
+		self.pattern.initialize(topology.num_servers(), topology.num_servers(), topology, rng);
+	}
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, num_virtual_channels:usize, rng:&mut StdRng)
+	{
+		let mut bri=routing_info.borrow_mut();
+		let middle = bri.selections.as_ref().map(|s| s[0] as usize);
+		let meta=bri.meta.as_mut().unwrap();
+
+		match middle
+		{
+			None =>
+				{
+					//Already towards true destination
+					self.first.performed_request(requested,&meta[1],topology,current_router,target_router,target_server,num_virtual_channels,rng);
+				}
+			Some(_) =>
+				{
+					//Already towards true destination
+					self.second.performed_request(requested,&meta[0],topology,current_router,target_router,target_server,num_virtual_channels,rng);
+				}
+		};
+	}
+}
+
+impl Valiant4Hamming
+{
+	pub fn new(arg: RoutingBuilderArgument) -> Valiant4Hamming
+	{
+		//let mut order=None;
+		//let mut servers_per_router=None;
+		let mut first=None;
+		let mut second=None;
+		let mut selection_exclude_indirect_routers=false;
+		let mut pattern: Box<dyn Pattern> = Box::new(UniformPattern::uniform_pattern(true)); //pattern to intermideate node
+		let mut use_min_b=false;
+		let mut min_src_first= true;
+		let mut min_target_first= true;
+		let mut first_reserved_virtual_channels=vec![];
+		let mut second_reserved_virtual_channels=vec![];
+		let mut remove_target_dimensions_aligment = vec![];
+		let mut remove_source_dimensions_aligment = vec![];
+		let mut allow_unaligned = true;
+
+		match_object_panic!(arg.cv,"Valiant4Hamming",value,
+			"first" => first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"second" => second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"selection_exclude_indirect_routers" => selection_exclude_indirect_routers = value.as_bool().expect("bad value for selection_exclude_indirect_routers"),
+		    "pattern" => pattern= Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})).expect("pattern not valid for Valiant4Hamming"),
+			"min_src_first" => min_src_first=value.as_bool().expect("bad value for min_src_first"),
+			"min_target_first" => min_target_first=value.as_bool().expect("bad value for min_target_first"),
+			"use_min_b" => use_min_b=value.as_bool().expect("bad value for use_min_b"),
+			"first_reserved_virtual_channels" => first_reserved_virtual_channels=value.
+				as_array().expect("bad value for first_reserved_virtual_channels").iter()
+				.map(|v|v.as_f64().expect("bad value in first_reserved_virtual_channels") as usize).collect(),
+			"second_reserved_virtual_channels" => second_reserved_virtual_channels=value.
+				as_array().expect("bad value for second_reserved_virtual_channels").iter()
+				.map(|v|v.as_f64().expect("bad value in second_reserved_virtual_channels") as usize).collect(),
+			"remove_target_dimensions_aligment" => remove_target_dimensions_aligment=value.
+				as_array().expect("bad value for remove_dimension_aligment").iter().map(|v|v.as_array()
+				.expect("bad value in remove_dimension_aligment").iter().map(|v|v.as_f64().expect("bad value in remove_dimension_aligment") as usize).collect()).collect(),
+			"remove_source_dimensions_aligment" => remove_source_dimensions_aligment=value.
+				as_array().expect("bad value for remove_source_dimensions_aligment").iter()
+			.map(|v|v.as_array().expect(" bad value in remove_source_dimensions_aligment").iter().map(|v|v.as_f64().expect("bad value in remove_source_dimensions_aligment") as usize).collect()).collect(),
+			"allow_unaligned" => allow_unaligned=value.as_bool().expect("bad value for allow_unaligned"),
+
+		);
+		let first=first.expect("There were no first");
+		let second=second.expect("There were no second");
+
+		if use_min_b
+		{
+			min_src_first= false;
+			min_target_first= false;
+		}
+
+		Valiant4Hamming{
+			first,
+			second,
+			selection_exclude_indirect_routers,
+			pattern,
+			first_reserved_virtual_channels,
+			second_reserved_virtual_channels,
+			min_src_first,
+			min_target_first,
+			remove_target_dimensions_aligment,
+			remove_source_dimensions_aligment,
+			allow_unaligned,
 		}
 	}
 }

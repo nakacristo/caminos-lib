@@ -391,6 +391,13 @@ impl UniformPattern
 			allow_self,
 		}
 	}
+	pub fn uniform_pattern(allow_target_source: bool) -> UniformPattern
+	{
+		UniformPattern{
+			size:0,//to be initialized later
+			allow_self:allow_target_source,
+		}
+	}
 }
 
 ///Build a random permutation on initialization, which is then kept constant.
