@@ -570,7 +570,7 @@ impl Eventful for InputOutput
 		//	println!("Processing router {index} at cycle {cycle} span={cycles_span}.",cycle=simulation.cycle,index=self.router_index);
 		//}
 		self.last_process_at_cycle = Some(simulation.cycle);
-		let is_crossbar_cycle : bool = (simulation.cycle%self.crossbar_frequency_divisor) == 0;
+		assert!((simulation.cycle%self.crossbar_frequency_divisor) == 0, "Processing InputOutput router at a cycle ({cycle}) not multiple of crossbar_frequency_divisor ({divisor}). {cycle}%{divisor}={remainder}", cycle=simulation.cycle,divisor=self.crossbar_frequency_divisor,remainder=simulation.cycle%self.crossbar_frequency_divisor);
 		let mut request:Vec<VCARequest>=vec![];
 		let topology = simulation.network.topology.as_ref();
 		
@@ -699,183 +699,179 @@ impl Eventful for InputOutput
 		};
 
 		//-- Routing and requests.
-		let mut next_delay = None;
 		let mut undecided_channels=0;//just as indicator if the router has pending work.
 		let mut moved_input_phits=0;//another indicator of pending work.
-		if is_crossbar_cycle
+		//Iterate over the reception space to find phits that request to advance.
+		for entry_port in 0..self.reception_port_space.len()
 		{
-			//Iterate over the reception space to find phits that request to advance.
-			for entry_port in 0..self.reception_port_space.len()
+			for phit in self.reception_port_space[entry_port].front_iter()
 			{
-				for phit in self.reception_port_space[entry_port].front_iter()
+				let entry_vc={
+					phit.virtual_channel.borrow().expect("it should have an associated virtual channel")
+				};
+				//let (requested_port,requested_vc,label)=
+				match self.selected_output[entry_port][entry_vc]
 				{
-					let entry_vc={
-						phit.virtual_channel.borrow().expect("it should have an associated virtual channel")
-					};
-					//let (requested_port,requested_vc,label)=
-					match self.selected_output[entry_port][entry_vc]
+					None =>
 					{
-						None =>
+						undecided_channels+=1;
+						let target_server=phit.packet.message.destination;
+						let (target_location,_link_class)=topology.server_neighbour(target_server);
+						let target_router=match target_location
 						{
-							undecided_channels+=1;
-							let target_server=phit.packet.message.destination;
-							let (target_location,_link_class)=topology.server_neighbour(target_server);
-							let target_router=match target_location
+							Location::RouterPort{router_index,router_port:_} =>router_index,
+							_ => panic!("The server is not attached to a router"),
+						};
+						let routing_candidates=simulation.routing.next(phit.packet.routing_info.borrow().deref(),simulation.network.topology.as_ref(),self.router_index,target_router,Some(target_server),amount_virtual_channels,&mut mutable.rng).unwrap_or_else(|e|panic!("Error {} while routing.",e));
+						let routing_idempotent = routing_candidates.idempotent;
+						if routing_candidates.len()==0
+						{
+							if routing_idempotent
 							{
-								Location::RouterPort{router_index,router_port:_} =>router_index,
-								_ => panic!("The server is not attached to a router"),
-							};
-							let routing_candidates=simulation.routing.next(phit.packet.routing_info.borrow().deref(),simulation.network.topology.as_ref(),self.router_index,target_router,Some(target_server),amount_virtual_channels,&mut mutable.rng).unwrap_or_else(|e|panic!("Error {} while routing.",e));
-							let routing_idempotent = routing_candidates.idempotent;
-							if routing_candidates.len()==0
-							{
-								if routing_idempotent
-								{
-									panic!("There are no choices for packet {:?} entry_port={} entry_vc={} in router {} towards server {}",phit.packet,entry_port,entry_vc,self.router_index,target_server);
-								}
-								//There are currently no good port choices, but there may be in the future.
-								continue;
+								panic!("There are no choices for packet {:?} entry_port={} entry_vc={} in router {} towards server {}",phit.packet,entry_port,entry_vc,self.router_index,target_server);
 							}
-							let mut good_ports=routing_candidates.into_iter().filter_map(|candidate|{
-								let CandidateEgress{port:f_port,virtual_channel:f_virtual_channel,..} = candidate;
-								//We analyze each candidate output port, considering whether they are in use (port or virtual channel).
-								match self.selected_input[f_port][f_virtual_channel]
+							//There are currently no good port choices, but there may be in the future.
+							continue;
+						}
+						let mut good_ports=routing_candidates.into_iter().filter_map(|candidate|{
+							let CandidateEgress{port:f_port,virtual_channel:f_virtual_channel,..} = candidate;
+							//We analyze each candidate output port, considering whether they are in use (port or virtual channel).
+							match self.selected_input[f_port][f_virtual_channel]
+							{
+								// Keep these candidates until EnforceFlowControl, so policies have all information.
+								Some(_) => if self.neglect_busy_output {None} else {Some(CandidateEgress{router_allows:Some(false), ..candidate})},
+								None =>
 								{
-									// Keep these candidates until EnforceFlowControl, so policies have all information.
-									Some(_) => if self.neglect_busy_output {None} else {Some(CandidateEgress{router_allows:Some(false), ..candidate})},
-									None =>
+									let bubble_in_use= self.bubble && phit.is_begin() && simulation.network.topology.is_direction_change(self.router_index,entry_port,f_port);
+									//if self.transmission_port_status[f_port].can_transmit(&phit,f_virtual_channel,transmit_auxiliar_info)
+									let allowed = if self.can_phit_advance(&phit,f_port,f_virtual_channel,bubble_in_use)
 									{
-										let bubble_in_use= self.bubble && phit.is_begin() && simulation.network.topology.is_direction_change(self.router_index,entry_port,f_port);
-										//if self.transmission_port_status[f_port].can_transmit(&phit,f_virtual_channel,transmit_auxiliar_info)
-										let allowed = if self.can_phit_advance(&phit,f_port,f_virtual_channel,bubble_in_use)
+										if self.allow_request_busy_port
 										{
-											if self.allow_request_busy_port
-											{
-												true
-											}
-											else
-											{
-												!busy_ports[f_port]
-											}
+											true
 										}
 										else
 										{
-											false
-										};
-										Some(CandidateEgress{router_allows:Some(allowed), ..candidate})
+											!busy_ports[f_port]
+										}
 									}
-								}
-							}).collect::<Vec<_>>();
-							let performed_hops=phit.packet.routing_info.borrow().hops;
-							//Apply all the declared virtual channel policies in order.
-							let request_info=RequestInfo{
-								target_router_index: target_router,
-								entry_port,
-								entry_virtual_channel: entry_vc,
-								performed_hops,
-								server_ports: server_ports.as_ref(),
-								port_average_neighbour_queue_length: port_average_neighbour_queue_length.as_ref(),
-								port_last_transmission: port_last_transmission.as_ref(),
-								port_occupied_output_space: port_occupied_output_space.as_ref(),
-								port_available_output_space: port_available_output_space.as_ref(),
-								virtual_channel_occupied_output_space: virtual_channel_occupied_output_space.as_ref(),
-								virtual_channel_available_output_space: virtual_channel_available_output_space.as_ref(),
-								time_at_front: Some(self.time_at_input_head[entry_port][entry_vc]),
-								current_cycle: simulation.cycle,
-								phit: phit.clone(),
-							};
-							for vcp in self.virtual_channel_policies.iter()
-							{
-								//good_ports=vcp.filter(good_ports,self,target_router,entry_port,entry_vc,performed_hops,&server_ports,&port_average_neighbour_queue_length,&port_last_transmission,&port_occupied_output_space,&port_available_output_space,simulation.cycle,topology,&mutable.rng);
-								good_ports=vcp.filter(good_ports,self,&request_info,topology,&mut mutable.rng);
-								if good_ports.len()==0
-								{
-									break;//No need to check other policies.
+									else
+									{
+										false
+									};
+									Some(CandidateEgress{router_allows:Some(allowed), ..candidate})
 								}
 							}
+						}).collect::<Vec<_>>();
+						let performed_hops=phit.packet.routing_info.borrow().hops;
+						//Apply all the declared virtual channel policies in order.
+						let request_info=RequestInfo{
+							target_router_index: target_router,
+							entry_port,
+							entry_virtual_channel: entry_vc,
+							performed_hops,
+							server_ports: server_ports.as_ref(),
+							port_average_neighbour_queue_length: port_average_neighbour_queue_length.as_ref(),
+							port_last_transmission: port_last_transmission.as_ref(),
+							port_occupied_output_space: port_occupied_output_space.as_ref(),
+							port_available_output_space: port_available_output_space.as_ref(),
+							virtual_channel_occupied_output_space: virtual_channel_occupied_output_space.as_ref(),
+							virtual_channel_available_output_space: virtual_channel_available_output_space.as_ref(),
+							time_at_front: Some(self.time_at_input_head[entry_port][entry_vc]),
+							current_cycle: simulation.cycle,
+							phit: phit.clone(),
+						};
+						for vcp in self.virtual_channel_policies.iter()
+						{
+							//good_ports=vcp.filter(good_ports,self,target_router,entry_port,entry_vc,performed_hops,&server_ports,&port_average_neighbour_queue_length,&port_last_transmission,&port_occupied_output_space,&port_available_output_space,simulation.cycle,topology,&mutable.rng);
+							good_ports=vcp.filter(good_ports,self,&request_info,topology,&mut mutable.rng);
 							if good_ports.len()==0
 							{
-								continue;//There is no available port satisfying the policies. Hopefully there will in the future.
+								break;//No need to check other policies.
 							}
-							//else if good_ports.len()>=2
-							//{
-							//	panic!("You need a VirtualChannelPolicy able to select a single (port,vc).");
-							//}
-							//simulation.routing.performed_request(&good_ports[0],&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&mutable.rng);
-							//match good_ports[0]
-							//{
-							//	CandidateEgress{port,virtual_channel,label,estimated_remaining_hops:_,..}=>(port,virtual_channel,label),
-							//}
-							for candidate in good_ports
-							{
-								simulation.routing.performed_request(&candidate,&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_router,Some(target_server),amount_virtual_channels,&mut mutable.rng);
-								let CandidateEgress{port:requested_port,virtual_channel:requested_vc,label,..} = candidate;
-	//							if self.selected_input[requested_port][requested_vc].is_none()
-	//							{
-									request.push( VCARequest{entry_port,entry_vc,requested_port,requested_vc,label});
-	//							}
-							}
-						},
-						Some((_port,_vc)) => (),//(port,vc,0),//FIXME: perhaps 0 changes into None?
-					};
-					//FIXME: this should not call known_available_space_for_virtual_channel
-					//In wormhole we may have a selected output but be unable to advance, but it is not clear whether makes any difference.
-					/*let credits= self
-						.transmission_port_status[requested_port]
-						.known_available_space_for_virtual_channel(requested_vc)
-						.expect("no available space known");
-					//println!("entry_port={} virtual_channel={} credits={}",entry_port,entry_vc,credits);
-					if credits>0
-					{
-						match self.selected_input[requested_port][requested_vc]
+						}
+						if good_ports.len()==0
 						{
-							Some(_) => (),
-							None => request.push( VCARequest{entry_port,entry_vc,requested_port,requested_vc,label} ),
-						};
-					}*/
-					self.time_at_input_head[entry_port][entry_vc]+=1;
-				}
-			}
-
-			let captured_intransit_priority=self.intransit_priority;
-			// Check if the allocator supports intransit priority.
-			if captured_intransit_priority {
-				// If the allocator supports intransit priority
-				if !self.crossbar_allocator.support_intransit_priority() {
-					panic!("Current crossbar allocator does not support intransit priority option");
-				}
-
-				//to each request in request, set label to 0 if it is a transit request.
-				request = request.into_iter().map(|mut req|{
-					if let (Location::RouterPort { .. },_) = simulation.network.topology.neighbour(self.router_index,req.entry_port)
+							continue;//There is no available port satisfying the policies. Hopefully there will in the future.
+						}
+						//else if good_ports.len()>=2
+						//{
+						//	panic!("You need a VirtualChannelPolicy able to select a single (port,vc).");
+						//}
+						//simulation.routing.performed_request(&good_ports[0],&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_server,amount_virtual_channels,&mutable.rng);
+						//match good_ports[0]
+						//{
+						//	CandidateEgress{port,virtual_channel,label,estimated_remaining_hops:_,..}=>(port,virtual_channel,label),
+						//}
+						for candidate in good_ports
+						{
+							simulation.routing.performed_request(&candidate,&phit.packet.routing_info,simulation.network.topology.as_ref(),self.router_index,target_router,Some(target_server),amount_virtual_channels,&mut mutable.rng);
+							let CandidateEgress{port:requested_port,virtual_channel:requested_vc,label,..} = candidate;
+//							if self.selected_input[requested_port][requested_vc].is_none()
+//							{
+								request.push( VCARequest{entry_port,entry_vc,requested_port,requested_vc,label});
+//							}
+						}
+					},
+					Some((_port,_vc)) => (),//(port,vc,0),//FIXME: perhaps 0 changes into None?
+				};
+				//FIXME: this should not call known_available_space_for_virtual_channel
+				//In wormhole we may have a selected output but be unable to advance, but it is not clear whether makes any difference.
+				/*let credits= self
+					.transmission_port_status[requested_port]
+					.known_available_space_for_virtual_channel(requested_vc)
+					.expect("no available space known");
+				//println!("entry_port={} virtual_channel={} credits={}",entry_port,entry_vc,credits);
+				if credits>0
+				{
+					match self.selected_input[requested_port][requested_vc]
 					{
-						req.label = 0;
-					}
-					req
-				}).collect();
+						Some(_) => (),
+						None => request.push( VCARequest{entry_port,entry_vc,requested_port,requested_vc,label} ),
+					};
+				}*/
+				self.time_at_input_head[entry_port][entry_vc]+=1;
+			}
+		}
+
+		let captured_intransit_priority=self.intransit_priority;
+		// Check if the allocator supports intransit priority.
+		if captured_intransit_priority {
+			// If the allocator supports intransit priority
+			if !self.crossbar_allocator.support_intransit_priority() {
+				panic!("Current crossbar allocator does not support intransit priority option");
 			}
 
-			// Add all the requests to the allocator.
-			request.iter_mut().for_each(|pr| {
-				self.crossbar_allocator.add_request(pr.to_allocator_request(amount_virtual_channels));
-			});
+			//to each request in request, set label to 0 if it is a transit request.
+			request = request.into_iter().map(|mut req|{
+				if let (Location::RouterPort { .. },_) = simulation.network.topology.neighbour(self.router_index,req.entry_port)
+				{
+					req.label = 0;
+				}
+				req
+			}).collect();
+		}
 
-			// Perform the allocation
-			let mut requests_granted : Vec<VCARequest> = Vec::new();
-			for gr in self.crossbar_allocator.perform_allocation(&mut mutable.rng) {
-				// convert from allocator Request to VCARequest
-				requests_granted.push(gr.to_port_request(amount_virtual_channels));
-			}
-		
-			let request_it = requests_granted.into_iter();
+		// Add all the requests to the allocator.
+		request.iter_mut().for_each(|pr| {
+			self.crossbar_allocator.add_request(pr.to_allocator_request(amount_virtual_channels));
+		});
 
-			//Complete the arbitration of the requests by writing the selected_input of the output virtual ports.
-			//let request=request_sequence.concat();
-			for VCARequest{entry_port,entry_vc,requested_port,requested_vc,..} in request_it
-			{
-				self.selected_input[requested_port][requested_vc]=Some((entry_port,entry_vc));
-				self.selected_output[entry_port][entry_vc]=Some((requested_port,requested_vc));
-			}
+		// Perform the allocation
+		let mut requests_granted : Vec<VCARequest> = Vec::new();
+		for gr in self.crossbar_allocator.perform_allocation(&mut mutable.rng) {
+			// convert from allocator Request to VCARequest
+			requests_granted.push(gr.to_port_request(amount_virtual_channels));
+		}
+	
+		let request_it = requests_granted.into_iter();
+
+		//Complete the arbitration of the requests by writing the selected_input of the output virtual ports.
+		//let request=request_sequence.concat();
+		for VCARequest{entry_port,entry_vc,requested_port,requested_vc,..} in request_it
+		{
+			self.selected_input[requested_port][requested_vc]=Some((entry_port,entry_vc));
+			self.selected_output[entry_port][entry_vc]=Some((requested_port,requested_vc));
 		}
 
 		//-- For each output port decide which input actually uses it this cycle.
@@ -883,193 +879,66 @@ impl Eventful for InputOutput
 		for exit_port in 0..self.transmission_port_status.len()
 		{
 			let nvc=amount_virtual_channels;
-			//Gather the list of all vc that can advance
-			let mut cand=Vec::with_capacity(nvc);
-			let mut cand_in_transit=false;
-//			let mut undo_selected_input=Vec::with_capacity(nvc);
-			let (new_location,link_class)=simulation.network.topology.neighbour(self.router_index,exit_port);
-			//let is_link_cycle = simulation.is_link_cycle(link_class);
-			let is_link_cycle = false;
 			for exit_vc in 0..nvc
 			{
-				if is_crossbar_cycle
+				if let Some((entry_port,entry_vc))=self.selected_input[exit_port][exit_vc]
 				{
-					if let Some((entry_port,entry_vc))=self.selected_input[exit_port][exit_vc]
+					//-- Move phits into the internal output space
+					//Note that it is possible when flit_size<packet_size for the packet to not be in that buffer. The output arbiter can decide to advance other virtual channel.
+					if let Ok((phit,ack_message)) = self.reception_port_space[entry_port].extract(entry_vc)
 					{
-						//-- Move phits into the internal output space
-						//Note that it is possible when flit_size<packet_size for the packet to not be in that buffer. The output arbiter can decide to advance other virtual channel.
-						if let Ok((phit,ack_message)) = self.reception_port_space[entry_port].extract(entry_vc)
+						// For the check with crossbar delay look into PhitToOutput::process.
+						if self.output_buffers[exit_port][exit_vc].len()>=self.output_buffer_size
 						{
-							// For the check with crossbar delay look into PhitToOutput::process.
-							if self.output_buffers[exit_port][exit_vc].len()>=self.output_buffer_size
-							{
-								panic!("Trying to move into a full output buffer.");
-							}
-							moved_input_phits+=1;
-							self.time_at_input_head[entry_port][entry_vc]=0;
-							*phit.virtual_channel.borrow_mut()=Some(exit_vc);
-							if let Some(message)=ack_message
-							{
-								// If the crossbar operates at higher frequency (aka internal speedup) then it would send acks at greater rate than allowed.
-								// We allow sending several events in the same cycle of the link. Acks should have few bits and be possible to be aggregated.
-								let (previous_location,previous_link_class)=simulation.network.topology.neighbour(self.router_index,entry_port);
-								let event = Event::Acknowledge{location:previous_location,message};
-								events.push(simulation.schedule_link_arrival( previous_link_class, event ));
-							}
-							if phit.is_end()
-							{
-								self.selected_input[exit_port][exit_vc]=None;
-								self.selected_output[entry_port][entry_vc]=None;
-							}
-							else
-							{
-								self.selected_output[entry_port][entry_vc]=Some((exit_port,exit_vc));
-							}
-							if self.crossbar_delay==0 {
-								self.output_buffers[exit_port][exit_vc].push(phit,(entry_port,entry_vc));
-							} else {
-								let event = Rc::<RefCell<internal::PhitToOutput>>::from(internal::PhitToOutputArgument{
-									//router: self.self_rc.upgrade().unwrap(),
-									router: self,
-									exit_port,
-									exit_vc,
-									entry_port,
-									entry_vc,
-									phit,
-								});
-								events.push(EventGeneration{
-									delay: self.crossbar_delay,
-									position:CyclePosition::Begin,
-									event: Event::Generic(event),
-								});
-							}
+							panic!("Trying to move into a full output buffer.");
+						}
+						moved_input_phits+=1;
+						self.time_at_input_head[entry_port][entry_vc]=0;
+						*phit.virtual_channel.borrow_mut()=Some(exit_vc);
+						if let Some(message)=ack_message
+						{
+							// If the crossbar operates at higher frequency (aka internal speedup) then it would send acks at greater rate than allowed.
+							// We allow sending several events in the same cycle of the link. Acks should have few bits and be possible to be aggregated.
+							let (previous_location,previous_link_class)=simulation.network.topology.neighbour(self.router_index,entry_port);
+							let event = Event::Acknowledge{location:previous_location,message};
+							events.push(simulation.schedule_link_arrival( previous_link_class, event ));
+						}
+						if phit.is_end()
+						{
+							self.selected_input[exit_port][exit_vc]=None;
+							self.selected_output[entry_port][entry_vc]=None;
 						}
 						else
 						{
-							if self.flit_size>1
-							{
-								//XXX We seem to easily reach this region when using different frequencies.
-								//We would like to panic if phit.packet.size<=flit_size, but we do not have the phit accesible.
-								//println!("WARNING: There were no phit at the selected_input[{}][{}]=({},{}) of the router {}.",exit_port,exit_vc,entry_port,entry_vc,self.router_index);
-							}
+							self.selected_output[entry_port][entry_vc]=Some((exit_port,exit_vc));
+						}
+						if self.crossbar_delay==0 {
+							self.output_buffers[exit_port][exit_vc].push(phit,(entry_port,entry_vc));
+						} else {
+							let event = Rc::<RefCell<internal::PhitToOutput>>::from(internal::PhitToOutputArgument{
+								//router: self.self_rc.upgrade().unwrap(),
+								router: self,
+								exit_port,
+								exit_vc,
+								entry_port,
+								entry_vc,
+								phit,
+							});
+							events.push(EventGeneration{
+								delay: self.crossbar_delay,
+								position:CyclePosition::Begin,
+								event: Event::Generic(event),
+							});
 						}
 					}
-				}
-				if is_link_cycle
-				{
-					//Candidates when using output ports.
-					if let Some( (phit,(entry_port,_entry_vc))) = self.output_buffers[exit_port][exit_vc].front()
+					else
 					{
-						let bubble_in_use= self.bubble && phit.is_begin() && simulation.network.topology.is_direction_change(self.router_index,entry_port,exit_port);
-						let status=&self.transmission_port_status[exit_port];
-						let can_transmit = if bubble_in_use
+						if self.flit_size>1
 						{
-							//self.transmission_port_status[exit_port].can_transmit_whole_packet(&phit,exit_vc)
-							if let Some(space)=status.known_available_space_for_virtual_channel(exit_vc)
-							{
-								status.can_transmit(&phit,exit_vc) && space>= phit.packet.size + self.maximum_packet_size
-							}
-							else
-							{
-								panic!("InputOutput router requires knowledge of available space to apply bubble.");
-							}
+							//XXX We seem to easily reach this region when using different frequencies.
+							//We would like to panic if phit.packet.size<=flit_size, but we do not have the phit accesible.
+							//println!("WARNING: There were no phit at the selected_input[{}][{}]=({},{}) of the router {}.",exit_port,exit_vc,entry_port,entry_vc,self.router_index);
 						}
-						else
-						{
-							status.can_transmit(&phit,exit_vc)
-						};
-						if can_transmit
-						{
-							if cand_in_transit
-							{
-								if !phit.is_begin()
-								{
-									cand.push(exit_vc);
-								}
-							}
-							else
-							{
-								if phit.is_begin()
-								{
-									cand.push(exit_vc);
-								}
-								else
-								{
-									cand=vec![exit_vc];
-									cand_in_transit=true;
-								}
-							}
-						}
-						else
-						{
-							if 0<phit.index && phit.index<self.flit_size
-							{
-								panic!("cannot transmit phit (index={}) but it should (flit_size={})",phit.index,self.flit_size);
-							}
-						}
-					}
-				}
-			}
-			//for selected_virtual_channel in 0..nvc
-			if is_link_cycle && !cand.is_empty()
-			{
-				//Then select one of the vc candidates (either in input or output buffer) to actually use the physical port.
-				let selected_virtual_channel = match self.output_arbiter
-				{
-					OutputArbiter::Random=> cand[mutable.rng.gen_range(0..cand.len())],
-					OutputArbiter::Token{ref mut port_token}=>
-					{
-						//Or by tokens as in fsin
-						//let nvc=self.virtual_ports[exit_port].len() as i64;
-						let nvc= amount_virtual_channels as i64;
-						let token= port_token[exit_port] as i64;
-						let mut best=0;
-						let mut bestd=nvc;
-						for vc in cand
-						{
-							let mut d:i64 = vc as i64 - token;
-							if d<0
-							{
-								d+=nvc;
-							}
-							if d<bestd
-							{
-								best=vc;
-								bestd=d;
-							}
-						}
-						port_token[exit_port]=best;
-						best
-					},
-				};
-				//move phits around.
-				let (phit,original_port) =
-				{
-					//If we get the phit from an output buffer there is little to do.
-					let (phit,(entry_port,_entry_vc))=self.output_buffers[exit_port][selected_virtual_channel].pop().expect("incorrect selected_input");
-					(phit,entry_port)
-				};
-				//Send the phit to the other link endpoint.
-				let link = &simulation.link_classes[link_class];
-				events.push(EventGeneration{
-					delay: link.delay,
-					position:CyclePosition::Begin,
-					event:Event::PhitToLocation{
-						phit: phit.clone(),
-						previous: Location::RouterPort{
-							router_index: self.router_index,
-							router_port: original_port,
-						},
-						new: new_location,
-					},
-				});
-				next_delay = Some(next_delay.unwrap_or(link.frequency_divisor).min(link.frequency_divisor));
-				self.transmission_port_status[exit_port].notify_outcoming_phit(selected_virtual_channel,simulation.cycle);
-				if phit.is_end()
-				{
-					if let OutputArbiter::Token{ref mut port_token}=self.output_arbiter
-					{
-						port_token[exit_port]=(port_token[exit_port]+1)%amount_virtual_channels;
 					}
 				}
 			}
@@ -1080,50 +949,31 @@ impl Eventful for InputOutput
 		//if undecided_channels>0 || moved_phits>0 || events.len()>0
 		let recheck_crossbar = undecided_channels>0 || moved_input_phits>0 || request.len()>0;//Needs to check the crossbar in its next slot.
 		if recheck_crossbar {
-			let target = event::round_to_multiple(simulation.cycle+1,self.crossbar_frequency_divisor) - simulation.cycle;
-			next_delay = Some(next_delay.unwrap_or(target).min(target));
-		}
-		//next_delay=Some(1);
-		if let Some(next) = next_delay
-		{
-			//Repeat at next slot.
-			if let Some(event) = self.schedule(simulation.cycle,next)
+			let next_delay = event::round_to_multiple(simulation.cycle+1,self.crossbar_frequency_divisor) - simulation.cycle;
+			if let Some(event) = self.schedule(simulation.cycle,next_delay)
 			{
 				events.push(event);
 			}
 		}
 		events
 	}
-	//fn pending_events(&self)->usize
-	//{
-	//	if self.event_pending { 1 } else { 0 }
-	//}
-	//fn add_pending_event(&mut self)
-	//{
-	//	self.event_pending=true;
-	//}
-	//fn clear_pending_events(&mut self)
-	//{
-	//	self.event_pending=false;
-	//}
 	fn as_eventful(&self)->Weak<RefCell<dyn Eventful>>
 	{
 		self.self_rc.clone()
 	}
+	/**
+	We schedule in cycles multiple of the `crossbar_frequency_divisor`.
+	Note the outputs of the router are instead scheduled by `TryLinkTraversal::schedule`.
+	**/
 	fn schedule(&mut self, current_cycle:Time, delay:Time) -> Option<EventGeneration>
 	{
-		// We schedule every cycle.
-		// Some cycles may be just crossbar or just link trasmission.
-		// Could be better to have events for the output queues, so they are scheduled separately.
 		let target = current_cycle+delay;
+		let target = event::round_to_multiple(target,self.crossbar_frequency_divisor);
 		if self.next_events.is_empty() || target<*self.next_events.last().unwrap() {
-			//self.add_pending_event();
 			self.next_events.push(target);
 			let event = Event::Generic(self.as_eventful().upgrade().expect("missing component"));
-			//use std::convert::TryInto;
 			Some(EventGeneration{
-				//delay: event::round_to_multiple(delay.try_into().unwrap(),self.crossbar_frequency_divisor.try_into().unwrap()).try_into().unwrap(),
-				delay,
+				delay: target-current_cycle,
 				position: CyclePosition::End,
 				event,
 			})
@@ -1196,23 +1046,6 @@ mod internal
 			event
 		}
 	}
-	//impl PhitToOutput
-	//{
-	//	pub fn new() -> PhitToOutput
-	//	{
-	//		self.output_buffer_phits_traversing_crossbar[exit_port][exit_vc]+=1;
-	//		let event = Rc::new(RefCell::new(internal::PhitToOutput{
-	//			self_rc: Weak::new(),
-	//			router: self.self_rc.upgrade().unwrap(),
-	//			exit_port,
-	//			exit_vc,
-	//			entry_port,
-	//			entry_vc,
-	//			phit,
-	//		}));
-	//		event.borrow_mut().self_rc=Rc::<_>::downgrade(&event);
-	//	}
-	//}
 	impl Eventful for PhitToOutput
 	{
 		fn process(&mut self, simulation:&SimulationShared, _mutable:&mut SimulationMut) -> Vec<EventGeneration>
@@ -1224,20 +1057,6 @@ mod internal
 			}
 			router.output_buffer_phits_traversing_crossbar[self.exit_port][self.exit_vc]-=1;
 			router.output_buffers[self.exit_port][self.exit_vc].push(self.phit.clone(),(self.entry_port,self.entry_vc));
-			//if router.event_pending {
-			//if !router.next_events.is_empty() && *router.next_events.last().unwrap()==simulation.cycle{
-			//	vec![]
-			//} else {
-			//	// When a phit moves into an output buffer, ensure the router executes this cycle.
-			//	//router.event_pending=true;
-			//	router.next_events.push(simulation.cycle);
-			//	vec![EventGeneration{
-			//		delay:0,
-			//		position:CyclePosition::End,
-			//		event:Event::Generic(router.as_eventful().upgrade().expect("missing router")),
-			//	}]
-			//}
-			//if let Some(event) = router.schedule(simulation.cycle,0) {
 			let mut output_scheduler = router.output_schedulers[self.exit_port].borrow_mut();
 			if let Some(event) = output_scheduler.schedule(simulation.cycle,0) {
 				vec![event]
@@ -1245,22 +1064,6 @@ mod internal
 				vec![]
 			}
 		}
-		/////Number of pending events.
-		//fn pending_events(&self)->usize
-		//{
-		//	// This event should always be just once.
-		//	1
-		//}
-		/////Mark the eventful as having another pending event. It should also be added to some queue.
-		//fn add_pending_event(&mut self)
-		//{
-		//	// This event should always be just once.
-		//}
-		/////Mark the eventful as having no pending events. Perhaps it is not necessary, since it is being done by the `process` method.
-		//fn clear_pending_events(&mut self)
-		//{
-		//	// This event should always be just once.
-		//}
 		///Extract the eventful from the implementing class. Required since `as Rc<RefCell<Eventful>>` does not work.
 		fn as_eventful(&self)->Weak<RefCell<dyn Eventful>>
 		{

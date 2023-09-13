@@ -1382,27 +1382,30 @@ impl<'a> Simulation<'a>
 		if !self.statistics.packet_percentiles.is_empty()
 		{
 			let mut packets_delay : Vec<Time> = self.statistics.packet_statistics.iter().map(|ps|ps.delay).collect();
-			let mut packets_hops : Vec<usize> = self.statistics.packet_statistics.iter().map(|ps|ps.hops).collect();
-			let mut packets_consumed_cycle: Vec<Time> = self.statistics.packet_statistics.iter().map(|ps|ps.consumed_cycle).collect();
-			packets_delay.sort_unstable();
-			packets_hops.sort_unstable();
-			packets_consumed_cycle.sort_unstable();
 			let num_packets = packets_delay.len();
-			for &percentile in self.statistics.packet_percentiles.iter()
+			if num_packets>0
 			{
-				let mut index:usize = num_packets * usize::from(percentile) /100;
-				if index >= num_packets
+				let mut packets_hops : Vec<usize> = self.statistics.packet_statistics.iter().map(|ps|ps.hops).collect();
+				let mut packets_consumed_cycle: Vec<Time> = self.statistics.packet_statistics.iter().map(|ps|ps.consumed_cycle).collect();
+				packets_delay.sort_unstable();
+				packets_hops.sort_unstable();
+				packets_consumed_cycle.sort_unstable();
+				for &percentile in self.statistics.packet_percentiles.iter()
 				{
-					//This happens at least in percentile 100%.
-					//We cannot find a value greater than ALL, just return the greatest.
-					index = num_packets -1;
+					let mut index:usize = num_packets * usize::from(percentile) /100;
+					if index >= num_packets
+					{
+						//This happens at least in percentile 100%.
+						//We cannot find a value greater than ALL, just return the greatest.
+						index = num_packets -1;
+					}
+					let packet_content = vec![
+						(String::from("delay"),ConfigurationValue::Number(packets_delay[index] as f64)),
+						(String::from("hops"),ConfigurationValue::Number(packets_hops[index] as f64)),
+						(String::from("consumed_cycle"),ConfigurationValue::Number(packets_consumed_cycle[index] as f64)),
+					];
+					result_content.push((format!("packet_percentile{}",percentile),ConfigurationValue::Object(String::from("PacketStatistics"),packet_content)));
 				}
-				let packet_content = vec![
-					(String::from("delay"),ConfigurationValue::Number(packets_delay[index] as f64)),
-					(String::from("hops"),ConfigurationValue::Number(packets_hops[index] as f64)),
-					(String::from("consumed_cycle"),ConfigurationValue::Number(packets_consumed_cycle[index] as f64)),
-				];
-				result_content.push((format!("packet_percentile{}",percentile),ConfigurationValue::Object(String::from("PacketStatistics"),packet_content)));
 			}
 		}
 		if !self.statistics.packet_defined_statistics_measurement.is_empty()

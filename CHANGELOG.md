@@ -2,6 +2,9 @@
 
 ## next [0.6.2]
 
+### 2023-09-13
+Fixes and cleanup on the InputOutput router.
+
 ### 2023-09-12
 BREAKING CHANGE: All cycles are now represented by a `Time` alias of `u64`; instead of `usize`.
 BREAKING CHANGE: Removed methods `pending_events`, `add_pending_event`, and `clear_pending_events` from the Eventful trait in favor of the `schedule` method.
