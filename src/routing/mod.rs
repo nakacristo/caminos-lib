@@ -24,7 +24,7 @@ use std::convert::TryFrom;
 use ::rand::{rngs::StdRng,Rng,prelude::SliceRandom};
 
 use crate::config_parser::ConfigurationValue;
-use crate::topology::cartesian::{DOR,O1TURN,ValiantDOR,OmniDimensionalDeroute};
+use crate::topology::cartesian::{DOR,O1TURN,ValiantDOR,OmniDimensionalDeroute, OmniDOR, GENERALTURN};
 use crate::topology::{Topology,Location};
 pub use crate::event::Time;
 use quantifiable_derive::Quantifiable;//the derive macro
@@ -63,6 +63,8 @@ pub struct RoutingInfo
 	pub meta: Option<Vec<RefCell<RoutingInfo>>>,
 	///Arbitrary data with internal mutability.
 	pub auxiliar: RefCell<Option<Box<dyn std::any::Any>>>,
+	///Its avaliable to missroute or not in a specific direction
+	pub avaliable_missrouting: Option<Vec<usize>>,
 }
 
 impl RoutingInfo
@@ -77,6 +79,7 @@ impl RoutingInfo
 			visited_routers: None,
 			meta: None,
 			auxiliar: RefCell::new(None),
+			avaliable_missrouting: None,
 		}
 	}
 }
@@ -85,8 +88,8 @@ impl RoutingInfo
 #[derive(Clone,Debug,Default)]
 pub struct RoutingAnnotation
 {
-	values: Vec<i32>,
-	meta: Vec<Option<RoutingAnnotation>>,
+	pub(crate) values: Vec<i32>,
+	pub(crate) meta: Vec<Option<RoutingAnnotation>>,
 }
 
 ///Represent a port plus additional information that a routing algorithm can determine on how a packet must advance to the next router or server.
@@ -413,7 +416,9 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 		{
 			"DOR" => Box::new(DOR::new(arg)),
 			"O1TURN" => Box::new(O1TURN::new(arg)),
+			"GeneralTurn" => Box::new(GENERALTURN::new(arg)),
 			"OmniDimensionalDeroute" => Box::new(OmniDimensionalDeroute::new(arg)),
+			"OmniDOR" => Box::new(OmniDOR::new(arg)),
 			"Shortest" => Box::new(Shortest::new(arg)),
 			"Valiant" => Box::new(Valiant::new(arg)),
 			"ValiantDOR" => Box::new(ValiantDOR::new(arg)),

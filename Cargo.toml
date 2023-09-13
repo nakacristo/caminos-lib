@@ -64,6 +64,8 @@ quantifiable-derive = "0.1.0"
 # For allocations of specific sizes.
 slab = { version= "0.4.7", optional = true }
 
+#itertools used in cartesian topology
+itertools = "0.11.0"
 
 [features]
 #default = ["rc_packet"]
