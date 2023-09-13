@@ -19,6 +19,11 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 
 <details>
 
+## [0.6.0] to ...
+* All cycles are now represented by a `Time` alias of `u64`; instead of `usize`.
+* Removed methods `pending_events`, `add_pending_event`, and `clear_pending_events` from the Eventful trait in favor of the `schedule` method.
+* Router methods insert and acknowledge now return `Vec<EventGeneration>` and are responsible for their scheduling.
+
 ## [0.5.0] to [0.6.0]
 * Removed unnecessary generic parameter TM from routers Basic and InputOutput. They now may select [TransmissionMechanism]s to employ.
 * Renamed TransmissionFromServer into TransmissionFromOblivious.
@@ -947,8 +952,7 @@ impl<'a> Simulation<'a>
 								extra.cycle_per_hop.push(self.shared.cycle);
 							}
 							let mut brouter=self.shared.network.routers[router].borrow_mut();
-							brouter.insert(phit.clone(),port,&mut self.mutable.rng);
-							if let Some(event) = brouter.schedule(self.shared.cycle,0)
+							for event in brouter.insert(self.shared.cycle,phit.clone(),port,&mut self.mutable.rng)
 							{
 								self.event_queue.enqueue(event);
 							}
@@ -982,7 +986,6 @@ impl<'a> Simulation<'a>
 						&Location::None => panic!("Phit went nowhere previous={:?}",previous),
 					};
 				},
-				//Event::PhitClearAcknowledge
 				Event::Acknowledge{
 					location,
 					//virtual_channel,
@@ -995,9 +998,7 @@ impl<'a> Simulation<'a>
 					} =>
 					{
 						let mut brouter=self.shared.network.routers[router_index].borrow_mut();
-						//brouter.acknowledge(router_port,virtual_channel);
-						brouter.acknowledge(router_port,ack_message);
-						if let Some(event) = brouter.schedule(self.shared.cycle,0)
+						for event in brouter.acknowledge(self.shared.cycle,router_port,ack_message)
 						{
 							self.event_queue.enqueue(event);
 						}

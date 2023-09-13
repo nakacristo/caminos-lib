@@ -138,13 +138,23 @@ impl BasicRouterMeasurement
 
 impl Router for Basic
 {
-	fn insert(&mut self, phit:Rc<Phit>, port:usize, rng: &mut StdRng)
+	fn insert(&mut self, current_cycle:Time, phit:Rc<Phit>, port:usize, rng: &mut StdRng) -> Vec<EventGeneration>
 	{
 		self.reception_port_space[port].insert(phit,rng).expect("there was some problem on the insertion");
+		if let Some(event) = self.schedule(current_cycle,0) {
+			vec![event]
+		} else {
+			vec![]
+		}
 	}
-	fn acknowledge(&mut self, port:usize, ack_message:AcknowledgeMessage)
+	fn acknowledge(&mut self, current_cycle:Time, port:usize, ack_message:AcknowledgeMessage) -> Vec<EventGeneration>
 	{
 		self.transmission_port_status[port].acknowledge(ack_message);
+		if let Some(event) = self.schedule(current_cycle,0) {
+			vec![event]
+		} else {
+			vec![]
+		}
 	}
 	fn num_virtual_channels(&self) -> usize
 	{

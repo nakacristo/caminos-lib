@@ -4,6 +4,7 @@
 
 ### 2023-09-13
 Fixes and cleanup on the InputOutput router.
+BREAKING CHANGE: Router methods insert and acknowledge now return `Vec<EventGeneration>` and are responsible for their scheduling.
 
 ### 2023-09-12
 BREAKING CHANGE: All cycles are now represented by a `Time` alias of `u64`; instead of `usize`.

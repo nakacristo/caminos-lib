@@ -16,7 +16,7 @@ use self::basic::Basic;
 use self::input_output::InputOutput;
 use crate::config_parser::ConfigurationValue;
 use crate::topology::{Topology};
-use crate::event::{Eventful,Time};
+use crate::event::{Eventful,Time,EventGeneration};
 use crate::quantify::Quantifiable;
 use crate::error::{Error,SourceLocation};
 
@@ -36,10 +36,12 @@ pub mod prelude
 ///The interface that a router type must follow.
 pub trait Router: Eventful + Quantifiable
 {
-	///Introduces a phit into the router in the specified port
-	fn insert(&mut self, phit:Rc<Phit>, port:usize, rng: &mut StdRng);
-	///Receive the acknowledge of a phit clear. Generally to increase the credit count
-	fn acknowledge(&mut self, port:usize, ack_message:AcknowledgeMessage);
+	///Introduces a phit into the router in the specified port.
+	///Should return a list of events to push into the event queue. This may include to schedule itself or a subcomponent.
+	fn insert(&mut self, current_cycle:Time, phit:Rc<Phit>, port:usize, rng: &mut StdRng) -> Vec<EventGeneration>;
+	///Receive the acknowledge of a phit clear. Generally to increase the credit count.
+	///Should return a list of events to push into the event queue. This may include to schedule itself or a subcomponent.
+	fn acknowledge(&mut self, current_cycle:Time, port:usize, ack_message:AcknowledgeMessage) -> Vec<EventGeneration>;
 	///To get the number of virtual channels the router uses.
 	fn num_virtual_channels(&self) -> usize;
 	///Get the number of phits that fit inside the buffer of a port.
