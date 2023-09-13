@@ -1985,7 +1985,7 @@ impl ConfigurationValue
 			Object(ref _name, ref key_val_list) => key_val_list.into_iter().map(|(_key,value)|value.depth()+1).max().unwrap_or(0),
 			Array(ref list) | Experiments(ref list) | NamedExperiments(_, ref list) => list.into_iter().map(|value|value.depth()+1).max().unwrap_or(0),
 			Where(_rc, _expr) => todo!(),
-			Expression(_expr) => todo!(),
+			Expression(_expr) => 0, //todo!(),
 		}
 	}
 	/**
