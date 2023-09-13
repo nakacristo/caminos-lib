@@ -117,13 +117,14 @@ impl Router for InputOutput
 	fn acknowledge(&mut self, current_cycle:Time, port:usize, ack_message:AcknowledgeMessage) -> Vec<EventGeneration>
 	{
 		self.transmission_port_status[port].acknowledge(ack_message);
-		// XXX we need to awake the output port.
-		// self.output_schedulers[port].schedule(current_cycle??,0);
+		let mut events = vec![];
 		if let Some(event) = self.schedule(current_cycle,0) {
-			vec![event]
-		} else {
-			vec![]
+			events.push(event);
 		}
+		if let Some(event) = self.output_schedulers[port].borrow_mut().schedule(current_cycle,0) {
+			events.push(event);
+		}
+		events
 	}
 	fn num_virtual_channels(&self) -> usize
 	{
@@ -1252,7 +1253,7 @@ mod internal
 			// XXX we should avoid to reschedule when it is not necessary.
 			// Are we sure that if we have not being able to advance and nothing changes then we are indefinitely idle?
 			// It is important that the acks received by the router may trigger the scheduling.
-			//if !events.is_empty()
+			if !events.is_empty()
 			{
 				if let Some(event) = self.schedule(simulation.cycle,1)
 				{
