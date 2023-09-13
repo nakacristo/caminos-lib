@@ -34,8 +34,8 @@ pub struct Basic
 {
 	///Weak pointer to itself, see <https://users.rust-lang.org/t/making-a-rc-refcell-trait2-from-rc-refcell-trait1/16086/3>
 	self_rc: Weak<RefCell<Basic>>,
-	///If there is an event pending
-	event_pending: bool,
+	///When is the next scheduled event. Stack with the soonner event the last.
+	next_events: Vec<Time>,
 	///The cycle number of the last time Basic::process was called. Only for debugging/assertion purposes.
 	last_process_at_cycle: Option<Time>,
 	///Its index in the topology
@@ -600,7 +600,7 @@ impl Basic
 		};
 		let r=Rc::new(RefCell::new(Basic{
 			self_rc: Weak::new(),
-			event_pending: false,
+			next_events: vec![],
 			last_process_at_cycle: None,
 			router_index,
 			//routing,
@@ -1367,21 +1367,17 @@ impl Eventful for Basic
 				}
 			}
 		}
+		self.next_events.pop();//remove the event that was served.
 		//TODO: what to do with probabilistic requests???
 		if undecided_channels>0 || moved_phits>0 || !events.is_empty() || request_len>0
 		//if undecided_channels>0 || moved_phits>0 || events.len()>0
 		//if true
 		{
 			//Repeat at next cycle
-			events.push(EventGeneration{
-				delay:1,
-				position:CyclePosition::End,
-				event:Event::Generic(self.as_eventful().upgrade().expect("missing router")),
-			});
-		}
-		else
-		{
-			//self.clear_pending_events();
+			if let Some(event) = self.schedule(simulation.cycle,1)
+			{
+				events.push(event);
+			}
 		}
 		events
 	}
@@ -1400,6 +1396,21 @@ impl Eventful for Basic
 	fn as_eventful(&self)->Weak<RefCell<dyn Eventful>>
 	{
 		self.self_rc.clone()
+	}
+	fn schedule(&mut self, current_cycle:Time, delay:Time) -> Option<EventGeneration>
+	{
+		let target = current_cycle+delay;
+		if self.next_events.is_empty() || target<*self.next_events.last().unwrap() {
+			self.next_events.push(target);
+			let event = Event::Generic(self.as_eventful().upgrade().expect("missing component"));
+			Some(EventGeneration{
+				delay: target-current_cycle,
+				position: CyclePosition::End,
+				event,
+			})
+		} else {
+			None
+		}
 	}
 }
 
