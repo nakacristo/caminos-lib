@@ -16,11 +16,11 @@ fn input_output_switch_local_traffic()
     let plugs = Plugs::default();
 
     let n_servers = 2.0;
-    let messages_per_server = 12.0;
+    let messages_per_server = 10.0;
     let message_size = 16.0;
-    let cycles = 200.0;
+    let cycles = 162.0; //This is when it should end (?) Nic-switch (1 cycle) + switch-Nic (1 cycle)
 
-    let estimated_injected_load = message_size * messages_per_server / cycles;
+    let estimated_injected_load =  message_size * messages_per_server / cycles; // Aprox... Maybe not the best value now but it is a start
 
     let topology = create_hamming_topology(vec![ConfigurationValue::Number(1f64)], 2f64, &mut rng);
     let pattern = create_shift_pattern(vec![ConfigurationValue::Number(2f64),ConfigurationValue::Number(1f64)], vec![ConfigurationValue::Number(1f64), ConfigurationValue::Number(0f64)]);
@@ -61,13 +61,12 @@ fn input_output_two_servers_two_routers()
     let mut rng=StdRng::seed_from_u64(10u64);
     let plugs = Plugs::default();
 
-
     let n_servers = 2.0;
-    let messages_per_server = 12.0;
+    let messages_per_server = 10.0;
     let message_size = 16.0;
-    let cycles = 200.0;
+    let cycles = 163.0; //This is when it should end (?) Nic-switch + router-router + switch-Nic
 
-    let estimated_injected_load = message_size * messages_per_server / cycles;
+    let estimated_injected_load =  message_size * messages_per_server / cycles; // Aprox... Maybe not the best value now but it is a start
 
     let topology = create_hamming_topology(vec![ConfigurationValue::Number(2f64)], 1f64, &mut rng);
     let pattern = create_shift_pattern(vec![ConfigurationValue::Number(1f64),ConfigurationValue::Number(2f64)], vec![ConfigurationValue::Number(0f64), ConfigurationValue::Number(1f64)]);
