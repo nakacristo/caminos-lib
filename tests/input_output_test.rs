@@ -16,11 +16,12 @@ fn input_output_switch_local_traffic()
     let plugs = Plugs::default();
 
     let n_servers = 2.0;
-    let messages_per_server = 10.0;
+    let messages_per_server = 1.0;
     let message_size = 16.0;
-    let cycles = 162.0; //This is when it should end (?) Nic-switch (1 cycle) + switch-Nic (1 cycle)
+    let cycles = 18.0; //This is when it should end (?) Nic-switch (1 cycle) + switch-Nic (1 cycle)
 
     let estimated_injected_load =  message_size * messages_per_server / cycles; // Aprox... Maybe not the best value now but it is a start
+    let packet_hops = 1.0;
 
     let topology = create_hamming_topology(vec![ConfigurationValue::Number(1f64)], 2f64, &mut rng);
     let pattern = create_shift_pattern(vec![ConfigurationValue::Number(2f64),ConfigurationValue::Number(1f64)], vec![ConfigurationValue::Number(1f64), ConfigurationValue::Number(0f64)]);
@@ -50,6 +51,9 @@ fn input_output_switch_local_traffic()
 
     match_object_panic!( &results, "Result", value,
         "injected_load" => assert_eq!(value.as_f64().expect("Injected load data"), estimated_injected_load), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
+        "accepted_load" => assert_eq!(value.as_f64().expect("Accepted load load data"), estimated_injected_load), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
+        "average_packet_hops" => assert_eq!(value.as_f64().expect("Packet hops data"), packet_hops), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
+
         _ => (),
     );
 }
@@ -62,9 +66,9 @@ fn input_output_two_servers_two_routers()
     let plugs = Plugs::default();
 
     let n_servers = 2.0;
-    let messages_per_server = 10.0;
+    let messages_per_server = 1.0;
     let message_size = 16.0;
-    let cycles = 163.0; //This is when it should end (?) Nic-switch + router-router + switch-Nic
+    let cycles = 19.0; //This is when it should end (?) Nic-switch + router-router + switch-Nic
 
     let estimated_injected_load =  message_size * messages_per_server / cycles; // Aprox... Maybe not the best value now but it is a start
 
