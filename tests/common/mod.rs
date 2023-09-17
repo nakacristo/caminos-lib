@@ -52,6 +52,30 @@ pub fn create_input_output_router(
     // })
 }
 
+pub fn create_basic_router(
+    virtual_channels:f64, vcp:ConfigurationValue, delay:f64, buffer_size: f64, bubble: ConfigurationValue,
+    flit_size: f64, allow_request_busy_port: ConfigurationValue, intransit_priority: ConfigurationValue, output_buffer_size: f64, neglect_busy_outport: ConfigurationValue, output_prioritize_lowest_label: ConfigurationValue)-> ConfigurationValue
+// router_index: usize, plugs: &Plugs, topology: Box<dyn Topology>, maximum_packet_size: usize, general_frequency_divisor: Time, statistics_temporal_step: Time, rng: &mut StdRng) -> ConfigurationValue
+{
+    //let plugs = Plugs::default();
+    // let router_config =
+    ConfigurationValue::Object("Basic".to_string(), vec![
+        ("virtual_channels".to_string(),ConfigurationValue::Number(virtual_channels)),
+        ("virtual_channel_policies".to_string(), vcp),
+        ("delay".to_string(), ConfigurationValue::Number(delay) ),
+        ("buffer_size".to_string(), ConfigurationValue::Number(buffer_size)),
+        ("bubble".to_string(), bubble),
+        ("flit_size".to_string(), ConfigurationValue::Number(flit_size) ),
+        ("allow_request_busy_port".to_string(), allow_request_busy_port),
+        ("intransit_priority".to_string(), intransit_priority),
+        ("output_buffer_size".to_string(), ConfigurationValue::Number(output_buffer_size)),
+        ("neglect_busy_output".to_string(), neglect_busy_outport),
+        ("output_prioritize_lowest_label".to_string(), output_prioritize_lowest_label)
+    ])
+
+}
+
+
 pub fn create_hamming_topology(sides: Vec<ConfigurationValue>, servers_per_router: f64, rng: &mut StdRng) -> ConfigurationValue //Box<dyn Topology>
 {
     //let plugs = Plugs::default();
