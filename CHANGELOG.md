@@ -4,6 +4,7 @@
 
 ### 2023-09-18
 Fix InputOutput router to allow for `crossbar_delay=0`.
+Little cleaning on SumRouting.
 
 ### 2023-09-13
 Fixes and cleanup on the InputOutput router.
