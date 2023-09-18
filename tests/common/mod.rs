@@ -1,106 +1,119 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::default::Default;
 use caminos_lib::*;
-use caminos_lib::policies::VirtualChannelPolicy;
-use caminos_lib::router::RouterBuilderArgument;
-use caminos_lib::topology::{new_topology, Topology, TopologyBuilderArgument};
 use config_parser::ConfigurationValue;
-use rand::rngs::StdRng;
-use caminos_lib::router::input_output::InputOutput;
 
+pub struct VirtualChannelPoliciesBuilder{
 
-pub fn create_vcp() -> ConfigurationValue
-{
-    ConfigurationValue::Array(vec![
-        ConfigurationValue::Object("LowestLabel".to_string(), vec![]),
-        ConfigurationValue::Object("EnforceFlowControl".to_string(), vec![]),
-        ConfigurationValue::Object("Random".to_string(), vec![])
-    ])
+    pub policies: Vec<ConfigurationValue>,
 }
 
-pub fn create_input_output_router(
-    virtual_channels:f64, vcp:ConfigurationValue, delay:f64, allocator: ConfigurationValue, buffer_size: f64, bubble: ConfigurationValue,
-    flit_size: f64, allow_request_busy_port: ConfigurationValue, intransit_priority: ConfigurationValue, output_buffer_size: f64, neglect_busy_outport: ConfigurationValue)-> ConfigurationValue
-    // router_index: usize, plugs: &Plugs, topology: Box<dyn Topology>, maximum_packet_size: usize, general_frequency_divisor: Time, statistics_temporal_step: Time, rng: &mut StdRng) -> ConfigurationValue
+pub fn create_vcp( arg: VirtualChannelPoliciesBuilder) -> ConfigurationValue
 {
-    //let plugs = Plugs::default();
-    // let router_config =
+    ConfigurationValue::Array(arg.policies)
+}
+
+pub struct InputOutputRouterBuilder {
+    pub virtual_channels: usize,
+    pub vcp: ConfigurationValue,
+    pub crossbar_delay: usize,
+    pub allocator: ConfigurationValue,
+    pub buffer_size: usize,
+    pub bubble: ConfigurationValue,
+    pub flit_size: usize,
+    pub allow_request_busy_port: ConfigurationValue,
+    pub intransit_priority: ConfigurationValue,
+    pub output_buffer_size: usize,
+    pub neglect_busy_outport: ConfigurationValue,
+}
+
+
+pub fn create_input_output_router(arg: InputOutputRouterBuilder)-> ConfigurationValue
+{
         ConfigurationValue::Object("InputOutput".to_string(), vec![
-            ("virtual_channels".to_string(),ConfigurationValue::Number(virtual_channels)),
-            ("virtual_channel_policies".to_string(), vcp),
-            ("allocator".to_string(), allocator),
-            ("delay".to_string(), ConfigurationValue::Number(delay) ),
-            ("buffer_size".to_string(), ConfigurationValue::Number(buffer_size)),
-            ("bubble".to_string(), bubble),
-            ("flit_size".to_string(), ConfigurationValue::Number(flit_size) ),
-            ("allow_request_busy_port".to_string(), allow_request_busy_port),
-            ("intransit_priority".to_string(), intransit_priority),
-            ("output_buffer_size".to_string(), ConfigurationValue::Number(output_buffer_size)),
-            ("neglect_busy_output".to_string(), neglect_busy_outport)
+            ("virtual_channels".to_string(),ConfigurationValue::Number( arg.virtual_channels as f64 )),
+            ("virtual_channel_policies".to_string(), arg.vcp),
+            ("allocator".to_string(), arg.allocator),
+            ("crossbar_delay".to_string(), ConfigurationValue::Number(arg.crossbar_delay as f64) ),
+            ("buffer_size".to_string(), ConfigurationValue::Number(arg.buffer_size as f64)),
+            ("bubble".to_string(), arg.bubble),
+            ("flit_size".to_string(), ConfigurationValue::Number(arg.flit_size as f64) ),
+            ("allow_request_busy_port".to_string(), arg.allow_request_busy_port),
+            ("intransit_priority".to_string(), arg.intransit_priority),
+            ("output_buffer_size".to_string(), ConfigurationValue::Number(arg.output_buffer_size as f64)),
+            ("neglect_busy_output".to_string(), arg.neglect_busy_outport)
     ])
-
-    // InputOutput::new(router::RouterBuilderArgument{
-    //     router_index,
-    //     cv: &router_config,
-    //     plugs,
-    //     topology: topology.as_ref(),
-    //     maximum_packet_size,
-    //     general_frequency_divisor,
-    //     statistics_temporal_step,
-    //     rng,
-    // })
 }
 
-pub fn create_basic_router(
-    virtual_channels:f64, vcp:ConfigurationValue, delay:f64, buffer_size: f64, bubble: ConfigurationValue,
-    flit_size: f64, allow_request_busy_port: ConfigurationValue, intransit_priority: ConfigurationValue, output_buffer_size: f64, neglect_busy_outport: ConfigurationValue, output_prioritize_lowest_label: ConfigurationValue)-> ConfigurationValue
-// router_index: usize, plugs: &Plugs, topology: Box<dyn Topology>, maximum_packet_size: usize, general_frequency_divisor: Time, statistics_temporal_step: Time, rng: &mut StdRng) -> ConfigurationValue
+pub struct BasicRouterBuilder {
+    pub virtual_channels: usize,
+    pub vcp: ConfigurationValue,
+    pub buffer_size: usize,
+    pub bubble: ConfigurationValue,
+    pub flit_size: usize,
+    pub allow_request_busy_port: ConfigurationValue,
+    pub intransit_priority: ConfigurationValue,
+    pub output_buffer_size: usize,
+    pub neglect_busy_outport: ConfigurationValue,
+    pub output_prioritize_lowest_label: ConfigurationValue,
+}
+
+pub fn create_basic_router( arg: BasicRouterBuilder)-> ConfigurationValue
 {
-    //let plugs = Plugs::default();
-    // let router_config =
     ConfigurationValue::Object("Basic".to_string(), vec![
-        ("virtual_channels".to_string(),ConfigurationValue::Number(virtual_channels)),
-        ("virtual_channel_policies".to_string(), vcp),
-        ("delay".to_string(), ConfigurationValue::Number(delay) ),
-        ("buffer_size".to_string(), ConfigurationValue::Number(buffer_size)),
-        ("bubble".to_string(), bubble),
-        ("flit_size".to_string(), ConfigurationValue::Number(flit_size) ),
-        ("allow_request_busy_port".to_string(), allow_request_busy_port),
-        ("intransit_priority".to_string(), intransit_priority),
-        ("output_buffer_size".to_string(), ConfigurationValue::Number(output_buffer_size)),
-        ("neglect_busy_output".to_string(), neglect_busy_outport),
-        ("output_prioritize_lowest_label".to_string(), output_prioritize_lowest_label)
+        ("virtual_channels".to_string(),ConfigurationValue::Number(arg.virtual_channels as f64)),
+        ("virtual_channel_policies".to_string(), arg.vcp),
+        ("buffer_size".to_string(), ConfigurationValue::Number(arg.buffer_size as f64)),
+        ("bubble".to_string(), arg.bubble),
+        ("flit_size".to_string(), ConfigurationValue::Number(arg.flit_size as f64) ),
+        ("allow_request_busy_port".to_string(), arg.allow_request_busy_port),
+        ("intransit_priority".to_string(), arg.intransit_priority),
+        ("output_buffer_size".to_string(), ConfigurationValue::Number(arg.output_buffer_size as f64)),
+        ("neglect_busy_output".to_string(), arg.neglect_busy_outport),
+        ("output_prioritize_lowest_label".to_string(), arg.output_prioritize_lowest_label)
     ])
 
 }
 
-
-pub fn create_hamming_topology(sides: Vec<ConfigurationValue>, servers_per_router: f64, rng: &mut StdRng) -> ConfigurationValue //Box<dyn Topology>
+pub struct HammingBuilder
 {
-    //let plugs = Plugs::default();
-    // let cv =
-    ConfigurationValue::Object("Hamming".to_string(),
-                                        vec![("sides".to_string(),ConfigurationValue::Array(sides)),
-                                             ("servers_per_router".to_string(),ConfigurationValue::Number(servers_per_router))])
-
-    // new_topology(TopologyBuilderArgument{cv:&cv, plugs:&plugs, rng })
+    pub sides: Vec<ConfigurationValue>,
+    pub servers_per_router: usize,
 }
 
-pub fn create_shift_pattern(sides: Vec<ConfigurationValue>, shift: Vec<ConfigurationValue>) -> ConfigurationValue
+pub fn create_hamming_topology(arg: HammingBuilder) -> ConfigurationValue //Box<dyn Topology>
+{
+    ConfigurationValue::Object("Hamming".to_string(),
+                                        vec![("sides".to_string(),ConfigurationValue::Array(arg.sides)),
+                                             ("servers_per_router".to_string(),ConfigurationValue::Number(arg.servers_per_router as f64))])
+}
+
+pub struct ShiftPatternBuilder
+{
+    pub sides: Vec<ConfigurationValue>,
+    pub shift: Vec<ConfigurationValue>,
+}
+
+pub fn create_shift_pattern(arg: ShiftPatternBuilder) -> ConfigurationValue
 {
     ConfigurationValue::Object("CartesianTransform".to_string(), vec![
-        ("sides".to_string(),ConfigurationValue::Array(sides)),
-        ("shift".to_string(),ConfigurationValue::Array(shift))])
+        ("sides".to_string(),ConfigurationValue::Array(arg.sides)),
+        ("shift".to_string(),ConfigurationValue::Array(arg.shift))])
 }
 
 
-pub fn create_burst_traffic(pattern: ConfigurationValue, servers: f64, messages_per_server: f64, message_size: f64) -> ConfigurationValue
+pub struct BurstTrafficBuilder
 {
-    ConfigurationValue::Object("Burst".to_string(), vec![("pattern".to_string(),pattern ),
-                                                         ("servers".to_string(), ConfigurationValue::Number(servers)),
-                                                         ("messages_per_server".to_string(), ConfigurationValue::Number(messages_per_server)),
-                                                         ("message_size".to_string(), ConfigurationValue::Number(message_size))])
+    pub pattern: ConfigurationValue,
+    pub servers: usize,
+    pub messages_per_server: usize,
+    pub message_size: usize,
+}
+
+pub fn create_burst_traffic(arg: BurstTrafficBuilder) -> ConfigurationValue
+{
+    ConfigurationValue::Object("Burst".to_string(), vec![("pattern".to_string(), arg.pattern ),
+                                                         ("servers".to_string(), ConfigurationValue::Number(arg.servers as f64)),
+                                                         ("messages_per_server".to_string(), ConfigurationValue::Number(arg.messages_per_server as f64)),
+                                                         ("message_size".to_string(), ConfigurationValue::Number(arg.message_size as f64))])
 }
 
 pub fn create_shortest_routing() -> ConfigurationValue
@@ -120,3 +133,34 @@ pub fn create_link_classes() -> ConfigurationValue
    ])
 }
 
+pub struct SimulationBuilder
+{
+    pub random_seed: usize,
+    pub warmup: usize,
+    pub measured: usize,
+    pub topology: ConfigurationValue,
+    pub traffic: ConfigurationValue,
+    pub router: ConfigurationValue,
+    pub maximum_packet_size: usize,
+    pub general_frequency_divisor: usize,
+    pub routing: ConfigurationValue,
+    pub link_classes: ConfigurationValue
+
+}
+pub fn create_simulation(arg: SimulationBuilder) -> ConfigurationValue
+{
+
+    ConfigurationValue::Object("Configuration".to_string(), vec![
+        ("random_seed".to_string(), ConfigurationValue::Number(arg.random_seed as f64)),
+        ("warmup".to_string(), ConfigurationValue::Number( arg.warmup as f64)),
+        ("measured".to_string(), ConfigurationValue::Number(arg.measured as f64)),
+        ("topology".to_string(), arg.topology),
+        ("traffic".to_string(), arg.traffic),
+        ("router".to_string(), arg.router),
+        ("maximum_packet_size".to_string(), ConfigurationValue::Number(arg.maximum_packet_size as f64)),
+        ("general_frequency_divisor".to_string(), ConfigurationValue::Number(arg.general_frequency_divisor as f64)),
+        ("routing".to_string(), arg.routing),
+        ("link_classes".to_string(), arg.link_classes),
+    ])
+
+}

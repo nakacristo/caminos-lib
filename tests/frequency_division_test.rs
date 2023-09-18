@@ -1,58 +1,105 @@
 mod common;
 use caminos_lib::*;
-use ::rand::{rngs::StdRng};
-use rand::SeedableRng;
 use caminos_lib::config_parser::ConfigurationValue;
 use common::*;
-use std::rc::Rc;
-use std::cell::RefCell;
-use caminos_lib::routing::RoutingInfo;
 
 #[test]
 fn basic_frequency_division_two_routers()
 {
+    // Hamming
+    let network_sides = vec![2];
+    let servers_per_router = 1;
+    let hamming_builder = HammingBuilder{
+        sides: network_sides.into_iter().map(|a| ConfigurationValue::Number(a as f64) ).collect(), //vec![ConfigurationValue::Number(1.0)],
+        servers_per_router,
+    };
 
-    let mut rng=StdRng::seed_from_u64(10u64);
-    let plugs = Plugs::default();
+    //Pattern
+    let total_sides = vec![1, 2]; //sides of the Cartesian pattern
+    let cartesian_shift = vec![0, 1]; //shift of the Cartesian pattern
+    let shift_pattern_builder = ShiftPatternBuilder{
+        sides: total_sides.into_iter().map(|a| ConfigurationValue::Number(a as f64)).collect(), //vec![ConfigurationValue::Number(2.0),ConfigurationValue::Number(1.0)],
+        shift: cartesian_shift.into_iter().map(|a| ConfigurationValue::Number(a as f64)).collect(),//vec![ConfigurationValue::Number(1.0), ConfigurationValue::Number(0.0)],
+    };
+    let pattern = create_shift_pattern(shift_pattern_builder);
 
-    let n_servers = 2.0;
-    let messages_per_server = 1.0;
-    let message_size = 16.0;
-    let cycles = 34.0; //This is when it should end (?) Nic-switch + router-router + switch-Nic
+    // Burst traffic
+    let servers = 2;
+    let messages_per_server = 1;
+    let message_size = 16;
+    let burst_traffic_builder = BurstTrafficBuilder{
+        pattern,
+        servers,
+        messages_per_server,
+        message_size,
 
-    let estimated_injected_load =  message_size * messages_per_server / cycles; // Aprox... Maybe not the best value now but it is a start
-    let packet_hops = 1.0;
+    };
 
-    let topology = create_hamming_topology(vec![ConfigurationValue::Number(2f64)], 1f64, &mut rng);
-    let pattern = create_shift_pattern(vec![ConfigurationValue::Number(1f64),ConfigurationValue::Number(2f64)], vec![ConfigurationValue::Number(0f64), ConfigurationValue::Number(1f64)]);
-    let traffic = create_burst_traffic(pattern, n_servers, messages_per_server, message_size);
-    let vcp = create_vcp();
-    let router = create_basic_router(1.0, vcp, 0.0, 64.0, ConfigurationValue::False, 16.0, ConfigurationValue::True, ConfigurationValue::False, 32.0, ConfigurationValue::False,ConfigurationValue::False);
+    //Virtual Channel Policies
+    let vcp_args = VirtualChannelPoliciesBuilder{
+        policies: vec![
+            ConfigurationValue::Object("LowestLabel".to_string(), vec![]),
+            ConfigurationValue::Object("EnforceFlowControl".to_string(), vec![]),
+            ConfigurationValue::Object("Random".to_string(), vec![])
+        ]
+    };
+    let vcp = create_vcp(vcp_args);
+
+    //Router Basic
+    let router_args = BasicRouterBuilder{
+        virtual_channels: 1,
+        vcp,
+        buffer_size: 64,
+        bubble: ConfigurationValue::False,
+        flit_size: message_size, //vct
+        allow_request_busy_port: ConfigurationValue::True,
+        intransit_priority: ConfigurationValue::False,
+        output_buffer_size: 32,
+        neglect_busy_outport: ConfigurationValue::False,
+        output_prioritize_lowest_label: ConfigurationValue::False,
+    };
+
+
+    let general_frequency_divisor = 2;
+    let cycles = general_frequency_divisor * (messages_per_server * message_size + 3); //+3 is because of the switch-Nic + switch-switch + Nic-switch links which take one cycle each
+    let maximum_packet_size=16;
+
+    let topology = create_hamming_topology(hamming_builder);
+    let traffic = create_burst_traffic(burst_traffic_builder);
+    let router = create_basic_router(router_args);
     let routing = create_shortest_routing();
     let link_classes = create_link_classes();
 
-    let simulation_cv = ConfigurationValue::Object("Configuration".to_string(), vec![
-        ("random_seed".to_string(), ConfigurationValue::Number(1.0)),
-        ("warmup".to_string(), ConfigurationValue::Number(0.0)),
-        ("measured".to_string(), ConfigurationValue::Number(cycles)),
-        ("topology".to_string(), topology),
-        ("traffic".to_string(), traffic),
-        ("router".to_string(), router),
-        ("maximum_packet_size".to_string(), ConfigurationValue::Number(16.0)),
-        ("general_frequency_divisor".to_string(), ConfigurationValue::Number(2.0)),
-        ("routing".to_string(), routing),
-        ("link_classes".to_string(), link_classes),
-    ]);
+    let simulation_builder = SimulationBuilder{
+        random_seed: 1,
+        warmup: 0,
+        measured: cycles,
+        topology,
+        traffic,
+        router,
+        maximum_packet_size,
+        general_frequency_divisor,
+        routing,
+        link_classes
+    };
+
+    let plugs = Plugs::default();
+    let simulation_cv = create_simulation(simulation_builder);
+
     // println!("{:#?}", simulation_cv);
     let mut simulation = Simulation::new(&simulation_cv, &plugs);
     simulation.run();
     let results = simulation.get_simulation_results();
     println!("{:#?}", results);
 
+    let estimated_injected_load =  (message_size * messages_per_server) as f64 / (cycles as f64); // Aprox... Maybe not the best value now but it is a start
+    let packet_hops = 1.0;
+
     match_object_panic!( &results, "Result", value,
-        "injected_load" => assert_eq!(value.as_f64().expect("Injected load data"), estimated_injected_load, "Injection load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
-        "accepted_load" => assert_eq!(value.as_f64().expect("Accepted load load data"), estimated_injected_load), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
-        "average_packet_hops" => assert_eq!(value.as_f64().expect("Packet hops data"), packet_hops), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
+        "cycle" => assert_eq!(value.as_f64().expect("Cycle data"), cycles as f64, "Cycle"),
+        "injected_load" => assert_eq!(value.as_f64().expect("Injected load data"), estimated_injected_load, "Injected load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
+        "accepted_load" => assert_eq!(value.as_f64().expect("Accepted load load data"), estimated_injected_load, "Accepted load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
+        "average_packet_hops" => assert_eq!(value.as_f64().expect("Packet hops data"), packet_hops, "Total hops"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
         _ => (),
     );
 }
