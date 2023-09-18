@@ -2,6 +2,9 @@
 
 ## next [0.6.2]
 
+### 2023-09-18
+Fix InputOutput router to allow for `crossbar_delay=0`.
+
 ### 2023-09-13
 Fixes and cleanup on the InputOutput router.
 BREAKING CHANGE: Router methods insert and acknowledge now return `Vec<EventGeneration>` and are responsible for their scheduling.
