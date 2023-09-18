@@ -106,6 +106,7 @@ fn basic_switch_local_traffic()
     let packet_hops = 0.0;
 
     match_object_panic!( &results, "Result", value,
+        "cycle" => assert_eq!(value.as_f64().expect("Cycle data"), cycles as f64, "Cycle"),
         "injected_load" => assert_eq!(value.as_f64().expect("Injected load data"), estimated_injected_load, "Injected load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
         "accepted_load" => assert_eq!(value.as_f64().expect("Accepted load load data"), estimated_injected_load, "Accepted load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
         "average_packet_hops" => assert_eq!(value.as_f64().expect("Packet hops data"), packet_hops, "Total hops"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
@@ -206,6 +207,7 @@ fn basic_two_servers_two_routers()
     let packet_hops = 1.0;
 
     match_object_panic!( &results, "Result", value,
+        "cycle" => assert_eq!(value.as_f64().expect("Cycle data"), cycles as f64, "Cycle"),
         "injected_load" => assert_eq!(value.as_f64().expect("Injected load data"), estimated_injected_load, "Injected load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
         "accepted_load" => assert_eq!(value.as_f64().expect("Accepted load load data"), estimated_injected_load, "Accepted load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
         "average_packet_hops" => assert_eq!(value.as_f64().expect("Packet hops data"), packet_hops, "Total hops"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
