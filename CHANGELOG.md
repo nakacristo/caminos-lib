@@ -2,6 +2,9 @@
 
 ## next [0.6.2]
 
+### 2023-09-25
+`canonicalize` the path to CAMINOS' binary in ExperimentFiles, to be apt for SLURM scripts.
+
 ### 2023-09-18
 Fix InputOutput router to allow for `crossbar_delay=0`.
 Little cleaning on SumRouting.

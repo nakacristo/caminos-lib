@@ -963,7 +963,7 @@ impl<'a> Experiment<'a>
 				host: None,
 				username: None,
 				ssh2_session: None,
-				binary: Some(binary.to_path_buf()),
+				binary: Some(binary.canonicalize().expect("could not canonicalize the path to the binary.").to_path_buf()),
 				root: Some(root.to_path_buf()),
 				cfg_contents: None,
 				parsed_cfg: None,
