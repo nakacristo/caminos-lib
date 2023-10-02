@@ -2,6 +2,9 @@
 
 ## next [0.6.2]
 
+### 2023-10-02
+Add `sum` as alias for the `add` config function.
+
 ### 2023-09-25
 `canonicalize` the path to CAMINOS' binary in ExperimentFiles, to be apt for SLURM scripts.
 
