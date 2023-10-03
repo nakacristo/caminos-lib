@@ -2,6 +2,9 @@
 
 ## next [0.6.2]
 
+### 2023-10-03
+Manage separately the path as passed by terminal as the path detected by `std::env::current_exe`.
+
 ### 2023-10-02
 Add `sum` as alias for the `add` config function.
 
