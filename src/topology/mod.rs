@@ -21,7 +21,7 @@ use ::rand::{rngs::StdRng};
 use std::io::{Write};
 
 use quantifiable_derive::Quantifiable;//the derive macro
-use self::cartesian::{Mesh,Torus,CartesianData,Hamming};
+use self::cartesian::{Mesh,Torus,CartesianData,Hamming,AsCartesianTopology};
 use self::neighbourslists::NeighboursLists;
 use self::dragonfly::Dragonfly;
 use self::projective::{Projective,LeviProjective};
@@ -651,6 +651,18 @@ pub struct TopologyBuilderArgument<'a>
 	pub rng: &'a mut StdRng,
 }
 
+impl<'a> TopologyBuilderArgument<'a>
+{
+	fn with_cv<'b>(self:&'b mut TopologyBuilderArgument<'a>, new_cv: &'b ConfigurationValue) -> TopologyBuilderArgument<'b>
+	{
+		TopologyBuilderArgument{
+			cv: new_cv,
+			plugs: self.plugs,
+			rng: self.rng,
+		}
+	}
+}
+
 /**
 Build a topology. All topologies should admit an optional `legend_name` to be used in plots.
 
@@ -848,6 +860,7 @@ pub fn new_topology(arg:TopologyBuilderArgument) -> Box<dyn Topology>
 			"MultiStage" | "XGFT" | "OFT" | "RFC" => Box::new(MultiStage::new(arg)),
 			"Megafly" => Box::new(megafly::Megafly::new(arg)),
 			"RemappedServers" => Box::new(operations::RemappedServersTopology::new(arg)),
+			"AsCartesianTopology" => Box::new(AsCartesianTopology::new(arg)),
 			_ => panic!("Unknown topology {}",cv_name),
 		}
 	}

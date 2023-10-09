@@ -4,6 +4,7 @@
 
 ### 2023-10-09
 Some output tweaks.
+Added [AsCartesianTopology] meta-topology to gives sides to an arbitrary topology.
 
 ### 2023-10-03
 Manage separately the path as passed by terminal as the path detected by `std::env::current_exe`.
