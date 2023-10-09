@@ -1410,10 +1410,10 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 	\begin{{tikzpicture}}[baseline,remember picture]
 	\begin{{axis}}[
 		automatically generated {axis},{extra}
-		{kind_index_style},{legend_to_name},
+		{kind_index_style},
+		{legend_to_name},
+		title={{{selectorname}}},
 		%%ybar interval=0.6,
-		% ymin=%(ymin)s,
-		% ymax=%(ymax)s,
 		{ymin_string}{ymax_string}{xmin_string}{xmax_string}%
 		%%enlargelimits=false,
 		ymajorgrids=true,
@@ -1421,19 +1421,17 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 		xmajorgrids=true,
 		mark options=solid,
 		minor y tick num=4,
-		% %(xlabel)s%(ylabel)s
 		xlabel={{{xlabel_string}}},
 		ylabel={{{ylabel_string}}},
 		%%legend style={{at={{(1.05,1.0)}},anchor=north west}},
 		%%legend style={{opacity=0.7,at={{(0.99,0.99)}},anchor=north east}},
 		%%legend style={{at={{(0.00,1.01)}},anchor=south west,font=\scriptsize}},legend columns=3,transpose legend,legend cell align=left,
 		%%legend style={{at={{(0.00,1.01)}},anchor=south west,font=\scriptsize}},legend columns=2,legend cell align=left,
-		% %(barprop)s
 		%%every x tick label/.append style={{anchor=base,yshift=-7}},
 	]
 {pre_plots}{plots_string}	\end{{axis}}
 	%\pgfresetboundingbox\useasboundingbox (y label.north west) (current axis.north east) ($(current axis.outer north west)!(current axis.north east)!(current axis.outer north east)$);
-	\end{{tikzpicture}}"#,tikzname=tikzname,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},axis=axis,extra=extra,ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xmin_string=xmin[kind_index],xmax_string=xmax[kind_index],xlabel_string=latex_protect_text(&kd.label_abscissas),ylabel_string=latex_protect_text(&kd.label_ordinates),pre_plots=pre_plots,plots_string=raw_plots,legend_to_name=if kind_index==0{format!("legend to name=legend-{}-{}-{}",folder_id,prefix,selectorname)}else{"".to_string()}));
+	\end{{tikzpicture}}%{selectorname} - {kind_index}"#,tikzname=tikzname,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},axis=axis,extra=extra,ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xmin_string=xmin[kind_index],xmax_string=xmax[kind_index],xlabel_string=latex_protect_text(&kd.label_abscissas),ylabel_string=latex_protect_text(&kd.label_ordinates),pre_plots=pre_plots,plots_string=raw_plots,legend_to_name=if kind_index==0{format!("legend to name=legend-{}-{}-{}",folder_id,prefix,selectorname)}else{"".to_string()}));
 		}
 		if wrote==0
 		{
