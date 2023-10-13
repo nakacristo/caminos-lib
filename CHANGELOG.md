@@ -1,6 +1,9 @@
 # Change Log
 
-## next [0.6.2]
+## [0.6.2]
+
+### 2023-10-13
+Publish 0.6.2.
 
 ### 2023-10-09
 Some output tweaks.
