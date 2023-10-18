@@ -1,16 +1,23 @@
 use caminos_lib::*;
 use config_parser::ConfigurationValue;
 
+/*
+    Auxiliary functions to create the configuration file for the tests. Each function has a struct as argument wich contains the needed parameters
+*/
+
+/// Encapsulates the parameters needed to create a Virtual Channel Policy
 pub struct VirtualChannelPoliciesBuilder{
 
     pub policies: Vec<ConfigurationValue>,
 }
 
+/// Creates a Configuration Value with the policy for the virtual channels
 pub fn create_vcp( arg: VirtualChannelPoliciesBuilder) -> ConfigurationValue
 {
     ConfigurationValue::Array(arg.policies)
 }
 
+/// Encapsulates the parameters needed to create a Input_output router
 pub struct InputOutputRouterBuilder {
     pub virtual_channels: usize,
     pub vcp: ConfigurationValue,
@@ -26,7 +33,7 @@ pub struct InputOutputRouterBuilder {
     pub neglect_busy_outport: ConfigurationValue,
 }
 
-
+/// Creates a Configuration Value with the parameters for the Input_output router
 pub fn create_input_output_router(arg: InputOutputRouterBuilder)-> ConfigurationValue
 {
         ConfigurationValue::Object("InputOutput".to_string(), vec![
@@ -44,7 +51,7 @@ pub fn create_input_output_router(arg: InputOutputRouterBuilder)-> Configuration
             ("neglect_busy_output".to_string(), arg.neglect_busy_outport)
     ])
 }
-
+/// Encapsulates the parameters needed to create a Basic router
 pub struct BasicRouterBuilder {
     pub virtual_channels: usize,
     pub vcp: ConfigurationValue,
@@ -57,7 +64,7 @@ pub struct BasicRouterBuilder {
     pub neglect_busy_outport: ConfigurationValue,
     pub output_prioritize_lowest_label: ConfigurationValue,
 }
-
+/// Creates a Configuration Value with the parameters for the Basic router
 pub fn create_basic_router( arg: BasicRouterBuilder)-> ConfigurationValue
 {
     ConfigurationValue::Object("Basic".to_string(), vec![
@@ -75,12 +82,13 @@ pub fn create_basic_router( arg: BasicRouterBuilder)-> ConfigurationValue
 
 }
 
+/// Encapsulates the parameters needed to create a HyperX topology
 pub struct HammingBuilder
 {
     pub sides: Vec<ConfigurationValue>,
     pub servers_per_router: usize,
 }
-
+/// Creates a Configuration Value with the parameters for the HyperX topology
 pub fn create_hamming_topology(arg: HammingBuilder) -> ConfigurationValue //Box<dyn Topology>
 {
     ConfigurationValue::Object("Hamming".to_string(),
@@ -88,12 +96,13 @@ pub fn create_hamming_topology(arg: HammingBuilder) -> ConfigurationValue //Box<
                                              ("servers_per_router".to_string(),ConfigurationValue::Number(arg.servers_per_router as f64))])
 }
 
+/// Encapsulates the parameters needed to create a Cartesian shift pattern (x, y) -> (x + shift_x, y + shift_y)
 pub struct ShiftPatternBuilder
 {
     pub sides: Vec<ConfigurationValue>,
     pub shift: Vec<ConfigurationValue>,
 }
-
+/// Creates a Configuration Value with the parameters for the Cartesian shift pattern
 pub fn create_shift_pattern(arg: ShiftPatternBuilder) -> ConfigurationValue
 {
     ConfigurationValue::Object("CartesianTransform".to_string(), vec![
@@ -101,7 +110,7 @@ pub fn create_shift_pattern(arg: ShiftPatternBuilder) -> ConfigurationValue
         ("shift".to_string(),ConfigurationValue::Array(arg.shift))])
 }
 
-
+/// Encapsulates the parameters needed to create a Burst traffic pattern.
 pub struct BurstTrafficBuilder
 {
     pub pattern: ConfigurationValue,
@@ -109,7 +118,7 @@ pub struct BurstTrafficBuilder
     pub messages_per_server: usize,
     pub message_size: usize,
 }
-
+/// Creates a Configuration Value with the parameters for the Burst traffic pattern
 pub fn create_burst_traffic(arg: BurstTrafficBuilder) -> ConfigurationValue
 {
     ConfigurationValue::Object("Burst".to_string(), vec![("pattern".to_string(), arg.pattern ),
@@ -118,12 +127,13 @@ pub fn create_burst_traffic(arg: BurstTrafficBuilder) -> ConfigurationValue
                                                          ("message_size".to_string(), ConfigurationValue::Number(arg.message_size as f64))])
 }
 
+/// Creates a Configuration Value for Shortest routing
 pub fn create_shortest_routing() -> ConfigurationValue
 {
     ConfigurationValue::Object("Shortest".to_string(), vec![])
 }
 
-
+/// Creates a Configuration Value for link classes
 pub fn create_link_classes() -> ConfigurationValue
 {
    ConfigurationValue::Array(vec![
@@ -135,6 +145,7 @@ pub fn create_link_classes() -> ConfigurationValue
    ])
 }
 
+/// Encapsulates the parameters needed to init a simulation
 pub struct SimulationBuilder
 {
     pub random_seed: usize,
@@ -149,6 +160,8 @@ pub struct SimulationBuilder
     pub link_classes: ConfigurationValue
 
 }
+
+/// Creates a Configuration Value with all the fields for a simulation
 pub fn create_simulation(arg: SimulationBuilder) -> ConfigurationValue
 {
 

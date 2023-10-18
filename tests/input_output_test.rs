@@ -3,8 +3,12 @@ use caminos_lib::*;
 use caminos_lib::config_parser::ConfigurationValue;
 use common::*;
 
+/*
+    Tests for the Input_output router
+*/
 
-///Local traffic tested with one switch and two servers. Each server sends one packet of 16 phits to each other.
+/// Test local traffic inside a router. There are two servers and each server sends one message of 16 phits to each other.
+/// We check that the values obtained in the simulation [cycle (latency), accepted_load, injected_load, average_packet_hops] are the expected ones.
 #[test]
 fn input_output_switch_local_traffic()
 {
@@ -102,6 +106,7 @@ fn input_output_switch_local_traffic()
     let packet_hops = 0.0;
     
     match_object_panic!( &results, "Result", value,
+        "cycle" => assert_eq!(value.as_f64().expect("Cycle data"), cycles as f64, "Cycle"),
         "injected_load" => assert_eq!(value.as_f64().expect("Injected load data"), estimated_injected_load, "Injected load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
         "accepted_load" => assert_eq!(value.as_f64().expect("Accepted load load data"), estimated_injected_load, "Accepted load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
         "average_packet_hops" => assert_eq!(value.as_f64().expect("Packet hops data"), packet_hops, "Total hops"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
@@ -110,7 +115,8 @@ fn input_output_switch_local_traffic()
 }
 
 
-///Communication between two servers connected to a different router each other. Each server sends one packet of 16 phits to each other.
+/// Test traffic between routers. There are two servers and each server is connected to a different router. The send one message of 16 phits to each other.
+/// We check that the values obtained in the simulation [cycle (latency), accepted_load, injected_load, average_packet_hops] are the expected ones.
 #[test]
 fn input_output_two_servers_two_routers()
 {
@@ -220,7 +226,8 @@ fn input_output_two_servers_two_routers()
 
 
 
-///Test the internal speedup of the router
+/// Test traffic between routers. There are two servers and each server is connected to a different router. The send one message of 16 phits to each other. The routers have a frequency divisor (speedup) of x2.
+/// We check that the values obtained in the simulation [cycle (latency), accepted_load, injected_load, average_packet_hops] are the expected ones.
 #[test]
 fn input_output_internal_speedup()
 {

@@ -3,16 +3,12 @@ use caminos_lib::*;
 use caminos_lib::config_parser::ConfigurationValue;
 use common::*;
 
+/*
+    Tests for the Basic router
+*/
 
-
-// #[test]
-// fn output_buffer_test()
-// {
-//     //check that the output buffers are working correctly
-//     todo!()
-// }
-
-
+/// Test local traffic inside a router. There are two servers and each server sends one message of 16 phits to each other.
+/// We check that the values obtained in the simulation [cycle (latency), accepted_load, injected_load, average_packet_hops] are the expected ones.
 #[test]
 fn basic_switch_local_traffic()
 {
@@ -115,6 +111,8 @@ fn basic_switch_local_traffic()
 }
 
 
+/// Test traffic between routers. There are two servers and each server is connected to a different router. The send one message of 16 phits to each other.
+/// We check that the values obtained in the simulation [cycle (latency), accepted_load, injected_load, average_packet_hops] are the expected ones.
 #[test]
 fn basic_two_servers_two_routers()
 {
@@ -207,7 +205,7 @@ fn basic_two_servers_two_routers()
     let packet_hops = 1.0;
 
     match_object_panic!( &results, "Result", value,
-        "cycle" => assert_eq!(value.as_f64().expect("Cycle data"), cycles as f64, "Cycle"),
+        "cycle" => assert_eq!(value.as_f64().expect("Cycle data"), cycles as f64, "Cycle"), // latency
         "injected_load" => assert_eq!(value.as_f64().expect("Injected load data"), estimated_injected_load, "Injected load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
         "accepted_load" => assert_eq!(value.as_f64().expect("Accepted load load data"), estimated_injected_load, "Accepted load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
         "average_packet_hops" => assert_eq!(value.as_f64().expect("Packet hops data"), packet_hops, "Total hops"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
