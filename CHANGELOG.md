@@ -1,5 +1,10 @@
 # Change Log
 
+## next, [0.6.3]
+
+### 2023-10-19
+When building PDF, in addition to `git_id`, show also the version number.
+
 ## [0.6.2]
 
 ### 2023-10-13
