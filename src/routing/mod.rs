@@ -420,6 +420,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"OmniDimensionalDeroute" => Box::new(OmniDimensionalDeroute::new(arg)),
 			"OmniDOR" => Box::new(OmniDOR::new(arg)),
 			"Valiant4Hamming" => Box::new(Valiant4Hamming::new(arg)),
+			"Valiant4Dragonfly" => Box::new(Valiant4Dragonfly::new(arg)),
 			"Shortest" => Box::new(Shortest::new(arg)),
 			"Valiant" => Box::new(Valiant::new(arg)),
 			"ValiantDOR" => Box::new(ValiantDOR::new(arg)),
