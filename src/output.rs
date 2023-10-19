@@ -1712,7 +1712,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 			"No git-id found.".to_string()
 		} else {
 			let core = all_git_ids.iter().map(|s|format!("\\item {}",latex_protect_text(s))).collect::<Vec<String>>().join("\n");
-			format!("\\begin{{itemize}}\n{}\n\\end{{itemize}}",core)
+			format!("The following versions used in the simulations.\\\\\\begin{{itemize}}\n{}\n\\end{{itemize}}",core)
 		}
 	};
 	let whole_tex=format!(r#"
