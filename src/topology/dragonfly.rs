@@ -53,7 +53,8 @@ pub struct Dragonfly
 	number_of_groups: usize,
 
 	// cached values:
-
+	// Cartesian data [switch_index, group_index]
+	cartesian_data: CartesianData,
 	/// `distance_matrix.get(i,j)` = distance from router i to router j.
 	distance_matrix:Matrix<u8>,
 }
@@ -148,7 +149,7 @@ impl Topology for Dragonfly
 	}
 	fn cartesian_data(&self) -> Option<&CartesianData>
 	{
-		None
+		Some(&self.cartesian_data)
 	}
 	fn coordinated_routing_record(&self, _coordinates_a:&[usize], _coordinates_b:&[usize], _rng: Option<&mut StdRng>)->Vec<i32>
 	{
@@ -206,6 +207,7 @@ impl Dragonfly
 			group_size,
 			number_of_groups,
 			distance_matrix:Matrix::constant(0,0,0),
+			cartesian_data: CartesianData::new(&vec![group_size, number_of_groups]),
 		};
 		let (distance_matrix,_amount_matrix)=topo.compute_amount_shortest_paths();
 		topo.distance_matrix=distance_matrix.map(|x|*x as u8);
