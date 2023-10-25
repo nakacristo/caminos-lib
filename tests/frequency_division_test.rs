@@ -9,7 +9,7 @@ use common::*;
 
 
 /// Check the frequency divisor in the Basic router
-/// We check that the values obtained in the simulation [cycle (latency), accepted_load, injected_load, average_packet_hops] are the expected ones.
+/// We check that the values obtained in the simulation `[cycle (latency), accepted_load, injected_load, average_packet_hops]` are the expected ones.
 #[test]
 fn basic_frequency_division_two_routers()
 {
@@ -114,7 +114,7 @@ fn basic_frequency_division_two_routers()
 
 
 /// Check the frequency divisor in the Input_output router
-/// We check that the values obtained in the simulation [cycle (latency), accepted_load, injected_load, average_packet_hops] are the expected ones.
+/// We check that the values obtained in the simulation `[cycle (latency), accepted_load, injected_load, average_packet_hops]` are the expected ones.
 #[test]
 fn input_output_frequency_division_two_routers()
 {

@@ -8,7 +8,7 @@ use common::*;
 */
 
 /// Test local traffic inside a router. There are two servers and each server sends one message of 16 phits to each other.
-/// We check that the values obtained in the simulation [cycle (latency), accepted_load, injected_load, average_packet_hops] are the expected ones.
+/// We check that the values obtained in the simulation `[cycle (latency), accepted_load, injected_load, average_packet_hops]` are the expected ones.
 #[test]
 fn input_output_switch_local_traffic()
 {
@@ -116,7 +116,7 @@ fn input_output_switch_local_traffic()
 
 
 /// Test traffic between routers. There are two servers and each server is connected to a different router. The send one message of 16 phits to each other.
-/// We check that the values obtained in the simulation [cycle (latency), accepted_load, injected_load, average_packet_hops] are the expected ones.
+/// We check that the values obtained in the simulation `[cycle (latency), accepted_load, injected_load, average_packet_hops]` are the expected ones.
 #[test]
 fn input_output_two_servers_two_routers()
 {
@@ -227,7 +227,7 @@ fn input_output_two_servers_two_routers()
 
 
 /// Test traffic between routers. There are two servers and each server is connected to a different router. The send one message of 16 phits to each other. The routers have a frequency divisor (speedup) of x2.
-/// We check that the values obtained in the simulation [cycle (latency), accepted_load, injected_load, average_packet_hops] are the expected ones.
+/// We check that the values obtained in the simulation `[cycle (latency), accepted_load, injected_load, average_packet_hops]` are the expected ones.
 #[test]
 fn input_output_internal_speedup()
 {

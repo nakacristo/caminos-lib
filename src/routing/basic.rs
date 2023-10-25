@@ -365,19 +365,19 @@ impl Valiant
 
 /**
 This is an adapted Valiant version for the Dragonfly topology, suitable for source adaptive routings, as UGAL.
-
+It removes switches from source and target groups as intermediate switches.
 See Valiant, L. G. (1982). A scheme for fast parallel communication. SIAM journal on computing, 11(2), 350-361.
 
 ```ignore
 Valiant4Dragonfly{
 	first: Shortest,
 	second: Shortest,
-	legend_name: "Using Valiant4Dragonfly scheme, shortest to intermediate and shortest to destination",
 	first_reserved_virtual_channels: [0],//optional parameter, defaults to empty. Reserves some VCs to be used only in the first stage
 	second_reserved_virtual_channels: [1,2],//optional, defaults to empty. Reserves some VCs to be used only in the second stage.
 	intermediate_bypass: CartesianTransform{sides:[4,4],project:[true,false]} //optional, defaults to None. A pattern on the routers such that when reaching a router `x` with `intermediate_bypass(x)==intermediate_bypass(Valiant4Dragonfly_choice)` the first stage is terminated.
-	local_missrouting: true, //only local missrouting if target in the group
+	local_missrouting: true, //allow local missrouting, only if target in the group
 	dragonfly_bypass: true, //Take shorcuts avoiding dumb hops
+	legend_name: "Using Valiant4Dragonfly scheme, shortest to intermediate and shortest to destination",
 }
 ```
  **/
@@ -393,8 +393,6 @@ pub struct Valiant4Dragonfly
 	first_reserved_virtual_channels: Vec<usize>,
 	second_reserved_virtual_channels: Vec<usize>,
 	//exclude_h_groups:bool,
-	min_src_first:bool,
-	min_target_first:bool,
 	intermediate_bypass: Option<Box<dyn Pattern>>,
 	local_missrouting: bool, //only local missrouting if target in the group
 	dragonfly_bypass: bool, //lggl routes
@@ -442,22 +440,8 @@ impl Routing for Valiant4Dragonfly
 						{
 							if !self.first_reserved_virtual_channels.contains(&egress.virtual_channel)
 							{
-
-								let router_location =topology.neighbour(current_router,*(&egress.port)).0;
-								let next_router=match router_location
-								{
-									Location::RouterPort{router_index,router_port:_} =>router_index,
-									_ => panic!("The server is not attached to a router"),
-								};
-
-								//CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate}
-								//let distance_next =topology.distance(next_router,target_router);
-								//if distance > distance_next && routing_info.hops == 0 {
-								//Some(CandidateEgress{label:0,..egress})
-								//}else{
-
 								Some(egress)
-								// }
+
 							}else{
 								None
 							}
@@ -686,10 +670,7 @@ impl Valiant4Dragonfly
 		let mut first=None;
 		let mut second=None;
 		let mut pattern: Box<dyn Pattern> = Box::new(UniformPattern::uniform_pattern(true)); //pattern to intermideate node
-		let mut use_min_b=false;
 		// let mut exclude_h_groups=false;
-		let mut min_src_first= true;
-		let mut min_target_first= true;
 		let mut first_reserved_virtual_channels=vec![];
 		let mut second_reserved_virtual_channels=vec![];
 		let mut local_missrouting=false;
@@ -699,10 +680,7 @@ impl Valiant4Dragonfly
 			"first" => first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
 			"second" => second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
 			"pattern" => pattern= Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})).expect("pattern not valid for Valiant4Dragonfly"),
-			"min_src_first" => min_src_first=value.as_bool().expect("bad value for min_src_first"),
 			// "exclude_h_groups"=> exclude_h_groups=value.as_bool().expect("bad value for exclude_h_groups"),
-			"min_target_first" => min_target_first=value.as_bool().expect("bad value for min_target_first"),
-			"use_min_b" => use_min_b=value.as_bool().expect("bad value for use_min_b"),
 			"first_reserved_virtual_channels" => first_reserved_virtual_channels=value.
 				as_array().expect("bad value for first_reserved_virtual_channels").iter()
 				.map(|v|v.as_f64().expect("bad value in first_reserved_virtual_channels") as usize).collect(),
@@ -716,20 +694,12 @@ impl Valiant4Dragonfly
 		let first=first.expect("There were no first");
 		let second=second.expect("There were no second");
 
-		if use_min_b
-		{
-			min_src_first= false;
-			min_target_first= false;
-		}
-
 		Valiant4Dragonfly{
 			first,
 			second,
 			pattern,
 			first_reserved_virtual_channels,
 			second_reserved_virtual_channels,
-			min_src_first,
-			min_target_first,
 			intermediate_bypass,
 			local_missrouting,
 			dragonfly_bypass,

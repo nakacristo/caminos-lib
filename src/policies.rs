@@ -788,7 +788,9 @@ impl LowestSinghWeight
 }
 
 
-///Select the lowest value of the product of the queue length (that is, consumed credits) times the estimated hop count (usually 1 plus the distance from next router to target router)
+///Transform (l,q) into new label a*l+b*q+c*l*q+d
+///where l is the label and q is the occupancy.
+///
 #[derive(Debug)]
 pub struct AverageOccupancyFunction
 {
@@ -806,13 +808,13 @@ pub struct AverageOccupancyFunction
 	///Whether to add the neighbour space.
 	///Defaults to true.
 	use_neighbour_space: bool,
-	///Whether we consider all the space in each port (when true) or we segregate by virtual channels (when false).
+	///Virtual channels we are interested in.
 	virtual_channels: Vec<usize>,
 	///Whether to average the occupation of the virtual channels or add them.
 	average_virtual_channels: bool,
-	///Whether to exclude the current port from the calculations.
+	///Whether to exclude minimal port from the calculations.
 	exclude_minimal_ports: bool,
-	///A vector with link classes to exclude from the calculations.
+	///A vector with link classes whose ports are excluded from the calculations.
 	exclude_link_classes: Vec<usize>,
 }
 

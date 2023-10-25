@@ -2225,20 +2225,33 @@ impl OmniDOR
 }
 
 
-///Special Valiant for Ugal routing in Hamming networks
+/**
+This is an adapted Valiant version for the Hamming topology, suitable for source adaptive routings, as UGAL.
+It removes switches from source and target groups as intermediate switches.
+See Valiant, L. G. (1982). A scheme for fast parallel communication. SIAM journal on computing, 11(2), 350-361.
+
+```ignore
+Valiant4Dragonfly{
+	first: Shortest,
+	second: Shortest,
+	first_reserved_virtual_channels: [0],//optional parameter, defaults to empty. Reserves some VCs to be used only in the first stage
+	second_reserved_virtual_channels: [1,2],//optional, defaults to empty. Reserves some VCs to be used only in the second stage.
+	remove_target_dimensions_aligment:[[0],[1]], //remove intermediate aligned with the target in the 0 and 1 dimensions
+	remove_source_dimensions_aligment:[[0],[1]]  //remove intermediate aligned with the source in the 0 and 1 dimensions
+	allow_unaligned: false, //To go through unaligned dimensions
+	legend_name: "Using Valiant4Dragonfly scheme, shortest to intermediate and shortest to destination",
+}
+```
+ **/
 #[derive(Debug)]
 pub struct Valiant4Hamming
 {
 	first: Box<dyn Routing>,
 	second: Box<dyn Routing>,
-	///Whether to avoid selecting routers without attached servers. This helps to apply it to indirect networks.
-	selection_exclude_indirect_routers: bool,
 	//pattern to select intermideate nodes
 	pattern:Box<dyn Pattern>,
 	first_reserved_virtual_channels: Vec<usize>,
 	second_reserved_virtual_channels: Vec<usize>,
-	min_src_first:bool,
-	min_target_first:bool,
 	remove_target_dimensions_aligment: Vec<Vec<usize>>,
 	remove_source_dimensions_aligment: Vec<Vec<usize>>,
 	allow_unaligned: bool,
@@ -2414,24 +2427,6 @@ impl Routing for Valiant4Hamming
 					break; //the inner loop
 				}
 			}
-
-			/*let diff = src_coord.iter().zip(middle_coord.iter()).map(|(a,b)|a-b).collect::<Vec<_>>();
-
-			for z in 0..self.remove_source_dimensions_aligment.len()
-			{
-				if diff[z] != 0
-				{
-					let valid = false;
-					for i in  0..self.diff.len()
-					{
-						if i != z && diff[i] != 0
-                        {
-							valid = true;
-                        }
-					}
-					not_valid_middle = valid;
-				}
-			}*/
 		}
 
 		if !self.allow_unaligned
@@ -2535,11 +2530,7 @@ impl Valiant4Hamming
 		//let mut servers_per_router=None;
 		let mut first=None;
 		let mut second=None;
-		let mut selection_exclude_indirect_routers=false;
 		let mut pattern: Box<dyn Pattern> = Box::new(UniformPattern::uniform_pattern(true)); //pattern to intermideate node
-		let mut use_min_b=false;
-		let mut min_src_first= true;
-		let mut min_target_first= true;
 		let mut first_reserved_virtual_channels=vec![];
 		let mut second_reserved_virtual_channels=vec![];
 		let mut remove_target_dimensions_aligment = vec![];
@@ -2549,11 +2540,7 @@ impl Valiant4Hamming
 		match_object_panic!(arg.cv,"Valiant4Hamming",value,
 			"first" => first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
 			"second" => second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
-			"selection_exclude_indirect_routers" => selection_exclude_indirect_routers = value.as_bool().expect("bad value for selection_exclude_indirect_routers"),
 		    "pattern" => pattern= Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})).expect("pattern not valid for Valiant4Hamming"),
-			"min_src_first" => min_src_first=value.as_bool().expect("bad value for min_src_first"),
-			"min_target_first" => min_target_first=value.as_bool().expect("bad value for min_target_first"),
-			"use_min_b" => use_min_b=value.as_bool().expect("bad value for use_min_b"),
 			"first_reserved_virtual_channels" => first_reserved_virtual_channels=value.
 				as_array().expect("bad value for first_reserved_virtual_channels").iter()
 				.map(|v|v.as_f64().expect("bad value in first_reserved_virtual_channels") as usize).collect(),
@@ -2572,21 +2559,12 @@ impl Valiant4Hamming
 		let first=first.expect("There were no first");
 		let second=second.expect("There were no second");
 
-		if use_min_b
-		{
-			min_src_first= false;
-			min_target_first= false;
-		}
-
 		Valiant4Hamming{
 			first,
 			second,
-			selection_exclude_indirect_routers,
 			pattern,
 			first_reserved_virtual_channels,
 			second_reserved_virtual_channels,
-			min_src_first,
-			min_target_first,
 			remove_target_dimensions_aligment,
 			remove_source_dimensions_aligment,
 			allow_unaligned,

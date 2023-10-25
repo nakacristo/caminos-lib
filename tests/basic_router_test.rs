@@ -112,7 +112,7 @@ fn basic_switch_local_traffic()
 
 
 /// Test traffic between routers. There are two servers and each server is connected to a different router. The send one message of 16 phits to each other.
-/// We check that the values obtained in the simulation [cycle (latency), accepted_load, injected_load, average_packet_hops] are the expected ones.
+/// We check that the values obtained in the simulation `[cycle (latency), accepted_load, injected_load, average_packet_hops]` are the expected ones.
 #[test]
 fn basic_two_servers_two_routers()
 {
