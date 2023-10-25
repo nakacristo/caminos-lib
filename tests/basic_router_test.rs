@@ -3,12 +3,12 @@ use caminos_lib::*;
 use caminos_lib::config_parser::ConfigurationValue;
 use common::*;
 
-/*
+/*!
     Tests for the Basic router
 */
 
 /// Test local traffic inside a router. There are two servers and each server sends one message of 16 phits to each other.
-/// We check that the values obtained in the simulation [cycle (latency), accepted_load, injected_load, average_packet_hops] are the expected ones.
+/// We check that the values obtained in the simulation `[cycle (latency), accepted_load, injected_load, average_packet_hops]` are the expected ones.
 #[test]
 fn basic_switch_local_traffic()
 {

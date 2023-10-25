@@ -1173,12 +1173,13 @@ pub struct MultimodalBurst
 	///Number of servers applying this traffic.
 	servers: usize,
 	/// For each kind of message `provenance` we have
-	/// `(pattern,total_messages,message_size,step_size)`
+	/// `(pattern,total_messages,message_size,step_size,step_consumed)`
 	/// a Pattern deciding the destination of the message
 	/// a usize with the total number of messages of this kind that each server must generate
 	/// a usize with the size of each message size.
 	/// a usize with the number of messages to send of this kind before switching to the next one.
-	provenance: Vec< (Box<dyn Pattern>,usize,usize,usize) >,
+	/// a usize with the number of messages to consume of this kind before switching to the next one.
+	provenance: Vec< (Box<dyn Pattern>,usize,usize,usize,usize) >,
 	///For each server and kind we track `pending[server][kind]=(total_remaining,step_remaining)`.
 	///where `total_remaining` is the total number of messages of this kind that this server has yet to send.
 	///and `step_remaining` is the number of messages that the server will send before switch to the next kind.
@@ -1212,7 +1213,7 @@ impl Traffic for MultimodalBurst
 				if *step_remaining == 0
 				{
 					//When the whole step is performed advance `next_provenance`.
-					let (ref _pattern, _total_messages, _message_size, step_size) = self.provenance[provenance_index];
+					let (ref _pattern, _total_messages, _message_size, step_size, _step_consumed) = self.provenance[provenance_index];
 					*step_remaining = step_size;
 					self.next_provenance[origin] = (provenance_index+1) % pending.len();
 				}
@@ -1221,7 +1222,7 @@ impl Traffic for MultimodalBurst
 			provenance_index = (provenance_index+1) % pending.len();
 		}
 		// Build the message
-		let (ref pattern,_total_messages,message_size,_step_size) = self.provenance[provenance_index];
+		let (ref pattern,_total_messages,message_size,_step_size, _step_consumed) = self.provenance[provenance_index];
 		let destination=pattern.get_destination(origin,topology,rng);
 		if origin==destination
 		{
@@ -1288,7 +1289,7 @@ impl MultimodalBurst
 	pub fn new(arg:TrafficBuilderArgument) -> MultimodalBurst
 	{
 		let mut servers=None;
-		let mut provenance : Option<Vec<(_,_,_,_)>> = None;
+		let mut provenance : Option<Vec<(_,_,_,_,_)>> = None;
 		match_object_panic!(arg.cv,"MultimodalBurst",value,
 			"servers" => servers=Some(value.as_f64().expect("bad value for servers") as usize),
 			"provenance" => match value
@@ -1298,29 +1299,32 @@ impl MultimodalBurst
 					let mut pattern=None;
 					let mut message_size=None;
 					let mut step_size=None;
+					let mut step_consumed=0;
 					match_object_panic!(pcv,"Provenance",pvalue,
 						"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:pvalue,plugs:arg.plugs})),
 						"messages_per_server" | "total_messages" =>
 							messages_per_server=Some(pvalue.as_f64().expect("bad value for messages_per_server") as usize),
 						"message_size" => message_size=Some(pvalue.as_f64().expect("bad value for message_size") as usize),
 						"step_size" => step_size=Some(pvalue.as_f64().expect("bad value for step_size") as usize),
+						"step_consumed" => step_consumed= pvalue.as_f64().expect("bad value for step_consumed") as usize,
 					);
 					let pattern=pattern.expect("There were no pattern");
 					let messages_per_server=messages_per_server.expect("There were no messages_per_server");
 					let message_size=message_size.expect("There were no message_size");
 					let step_size=step_size.expect("There were no step_size");
-					(pattern,messages_per_server,message_size,step_size)
+					let step_consumed=step_consumed;
+					(pattern,messages_per_server,message_size,step_size,step_consumed)
 				}).collect()),
 				_ => panic!("bad value for provenance"),
 			}
 		);
 		let servers=servers.expect("There were no servers");
 		let mut provenance=provenance.expect("There were no provenance");
-		for (pattern,_total_messages,_message_size,_step_size) in provenance.iter_mut()
+		for (pattern,_total_messages,_message_size,_step_size,_step_consumed) in provenance.iter_mut()
 		{
 			pattern.initialize(servers, servers, arg.topology, arg.rng);
 		}
-		let each_pending = provenance.iter().map(|(_pattern,total_messages,_message_size,step_size)|(*total_messages,*step_size)).collect();
+		let each_pending = provenance.iter().map(|(_pattern,total_messages,_message_size,step_size,_step_consumed)|(*total_messages,*step_size)).collect();
 		MultimodalBurst{
 			servers,
 			provenance,

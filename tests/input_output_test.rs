@@ -3,7 +3,7 @@ use caminos_lib::*;
 use caminos_lib::config_parser::ConfigurationValue;
 use common::*;
 
-/*
+/*!
     Tests for the Input_output router
 */
 

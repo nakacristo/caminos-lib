@@ -86,6 +86,22 @@ impl<A:Quantifiable, B:Quantifiable, C:Quantifiable, D:Quantifiable> Quantifiabl
 	}
 }
 
+impl<A:Quantifiable, B:Quantifiable, C:Quantifiable, D:Quantifiable, E:Quantifiable> Quantifiable for (A,B,C,D,E)
+{
+	fn total_memory(&self) -> usize
+	{
+		self.0.total_memory()+self.1.total_memory()+self.2.total_memory()+self.3.total_memory()+ self.4.total_memory()
+	}
+	fn print_memory_breakdown(&self)
+	{
+		unimplemented!();
+	}
+	fn forecast_total_memory(&self) -> usize
+	{
+		unimplemented!();
+	}
+}
+
 impl<T:Quantifiable> Quantifiable for [T;2]
 {
 	fn total_memory(&self) -> usize

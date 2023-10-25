@@ -364,23 +364,20 @@ impl Valiant
 
 
 /**
-This is Valiant4Dragonfly's randomization scheme. Each packet to be sent from a source to a destination is routed first to a random intermediate node, and from that intermediate to destination. These randomization makes the two parts behave as if the
-traffic pattern was uniform at the cost of doubling the lengths.
+This is an adapted Valiant version for the Dragonfly topology, suitable for source adaptive routings, as UGAL.
 
-See Valiant4Dragonfly, L. G. (1982). A scheme for fast parallel communication. SIAM journal on computing, 11(2), 350-361.
+See Valiant, L. G. (1982). A scheme for fast parallel communication. SIAM journal on computing, 11(2), 350-361.
 
 ```ignore
 Valiant4Dragonfly{
 	first: Shortest,
 	second: Shortest,
 	legend_name: "Using Valiant4Dragonfly scheme, shortest to intermediate and shortest to destination",
-	//selection_exclude_indirect_routers: false,//optional parameter
-	//first_reserved_virtual_channels: [0],//optional parameter, defaults to empty. Reserves some VCs to be used only in the first stage
-	//second_reserved_virtual_channels: [1,2],//optional, defaults to empty. Reserves some VCs to be used only in the second stage.
-	//intermediate_bypass: CartesianTransform{sides:[4,4],project:[true,false]} //optional, defaults to None.
-	// A pattern on the routers such that when reaching a router `x` with `intermediate_bypass(x)==intermediate_bypass(Valiant4Dragonfly_choice)` the first stage is terminated.
-	// This is intended to use with projecting patterns, for example those that map a whole group to a single representative.
-	// In such case, upon reaching that intermediate group the packet would change to the second fase, without having to reach the specific router.
+	first_reserved_virtual_channels: [0],//optional parameter, defaults to empty. Reserves some VCs to be used only in the first stage
+	second_reserved_virtual_channels: [1,2],//optional, defaults to empty. Reserves some VCs to be used only in the second stage.
+	intermediate_bypass: CartesianTransform{sides:[4,4],project:[true,false]} //optional, defaults to None. A pattern on the routers such that when reaching a router `x` with `intermediate_bypass(x)==intermediate_bypass(Valiant4Dragonfly_choice)` the first stage is terminated.
+	local_missrouting: true, //only local missrouting if target in the group
+	dragonfly_bypass: true, //Take shorcuts avoiding dumb hops
 }
 ```
  **/
@@ -391,19 +388,16 @@ pub struct Valiant4Dragonfly
 {
 	first: Box<dyn Routing>,
 	second: Box<dyn Routing>,
-	///Whether to avoid selecting routers without attached servers. This helps to apply it to indirect networks.
-	selection_exclude_indirect_routers: bool,
 	//pattern to select intermideate nodes
 	pattern:Box<dyn Pattern>,
 	first_reserved_virtual_channels: Vec<usize>,
 	second_reserved_virtual_channels: Vec<usize>,
-	exclude_h_groups:bool,
+	//exclude_h_groups:bool,
 	min_src_first:bool,
 	min_target_first:bool,
 	intermediate_bypass: Option<Box<dyn Pattern>>,
 	local_missrouting: bool, //only local missrouting if target in the group
-megafly_bypass: bool, //lggl routes
-dragonfly_bypass: bool, //lggl routes
+	dragonfly_bypass: bool, //lggl routes
 }
 
 impl Routing for Valiant4Dragonfly
@@ -567,8 +561,8 @@ impl Routing for Valiant4Dragonfly
 			middle = cartesian_data.pack(&middle_coord);
 
 		}else{ //general missrouting
-			while src_coord[1] == middle_coord[1] || trg_coord[1] == middle_coord[1] ||
-				(self.exclude_h_groups && (((middle_coord[1] - (degree/2)*middle_coord[0]) % cartesian_data.sides[1])  > trg_coord[1]  &&  ((middle_coord[1] - (degree/2)*middle_coord[0] - (degree/2)) % cartesian_data.sides[1] ) <= trg_coord[1] ))  {
+			while src_coord[1] == middle_coord[1] || trg_coord[1] == middle_coord[1] {
+				//||(self.exclude_h_groups && (((middle_coord[1] - (degree/2)*middle_coord[0]) % cartesian_data.sides[1])  > trg_coord[1]  &&  ((middle_coord[1] - (degree/2)*middle_coord[0] - (degree/2)) % cartesian_data.sides[1] ) <= trg_coord[1] ))  {
 
 				//	middle = rng.gen_range(0..topology.num_routers());
 
@@ -614,8 +608,6 @@ impl Routing for Valiant4Dragonfly
 						let proj_middle = pattern.get_destination(middle, topology, rng);
 						let proj_current = pattern.get_destination(current_router, topology, rng);
 						proj_middle == proj_current
-					}else if self.megafly_bypass && bri.hops == 2 && topology.distance(current_router, target_router) == 2  {
-						true
 					}else if self.dragonfly_bypass && //this is a hack which looks ugly but works
 						topology.cartesian_data().expect("something").unpack(current_router)[1] ==
 							topology.cartesian_data().expect("something").unpack(middle)[1] //were on the same group
@@ -693,25 +685,22 @@ impl Valiant4Dragonfly
 		//let mut servers_per_router=None;
 		let mut first=None;
 		let mut second=None;
-		let mut selection_exclude_indirect_routers=false;
 		let mut pattern: Box<dyn Pattern> = Box::new(UniformPattern::uniform_pattern(true)); //pattern to intermideate node
 		let mut use_min_b=false;
-		let mut exclude_h_groups=false;
+		// let mut exclude_h_groups=false;
 		let mut min_src_first= true;
 		let mut min_target_first= true;
 		let mut first_reserved_virtual_channels=vec![];
 		let mut second_reserved_virtual_channels=vec![];
 		let mut local_missrouting=false;
 		let mut intermediate_bypass=None;
-		let mut megafly_bypass=false;
 		let mut dragonfly_bypass=false;
 		match_object_panic!(arg.cv,"Valiant4Dragonfly",value,
 			"first" => first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
 			"second" => second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
-			"selection_exclude_indirect_routers" => selection_exclude_indirect_routers = value.as_bool().expect("bad value for selection_exclude_indirect_routers"),
 			"pattern" => pattern= Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})).expect("pattern not valid for Valiant4Dragonfly"),
 			"min_src_first" => min_src_first=value.as_bool().expect("bad value for min_src_first"),
-			"exclude_h_groups"=> exclude_h_groups=value.as_bool().expect("bad value for exclude_h_groups"),
+			// "exclude_h_groups"=> exclude_h_groups=value.as_bool().expect("bad value for exclude_h_groups"),
 			"min_target_first" => min_target_first=value.as_bool().expect("bad value for min_target_first"),
 			"use_min_b" => use_min_b=value.as_bool().expect("bad value for use_min_b"),
 			"first_reserved_virtual_channels" => first_reserved_virtual_channels=value.
@@ -722,7 +711,7 @@ impl Valiant4Dragonfly
 				.map(|v|v.as_f64().expect("bad value in second_reserved_virtual_channels") as usize).collect(),
 			"intermediate_bypass" => intermediate_bypass=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 			"local_missrouting" => local_missrouting=value.as_bool().expect("bad value for local_missrouting"),
-			"dragonfly_bypass" => megafly_bypass=value.as_bool().expect("bad value for dragonfly_bypass"),
+			"dragonfly_bypass" => dragonfly_bypass=value.as_bool().expect("bad value for dragonfly_bypass"),
 		);
 		let first=first.expect("There were no first");
 		let second=second.expect("There were no second");
@@ -736,16 +725,13 @@ impl Valiant4Dragonfly
 		Valiant4Dragonfly{
 			first,
 			second,
-			selection_exclude_indirect_routers,
 			pattern,
 			first_reserved_virtual_channels,
 			second_reserved_virtual_channels,
-			exclude_h_groups,
 			min_src_first,
 			min_target_first,
 			intermediate_bypass,
 			local_missrouting,
-			megafly_bypass,
 			dragonfly_bypass,
 		}
 	}

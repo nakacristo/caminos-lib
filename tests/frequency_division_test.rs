@@ -3,7 +3,7 @@ use caminos_lib::*;
 use caminos_lib::config_parser::ConfigurationValue;
 use common::*;
 
-/*
+/*!
     Test for the global clock and frequency divisors. Now only for the routers, but more components can be tested (links)
 */
 

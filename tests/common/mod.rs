@@ -97,6 +97,7 @@ pub fn create_hamming_topology(arg: HammingBuilder) -> ConfigurationValue //Box<
 }
 
 /// Encapsulates the parameters needed to create a Cartesian shift pattern (x, y) -> (x + shift_x, y + shift_y)
+/// DEPRECATED - use cartesian_pattern_builder
 pub struct ShiftPatternBuilder
 {
     pub sides: Vec<ConfigurationValue>,
@@ -109,6 +110,43 @@ pub fn create_shift_pattern(arg: ShiftPatternBuilder) -> ConfigurationValue
         ("sides".to_string(),ConfigurationValue::Array(arg.sides)),
         ("shift".to_string(),ConfigurationValue::Array(arg.shift))])
 }
+
+/// Encapsulates the parameters needed to create a Cartesian pattern
+pub struct CartesianPatternBuilder
+{
+    pub sides: Vec<ConfigurationValue>,
+    pub shift: Option<Vec<ConfigurationValue>>,
+    pub permute: Option<Vec<ConfigurationValue>>,
+    pub complement: Option<Vec<ConfigurationValue>>,
+    pub project: Option<Vec<ConfigurationValue>>,
+    pub random: Option<Vec<ConfigurationValue>>,
+    pub patterns: Option<Vec<ConfigurationValue>>,
+}
+/// Creates a Configuration Value with the parameters for the Cartesian pattern
+pub fn create_cartesian_pattern(arg: CartesianPatternBuilder) -> ConfigurationValue
+{
+    let mut vec = vec![("sides".to_string(),ConfigurationValue::Array(arg.sides))];
+    if let Some(shift) = arg.shift {
+        vec.push(("shift".to_string(),ConfigurationValue::Array(shift)));
+    }
+    if let Some(permute) = arg.permute {
+        vec.push(("permute".to_string(),ConfigurationValue::Array(permute)));
+    }
+    if let Some(complement) = arg.complement {
+        vec.push(("complement".to_string(),ConfigurationValue::Array(complement)));
+    }
+    if let Some(project) = arg.project {
+        vec.push(("project".to_string(),ConfigurationValue::Array(project)));
+    }
+    if let Some(random) = arg.random {
+        vec.push(("random".to_string(),ConfigurationValue::Array(random)));
+    }
+    if let Some(patterns) = arg.patterns {
+        vec.push(("patterns".to_string(),ConfigurationValue::Array(patterns)));
+    }
+    ConfigurationValue::Object("CartesianTransform".to_string(), vec)
+}
+
 
 /// Encapsulates the parameters needed to create a Burst traffic pattern.
 pub struct BurstTrafficBuilder
@@ -131,6 +169,16 @@ pub fn create_burst_traffic(arg: BurstTrafficBuilder) -> ConfigurationValue
 pub fn create_shortest_routing() -> ConfigurationValue
 {
     ConfigurationValue::Object("Shortest".to_string(), vec![])
+}
+
+
+///Creates a Configuration Value for Omnidimensional routing
+pub fn create_omnidimensional_routing(allowed_deroutes: ConfigurationValue, include_labels: ConfigurationValue) -> ConfigurationValue
+{
+    ConfigurationValue::Object("OmniDimensionalDeroute".to_string(), vec![
+        ("allowed_deroutes".to_string(), allowed_deroutes),
+        ("include_labels".to_string(), include_labels)]
+    )
 }
 
 /// Creates a Configuration Value for link classes
