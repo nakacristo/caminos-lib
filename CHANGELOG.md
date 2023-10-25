@@ -2,6 +2,11 @@
 
 ## next, [0.6.3]
 
+### 2023-10-25
+Merge with alex-master.
+Added documentation for the link classes employed in Dragonfly.
+Updated `divisor_frequency` in default configuration file.
+
 ### 2023-10-19
 When building PDF, in addition to `git_id`, show also the version number.
 

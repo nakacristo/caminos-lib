@@ -36,6 +36,27 @@ Dragonfly{
 	//number_of_groups: 10,
 }
 ```
+
+Local (within a group) links are labelled as class 0, global links (between different groups) as class 1, and links to servers as class 2. Some works propose that global links should have longer delays, this can be states as follows in the root of the configuration.
+```ignore
+link_classes: [
+	LinkClass {
+		// Local link
+		delay: 1,
+		//frequency_divisor: 1,//optionally set how many base cycles make out a link cycle of this class.
+	},
+	LinkClass {
+		// Global link
+		delay: 100,
+		//frequency_divisor: 1,
+	},
+	LinkClass {
+		// Link to server
+		delay: 1,
+		//frequency_divisor: 1,
+	},
+],
+```
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
