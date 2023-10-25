@@ -1184,6 +1184,8 @@ pub struct MultimodalBurst
 	///where `total_remaining` is the total number of messages of this kind that this server has yet to send.
 	///and `step_remaining` is the number of messages that the server will send before switch to the next kind.
 	pending: Vec<Vec<(usize,usize)>>,
+	///Number of messages to consume of each kind before switching to the next one.
+	consume: Vec<usize>,
 	///For each server we track which provenance kind is the next one.
 	///If for the annotated provenance there is not anything else to send then use the next one.
 	next_provenance: Vec<usize>,
@@ -1206,6 +1208,11 @@ impl Traffic for MultimodalBurst
 		loop
 		{
 			let (ref mut total_remaining, ref mut step_remaining) = pending[provenance_index];
+			if *step_remaining == 0 && self.consume[origin] > 0
+			{
+				return Err(TrafficError::SelfMessage) // aqui habría que poner otra cosa.....
+			}
+
 			if *total_remaining > 0
 			{
 				*step_remaining -=1;
@@ -1248,9 +1255,14 @@ impl Traffic for MultimodalBurst
 		}
 		0.0
 	}
-	fn try_consume(&mut self, _server:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+	fn try_consume(&mut self, server:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
 	{
 		let message_ptr=message.as_ref() as *const Message;
+		if self.consume[server] > 0 {
+
+			self.consume[server] = self.consume[server]-1;
+		}
+
 		self.generated_messages.remove(&message_ptr)
 	}
 	fn is_finished(&self) -> bool
@@ -1325,12 +1337,14 @@ impl MultimodalBurst
 			pattern.initialize(servers, servers, arg.topology, arg.rng);
 		}
 		let each_pending = provenance.iter().map(|(_pattern,total_messages,_message_size,step_size,_step_consumed)|(*total_messages,*step_size)).collect();
+		let first_consuming = provenance[0].4;
 		MultimodalBurst{
 			servers,
 			provenance,
 			//pending_messages:vec![messages_per_server;servers],
 			//pending:vec![vec![(0,?);provenance.len()];servers],
 			pending: vec![each_pending;servers],
+			consume: vec![first_consuming;servers], //init with consuming the first pattern
 			next_provenance:vec![0;servers],
 			generated_messages: BTreeSet::new(),
 		}

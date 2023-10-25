@@ -2096,12 +2096,12 @@ impl OmniDimensionalDeroute
 /// 1: Non-minimal routing (VC 0)
 /// 2: Forced minimal routing (VC 1)
 #[derive(Debug)]
-pub struct OmniDOR
+pub struct DimWAR
 {
 	order: Vec<usize>,
 }
 
-impl Routing for OmniDOR
+impl Routing for DimWAR
 {
 	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
@@ -2131,7 +2131,7 @@ impl Routing for OmniDOR
 			unreachable!();
 		}
 
-		let miss_dim = routing_info.avaliable_missrouting.as_ref().unwrap();
+		let miss_dim = routing_info.selections.as_ref().unwrap();
 		let num_ports=topology.ports(current_router);
 		let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
 
@@ -2212,11 +2212,11 @@ impl Routing for OmniDOR
 		{
 			if up_current[component] != up_target[component]
 			{
-				missrouting_vector[component] = 1usize;
+				missrouting_vector[component] = 1i32;
 			}
 		}
 
-		routing_info.borrow_mut().avaliable_missrouting=Some(missrouting_vector);
+		routing_info.borrow_mut().selections=Some(missrouting_vector);
 	}
 	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, _target_router:usize, _target_server:Option<usize>, _rng: &mut StdRng)
 
@@ -2239,7 +2239,7 @@ impl Routing for OmniDOR
 
 			let exit_dimension = exit_dimension.expect("The port doesnt reach any other router");
 
-			match routing_info.borrow_mut().avaliable_missrouting
+			match routing_info.borrow_mut().selections
 			{
 				Some(ref mut v) =>
 					{
@@ -2270,17 +2270,17 @@ impl Routing for OmniDOR
 	}
 }
 
-impl OmniDOR
+impl DimWAR
 {
-	pub fn new(arg:RoutingBuilderArgument) -> OmniDOR
+	pub fn new(arg:RoutingBuilderArgument) -> DimWAR
 	{
 		let mut order= None;
 
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
 		{
-			if cv_name!="OmniDOR"
+			if cv_name!="DimWAR"
 			{
-				panic!("A OmniDOR must be created from a `OmniDOR` object not `{}`",cv_name);
+				panic!("A DimWAR must be created from a `DimWAR` object not `{}`",cv_name);
 			}
 			for &(ref name,ref _value) in cv_pairs
 			{
@@ -2307,7 +2307,7 @@ impl OmniDOR
 		}
 		let order=order.expect("There were no order");
 
-		OmniDOR{
+		DimWAR{
 			order
 		}
 	}

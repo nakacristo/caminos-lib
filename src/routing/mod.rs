@@ -24,7 +24,8 @@ use std::convert::TryFrom;
 use ::rand::{rngs::StdRng,Rng,prelude::SliceRandom};
 
 use crate::config_parser::ConfigurationValue;
-use crate::topology::cartesian::{DOR,O1TURN,ValiantDOR,OmniDimensionalDeroute, OmniDOR, GENERALTURN, Valiant4Hamming};
+use crate::topology::cartesian::{DOR,O1TURN,ValiantDOR,OmniDimensionalDeroute, DimWAR, GENERALTURN, Valiant4Hamming};
+use crate::topology::dragonfly::Valiant4Dragonfly;
 use crate::topology::{Topology,Location};
 pub use crate::event::Time;
 use quantifiable_derive::Quantifiable;//the derive macro
@@ -63,8 +64,6 @@ pub struct RoutingInfo
 	pub meta: Option<Vec<RefCell<RoutingInfo>>>,
 	///Arbitrary data with internal mutability.
 	pub auxiliar: RefCell<Option<Box<dyn std::any::Any>>>,
-	///Its avaliable to missroute or not in a specific direction
-	pub avaliable_missrouting: Option<Vec<usize>>,
 }
 
 impl RoutingInfo
@@ -79,7 +78,6 @@ impl RoutingInfo
 			visited_routers: None,
 			meta: None,
 			auxiliar: RefCell::new(None),
-			avaliable_missrouting: None,
 		}
 	}
 }
@@ -418,7 +416,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"O1TURN" => Box::new(O1TURN::new(arg)),
 			"GeneralTurn" => Box::new(GENERALTURN::new(arg)),
 			"OmniDimensionalDeroute" => Box::new(OmniDimensionalDeroute::new(arg)),
-			"OmniDOR" => Box::new(OmniDOR::new(arg)),
+			"DimWAR" => Box::new(DimWAR::new(arg)),
 			"Valiant4Hamming" => Box::new(Valiant4Hamming::new(arg)),
 			"Valiant4Dragonfly" => Box::new(Valiant4Dragonfly::new(arg)),
 			"Shortest" => Box::new(Shortest::new(arg)),
