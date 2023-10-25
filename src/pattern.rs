@@ -289,6 +289,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"Composition" => Box::new(Composition::new(arg)),
 			"Pow" => Box::new(Pow::new(arg)),
 			"CartesianFactor" => Box::new(CartesianFactor::new(arg)),
+			"CartesianFactorDimension" => Box::new(CartesianFactorDimension::new(arg)),
 			"Hotspots" => Box::new(Hotspots::new(arg)),
 			"RandomMix" => Box::new(RandomMix::new(arg)),
 			"ConstantShuffle" =>
@@ -389,6 +390,13 @@ impl UniformPattern
 		UniformPattern{
 			size:0,//to be initialized later
 			allow_self,
+		}
+	}
+	pub fn uniform_pattern(allow_target_source: bool) -> UniformPattern
+	{
+		UniformPattern{
+			size:0,//to be initialized later
+			allow_self:allow_target_source,
 		}
 	}
 }
@@ -1130,6 +1138,85 @@ impl CartesianFactor
 		}
 	}
 }
+
+
+/// Interpretate the origin as with cartesian coordinates. Multiply the first coordinate with a given factor
+/// and divide it by each dimension size until it is smaller than the dimension size of a dimension.
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct CartesianFactorDimension
+{
+	///The Cartesian interpretation.
+	cartesian_data: CartesianData,
+	///The coefficient by which it is multiplied each dimension.
+	factor: usize,
+	///As given in initialization.
+	target_size: usize,
+	///The coefficient by which it is multiplied each dimension.
+	factors: Vec<f64>,
+}
+
+impl Pattern for CartesianFactorDimension
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		self.target_size = target_size;
+		if source_size!=self.cartesian_data.size
+		{
+			panic!("Sizes do not agree on CartesianFactorDimension.");
+		}
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		let mut up_origin=self.cartesian_data.unpack(origin);
+		let mut factor = self.factor * up_origin[0];
+
+		for f in 0..up_origin.len()
+		{
+			if factor < self.cartesian_data.sides[f]
+			{
+				up_origin[f] = (up_origin[f]+ factor) % self.cartesian_data.sides[f];
+				break;
+			}
+			factor = (factor / self.cartesian_data.sides[f]) as usize;
+		}
+		let destination = self.cartesian_data.pack(&up_origin); //.iter().zip(self.factors.iter()).map(|(&coord,&f)|coord as f64 * f).sum::<f64>() as usize;
+
+
+		//println!("origin: {}, destination: {}", origin, destination);
+        destination// % self.target_size
+	}
+}
+
+impl CartesianFactorDimension
+{
+	fn new(arg:PatternBuilderArgument) -> CartesianFactorDimension
+	{
+		let mut sides: Option<Vec<_>>=None;
+		let mut factor=None;
+		let mut factors=None;
+
+		match_object_panic!(arg.cv,"CartesianFactorDimension",value,
+			"sides" => sides=Some(value.as_array().expect("bad value for sides").iter()
+				.map(|v|v.as_f64().expect("bad value in sides") as usize).collect()),
+			"factor" => factor=Some(value.as_f64().expect("bad value for factor") as usize),
+			"factors" => factors=Some(value.as_array().expect("bad value for factors").iter()
+				.map(|v|v.as_f64().expect("bad value in factors")).collect()),
+
+		);
+		let sides=sides.expect("There were no sides");
+		let factors=factors.expect("There were no factors");
+		let factor=factor.expect("There were no factor");
+
+		CartesianFactorDimension{
+			cartesian_data: CartesianData::new(&sides),
+			factor,
+			target_size:0,
+			factors
+		}
+	}
+}
+
 
 /// The destinations are selected from a given pool of servers.
 #[derive(Quantifiable)]

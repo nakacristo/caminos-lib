@@ -8,6 +8,11 @@ use crate::topology::{Topology,Location,NeighbourRouterIteratorItem,TopologyBuil
 use crate::routing::prelude::*;
 use crate::matrix::Matrix;
 use crate::match_object_panic;
+use crate::routing::RoutingAnnotation;
+use crate::pattern::*; //For Valiant
+
+//extern crate itertools;
+use itertools::Itertools;
 
 ///A Cartesian ortahedral region of arbitrary dimension.
 #[derive(Quantifiable)]
@@ -1580,6 +1585,311 @@ impl O1TURN
 }
 
 
+
+///A policy for the `SumRouting` about how to select among the two `Routing`s.
+#[derive(Debug)]
+pub enum GeneralTurnPolicy
+{
+	///Random at source.
+	Random,
+	///Only injected in an order which contains an unaligned dimension.
+	UnalignedDimension,
+	///Adaptive without discarding other compatible options.
+	Adaptive,
+	///Decision taken at source, but once taken, it is kept.
+	AdaptiveSource,
+}
+
+pub fn new_general_turn_policy(cv: &ConfigurationValue) -> GeneralTurnPolicy
+{
+	if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=cv
+	{
+		match cv_name.as_ref()
+		{
+			"Random" => GeneralTurnPolicy::Random,
+			"UnalignedDimension" => GeneralTurnPolicy::UnalignedDimension,
+			"AdaptiveSource" => GeneralTurnPolicy::AdaptiveSource,
+			_ => panic!("Unknown generalturn_policy {}",cv_name),
+		}
+	}
+	else
+	{
+		panic!("Trying to create a GeneralTurnPolicy from a non-Object");
+	}
+}
+
+
+///Routing adapted from "Near-optimal worst-case throughput routing for two-dimensional mesh networks" by Daeho Seo, et al.
+/// It asigns a dimension order to each virtual channel.
+#[derive(Debug)]
+pub struct GENERALTURN
+{
+	orders: Vec<Vec<usize>>,
+	virtual_channels: Vec<Vec<usize>>,
+	policy:GeneralTurnPolicy,
+}
+
+impl Routing for GENERALTURN
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
+	{
+		let distance=topology.distance(current_router,target_router);
+		if distance==0
+		{
+			let target_server = target_server.expect("target server was not given.");
+			for i in 0..topology.ports(current_router)
+			{
+				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router,i)
+				{
+					if server==target_server
+					{
+						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
+					}
+				}
+			}
+			unreachable!();
+		}
+
+		let cartesian_data=topology.cartesian_data().expect("GENERALTURN requires a Cartesian topology");
+		//let routing_record=&routing_info.routing_record.expect("DOR requires a routing record");
+		let routing_record=if let Some(ref rr)=routing_info.routing_record
+		{
+			rr
+		}
+		else
+		{
+			panic!("GENERALTURN requires a routing record");
+		};
+
+		/*if routing_record.len()!=2
+		{
+			panic!("GENERALTURN only works for bidimensional cartesian topologies");
+		}*/
+
+		//let s=routing_info.selections.as_ref().unwrap()[0] as usize;
+		let s=routing_info.selections.clone().unwrap();
+		let mut r = vec![];
+
+		for order_index in s
+		{
+			let order_index = order_index as usize;
+			let order = &self.orders[order_index];
+			//let order=self.orders[s];
+		    let mut i=0;
+			while routing_record[order[i]]==0
+			{
+				i+=1;
+			}
+			let available_virtual_channels= &self.virtual_channels[order_index];
+			//let available_virtual_channels=(0..num_virtual_channels).filter(|vc|!forbidden_virtual_channels.contains(vc));
+
+			i=order[i];
+			//Go in dimension i
+			//WARNING: This assumes ports in a mesh-like configuration!
+
+
+			let offset = if routing_record[i] > 0i32 { routing_record[i] as usize } else { (routing_record[i] + cartesian_data.sides[i] as i32) as usize };
+			let p = (cartesian_data.sides[i]-1) * i + offset -1;
+			/*let p=if routing_record[i]<0
+			{
+				cartesian_data.sides[i] * i +
+			}
+			else
+			{
+				2*i+1
+			};*/
+
+
+			//return vec![CandidateEgress::new(p,s)]; .clone()
+			//CandidateEgress{virtual_channel:avc0[candidate.virtual_channel],label:candidate.label+el0,annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate}
+			let candidates:Vec<CandidateEgress> = available_virtual_channels.into_iter()
+				.map(|vc|
+						 CandidateEgress{port: p, virtual_channel:*vc,label:0,annotation:Some(RoutingAnnotation{values:vec![0], meta: vec![] }),..Default::default()}
+					 )
+				.collect();
+			r.extend(candidates.into_iter());
+		}
+
+		return Ok(RoutingNextCandidates{candidates:r,idempotent:true});
+	}
+	//fn initialize_routing_info(&self, routing_info:&mut RoutingInfo, toology:&dyn Topology, current_router:usize, target_server:usize)
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, _target_server:Option<usize>, rng: &mut StdRng)
+	{
+		//let (target_location,_link_class)=topology.server_neighbour(target_server);
+		//let target_router=match target_location
+		//{
+		//	Location::RouterPort{router_index,router_port:_} =>router_index,
+		//	_ => panic!("The server is not attached to a router"),
+		//};
+		//GENERALTURN needs cartesian data in the topology, which could be a dragonfly or whatever...
+		let cartesian_data=topology.cartesian_data().expect("GENERALTURN requires a Cartesian topology");
+		let up_current=cartesian_data.unpack(current_router);
+		let up_target=cartesian_data.unpack(target_router);
+		//let routing_record=(0..up_current.len()).map(|i|up_target[i] as i32-up_current[i] as i32).collect();//FIXME: torus
+		let routing_record=topology.coordinated_routing_record(&up_current,&up_target,Some(rng));
+		//println!("routing record from {} to {} is {:?}",current_router,target_router,routing_record);
+		routing_info.borrow_mut().routing_record=Some(routing_record.clone());
+
+		let all:Vec<i32> = match self.policy
+		{
+			GeneralTurnPolicy::Random => vec![ rng.gen_range(0..self.orders.len()) as i32],
+			GeneralTurnPolicy::UnalignedDimension => (0..self.orders.len()).filter(|i|  routing_record[ self.orders[*i][0] ] != 0 ).map(|a| a as i32).collect::<Vec<i32>>(),
+			GeneralTurnPolicy::AdaptiveSource =>  (0..self.orders.len()).map(|a| a as i32).collect::<Vec<i32>>(),
+			GeneralTurnPolicy::Adaptive => unimplemented!(),
+
+		};
+		routing_info.borrow_mut().selections=Some(all);
+
+		//routing_info.borrow_mut().selections=Some(vec![{
+		//	rng.gen_range(0..2)
+		//}]
+		//);
+	}
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, _current_router:usize, current_port:usize, _target_router:usize, _target_server:Option<usize>, _rng: &mut StdRng)
+	{
+		let cartesian_data=topology.cartesian_data().expect("GENERALTURN requires a Cartesian topology");
+		let dimension=current_port/(cartesian_data.sides[0] -1 );
+		//let delta=if current_port%2==0 { -1i32 } else { 1i32 };
+		match routing_info.borrow_mut().routing_record
+		{
+			Some(ref mut rr) =>
+				{
+					rr[dimension]=0; // as its minimal routing in hamming diameter is 1 inside the dimension
+					//println!("new routing record at ({},{}) is {:?}",current_router,current_port,rr);
+				},
+			None => panic!("trying to update without routing_record"),
+		};
+
+
+		//let hops = routing_info.borrow_mut().hops - 1;
+		let sel = routing_info.borrow_mut().selections.as_ref().unwrap().clone();
+
+		/*routing_info.borrow_mut().selections=Some(
+				sel.into_iter().into_iter().filter(|a| sel.count(a) == 2).collect::<Vec<i32>>()
+				//sel.into_iter().filter(|order_index| self.orders[*order_index as usize][hops] == dimension).collect::<Vec<i32>>()
+		);*/
+
+		if sel.len() > 1
+		{
+			routing_info.borrow_mut().selections=Some( vec![*sel.last().unwrap()]);
+		}
+
+	}
+	fn initialize(&mut self, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+	}
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
+	{
+
+		let mut bri=routing_info.borrow_mut();
+		//bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
+		let mut selections = bri.selections.clone().unwrap().into_iter().unique().collect::<Vec<i32>>();
+
+		if selections.len()>1 //FIXME: THIS IS SPAGHETTI CODE, IM SORRY. The order index in vec selections saved 2 times is the order to follow.
+		{
+			let &CandidateEgress{ref annotation,..} = requested;
+			if let Some(annotation) = annotation.as_ref()
+			{
+				let s = annotation.values[0];
+				selections.push(s);
+				bri.selections = Some(selections);
+
+			}
+		}
+	}
+	fn statistics(&self, _cycle:Time) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:Time)
+	{
+	}
+}
+
+impl GENERALTURN
+{
+	pub fn new(arg:RoutingBuilderArgument) -> GENERALTURN
+	{
+		//let mut order=None;
+		//let mut servers_per_router=None;
+		let mut orders: Option<Vec<Vec<usize>>> = None;
+		let mut virtual_channels: Option<Vec<Vec<usize>>> = None;
+		let mut policy: Option<GeneralTurnPolicy> = None;
+
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="GeneralTurn"
+			{
+				panic!("A GeneralTurn must be created from a `GeneralTurn` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					//"order" => match value
+					//{
+					//	&ConfigurationValue::Array(ref a) => order=Some(a.iter().map(|v|match v{
+					//		&ConfigurationValue::Number(f) => f as usize,
+					//		_ => panic!("bad value in order"),
+					//	}).collect()),
+					//	_ => panic!("bad value for order"),
+					//}
+					"orders" => match value
+					{
+						&ConfigurationValue::Array(ref a) => orders=Some(a.iter().map(|v|match v
+                        {
+                            &ConfigurationValue::Array(ref a) => a.iter().map(|v|match v
+                            {
+                                &ConfigurationValue::Number(f) => f as usize,
+                                _ => panic!("bad value in orders"),
+                            }).collect(),
+                            _ => panic!("bad value in orders"),
+                        }).collect()),
+						_ => panic!("bad value for orders"),
+					}
+					"virtual_channels" => match value
+                    {
+                        &ConfigurationValue::Array(ref a) => virtual_channels=Some(a.iter().map(|v|match v
+                        {
+                            &ConfigurationValue::Array(ref a) => a.iter().map(|v|match v
+                            {
+                                &ConfigurationValue::Number(f) => f as usize,
+                                _ => panic!("bad value in virtual_channels"),
+                            }).collect(),
+                            _ => panic!("bad value in virtual_channels"),
+                        }).collect()),
+                        _ => panic!("bad value for virtual_channels"),
+                    }
+					"policy" => policy=Some(new_general_turn_policy(value)),
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in GENERALTURN",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a GENERALTURN from a non-Object");
+		}
+
+		let orders=orders.expect("There were no orders");
+		let virtual_channels=virtual_channels.expect("There were no virtual_channels");
+		let policy=policy.expect("There were no policy");
+
+		GENERALTURN{
+            orders,
+            virtual_channels,
+            policy,
+        }
+	}
+}
+
+
+
+
 /// Routing part of the Omni-dimensional Weighted Adaptive Routing of Nic McDonald et al.
 /// Stores `RoutingInfo.selections=Some(vec![available_deroutes])`.
 /// Only paths of currently unaligned dimensions are valid. Otherwise dimensions are ignored.
@@ -1775,4 +2085,358 @@ impl OmniDimensionalDeroute
 		}
 	}
 }
+
+
+
+
+
+/**
+This is an adapted Valiant version for the Hamming topology, suitable for source adaptive routings, as UGAL.
+It removes switches from source and target groups as intermediate switches.
+See Valiant, L. G. (1982). A scheme for fast parallel communication. SIAM journal on computing, 11(2), 350-361.
+
+```ignore
+Valiant4Dragonfly{
+	first: Shortest,
+	second: Shortest,
+	first_reserved_virtual_channels: [0],//optional parameter, defaults to empty. Reserves some VCs to be used only in the first stage
+	second_reserved_virtual_channels: [1,2],//optional, defaults to empty. Reserves some VCs to be used only in the second stage.
+	remove_target_dimensions_aligment:[[0],[1]], //remove intermediate aligned with the target in the 0 and 1 dimensions
+	remove_source_dimensions_aligment:[[0],[1]]  //remove intermediate aligned with the source in the 0 and 1 dimensions
+	allow_unaligned: false, //To go through unaligned dimensions
+	legend_name: "Using Valiant4Dragonfly scheme, shortest to intermediate and shortest to destination",
+}
+```
+ **/
+#[derive(Debug)]
+pub struct Valiant4Hamming
+{
+	first: Box<dyn Routing>,
+	second: Box<dyn Routing>,
+	//pattern to select intermideate nodes
+	pattern:Box<dyn Pattern>,
+	first_reserved_virtual_channels: Vec<usize>,
+	second_reserved_virtual_channels: Vec<usize>,
+	remove_target_dimensions_aligment: Vec<Vec<usize>>,
+	remove_source_dimensions_aligment: Vec<Vec<usize>>,
+	allow_unaligned: bool,
+}
+
+impl Routing for Valiant4Hamming
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
+	{
+		/*let (target_location,_link_class)=topology.server_neighbour(target_server);
+		let target_router=match target_location
+		{
+			Location::RouterPort{router_index,router_port:_} =>router_index,
+			_ => panic!("The server is not attached to a router"),
+		};*/
+		let distance=topology.distance(current_router,target_router);
+		if distance==0 //careful here
+		{
+			for i in 0..topology.ports(current_router)
+			{
+				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router,i)
+				{
+					if server==target_server.expect("There sould be a server here")
+					{
+						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
+					}
+				}
+			}
+			unreachable!();
+		}
+		let meta=routing_info.meta.as_ref().unwrap();
+		match routing_info.selections
+		{
+			None =>
+				{
+					//self.second.next(&meta[1].borrow(),topology,current_router,target_server,num_virtual_channels,rng)
+					let base=self.second.next(&meta[1].borrow(),topology,current_router,target_router, target_server,num_virtual_channels,rng)?;
+					let idempotent = base.idempotent;
+					let r=base.into_iter().filter_map(|egress|
+						{
+							if !self.first_reserved_virtual_channels.contains(&egress.virtual_channel)
+							{
+								Some(egress)
+							}else{
+								None
+							}
+						}).collect();
+
+					Ok(RoutingNextCandidates{candidates:r,idempotent})
+				}
+			Some(ref s) =>
+				{
+					let middle=s[0] as usize;
+					let middle_server=
+						{
+							let mut x=None;
+							for i in 0..topology.ports(middle)
+							{
+								if let (Location::ServerPort(server),_link_class)=topology.neighbour(middle,i)
+								{
+									x=Some(server);
+									break;
+								}
+							}
+							x.unwrap()
+						};
+
+					let second_distance=topology.distance(middle,target_router);//Only exact if the base routing is shortest.
+					//self.first.next(&meta[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng).into_iter().filter(|egress|!self.second_reserved_virtual_channels.contains(&egress.virtual_channel)).collect()
+					let base = self.first.next(&meta[0].borrow(),topology,current_router, middle, Some(middle_server),  num_virtual_channels,rng)?;
+					let idempotent = base.idempotent;
+					let r=base.into_iter().filter_map(|mut egress|{
+						//egress.hops = Some(routing_info.hops);
+						if self.second_reserved_virtual_channels.contains(&egress.virtual_channel) { //may not be the best way....
+							None
+							/*if let Some(ref mut eh)=egress.estimated_remaining_hops
+                            {
+                                *eh += second_distance;
+                            }
+                            Some(egress)*/
+
+						} else {
+							if let Some(ref mut eh)=egress.estimated_remaining_hops
+							{
+								*eh += second_distance;
+							}
+							Some(egress)
+						}
+					}).collect();
+					Ok(RoutingNextCandidates{candidates:r,idempotent})
+				}
+		}
+
+	}
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, _target_server:Option<usize>, rng: &mut StdRng)
+	{
+		let port = topology.degree(current_router);
+		let (server_source_location,_link_class) = topology.neighbour(current_router, port);
+		let source_server=match server_source_location
+		{
+			Location::ServerPort(server) =>server,
+			_ => panic!("The server is not attached to a router"),
+		};
+
+		let cartesian_data = topology.cartesian_data().expect("Should be a cartesian data");//.expect("something").unpack(current_router)[1] ==
+
+		let src_coord = cartesian_data.unpack(current_router);
+		let trg_coord = cartesian_data.unpack(target_router);
+
+		let middle_server = self.pattern.get_destination(source_server,topology, rng);
+		let (middle_location,_link_class)=topology.server_neighbour(middle_server);
+		let mut middle_router=match middle_location
+		{
+			Location::RouterPort{router_index,router_port:_} =>router_index,
+			_ => panic!("The server is not attached to a router"),
+		};
+
+		let mut middle_coord = cartesian_data.unpack(middle_router);
+		let mut not_valid_middle = true;
+
+		while not_valid_middle
+		{
+			not_valid_middle = false;
+			let middle_server = self.pattern.get_destination(source_server,topology, rng);
+			let (middle_location,_link_class)=topology.server_neighbour(middle_server);
+			middle_router=match middle_location
+			{
+				Location::RouterPort{router_index,router_port:_} =>router_index,
+				_ => panic!("The server is not attached to a router"),
+			};
+			middle_coord = cartesian_data.unpack(middle_router);
+
+			if middle_router ==  current_router || middle_router == target_router
+			{
+				not_valid_middle=true;
+			}
+
+			for i in 0..self.remove_target_dimensions_aligment.len()
+			{
+				let dimensions = self.remove_target_dimensions_aligment[i].clone();
+				let mut differ = false;
+				for z in 0..dimensions.len()
+				{
+					if trg_coord[dimensions[z]] != middle_coord[dimensions[z]]
+					{
+						differ = true;
+					}
+				}
+				if !differ
+				{
+					not_valid_middle = true;
+					break; //the inner loop
+				}
+			}
+
+			for i in 0..self.remove_source_dimensions_aligment.len()
+			{
+				let dimensions = self.remove_source_dimensions_aligment[i].clone();
+				let mut differ = false;
+				for z in 0..dimensions.len()
+				{
+					if src_coord[dimensions[z]] != middle_coord[dimensions[z]]
+					{
+						differ = true;
+					}
+				}
+				if !differ
+				{
+					not_valid_middle = true;
+					break; //the inner loop
+				}
+			}
+		}
+
+		if !self.allow_unaligned
+		{
+			for i in 0..src_coord.len()
+			{
+				if src_coord[i] == trg_coord[i]
+				{
+					middle_coord[i] = trg_coord[i];
+				}
+			}
+		}
+		middle_router = cartesian_data.pack(&middle_coord);
+
+
+		let mut bri=routing_info.borrow_mut();
+		bri.visited_routers=Some(vec![current_router]);
+		bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
+
+		bri.selections=Some(vec![middle_router as i32]);
+		self.first.initialize_routing_info(&bri.meta.as_ref().unwrap()[0],topology,current_router,middle_router,None,rng)
+
+	}
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
+	{
+		let mut bri=routing_info.borrow_mut();
+		let middle = bri.selections.as_ref().map(|s| s[0] as usize);
+		match middle
+		{
+			None =>
+				{
+					//Already towards true destination
+					let meta=bri.meta.as_mut().unwrap();
+					meta[1].borrow_mut().hops+=1;
+					self.second.update_routing_info(&meta[1],topology,current_router,current_port,target_router,target_server,rng);
+				}
+			Some(middle) =>
+				{
+					let at_middle = current_router == middle;
+
+					if at_middle
+					{
+						bri.selections=None;
+						let meta=bri.meta.as_ref().unwrap();
+						self.second.initialize_routing_info(&meta[1],topology,current_router,target_router,target_server,rng);
+					}
+					else
+					{
+						let meta=bri.meta.as_mut().unwrap();
+						meta[0].borrow_mut().hops+=1;
+						self.first.update_routing_info(&meta[0],topology,current_router,current_port,middle,None,rng);
+					}
+				}
+		};
+
+
+		match bri.visited_routers
+		{
+			Some(ref mut v) =>
+				{
+					v.push(current_router);
+				}
+			None => panic!("visited_routers not initialized"),
+		};
+
+
+	}
+	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		self.first.initialize(topology,rng);
+		self.second.initialize(topology,rng);
+		self.pattern.initialize(topology.num_servers(), topology.num_servers(), topology, rng);
+	}
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, num_virtual_channels:usize, rng:&mut StdRng)
+	{
+		let mut bri=routing_info.borrow_mut();
+		let middle = bri.selections.as_ref().map(|s| s[0] as usize);
+		let meta=bri.meta.as_mut().unwrap();
+
+		match middle
+		{
+			None =>
+				{
+					//Already towards true destination
+					self.first.performed_request(requested,&meta[1],topology,current_router,target_router,target_server,num_virtual_channels,rng);
+				}
+			Some(_) =>
+				{
+					//Already towards true destination
+					self.second.performed_request(requested,&meta[0],topology,current_router,target_router,target_server,num_virtual_channels,rng);
+				}
+		};
+	}
+}
+
+impl Valiant4Hamming
+{
+	pub fn new(arg: RoutingBuilderArgument) -> Valiant4Hamming
+	{
+		//let mut order=None;
+		//let mut servers_per_router=None;
+		let mut first=None;
+		let mut second=None;
+		let mut pattern: Box<dyn Pattern> = Box::new(UniformPattern::uniform_pattern(true)); //pattern to intermideate node
+		let mut first_reserved_virtual_channels=vec![];
+		let mut second_reserved_virtual_channels=vec![];
+		let mut remove_target_dimensions_aligment = vec![];
+		let mut remove_source_dimensions_aligment = vec![];
+		let mut allow_unaligned = true;
+
+		match_object_panic!(arg.cv,"Valiant4Hamming",value,
+			"first" => first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"second" => second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+		    "pattern" => pattern= Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})).expect("pattern not valid for Valiant4Hamming"),
+			"first_reserved_virtual_channels" => first_reserved_virtual_channels=value.
+				as_array().expect("bad value for first_reserved_virtual_channels").iter()
+				.map(|v|v.as_f64().expect("bad value in first_reserved_virtual_channels") as usize).collect(),
+			"second_reserved_virtual_channels" => second_reserved_virtual_channels=value.
+				as_array().expect("bad value for second_reserved_virtual_channels").iter()
+				.map(|v|v.as_f64().expect("bad value in second_reserved_virtual_channels") as usize).collect(),
+			"remove_target_dimensions_aligment" => remove_target_dimensions_aligment=value.
+				as_array().expect("bad value for remove_dimension_aligment").iter().map(|v|v.as_array()
+				.expect("bad value in remove_dimension_aligment").iter().map(|v|v.as_f64().expect("bad value in remove_dimension_aligment") as usize).collect()).collect(),
+			"remove_source_dimensions_aligment" => remove_source_dimensions_aligment=value.
+				as_array().expect("bad value for remove_source_dimensions_aligment").iter()
+			.map(|v|v.as_array().expect(" bad value in remove_source_dimensions_aligment").iter().map(|v|v.as_f64().expect("bad value in remove_source_dimensions_aligment") as usize).collect()).collect(),
+			"allow_unaligned" => allow_unaligned=value.as_bool().expect("bad value for allow_unaligned"),
+
+		);
+		let first=first.expect("There were no first");
+		let second=second.expect("There were no second");
+
+		Valiant4Hamming{
+			first,
+			second,
+			pattern,
+			first_reserved_virtual_channels,
+			second_reserved_virtual_channels,
+			remove_target_dimensions_aligment,
+			remove_source_dimensions_aligment,
+			allow_unaligned,
+		}
+	}
+}
+
+
+
 

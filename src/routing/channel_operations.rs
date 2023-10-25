@@ -97,8 +97,11 @@ pub struct ChannelsPerHopPerLinkClass
 {
 	///The base routing to use.
 	routing: Box<dyn Routing>,
-	///`channels[class][k]` is the list of available VCs to use in the k-th hop given in links of the given `class`.
+	///`channels[class][k]` is the list of available VCs to use in the k-th hop given in links of the given `class` if `use_total_hops` is false
+	/// or the absolute k-th hop when it is true..
 	channels: Vec<Vec<Vec<usize>>>,
+	///Use total number of hops for each link class.
+	use_total_hops: bool,
 }
 
 impl Routing for ChannelsPerHopPerLinkClass
@@ -111,7 +114,13 @@ impl Routing for ChannelsPerHopPerLinkClass
 		let hops = &routing_info.selections.as_ref().unwrap();
 		let r = candidates.into_iter().filter(|c|{
 			let (_next_location,link_class)=topology.neighbour(current_router,c.port);
-			let h = hops[link_class] as usize;
+			let h = if self.use_total_hops
+			{
+				routing_info.hops
+			}else{
+				hops[link_class] as usize
+			};
+
 			//println!("h={} link_class={} channels={:?}",h,link_class,self.channels[link_class]);
 			if self.channels[link_class].len()<=h
 			{
@@ -170,8 +179,15 @@ impl ChannelsPerHopPerLinkClass
 	{
 		let mut routing =None;
 		let mut channels =None;
+		let mut use_total_hops = false;
 		match_object_panic!(arg.cv,"ChannelsPerHopPerLinkClass",value,
 			"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"use_total_hops" => use_total_hops=match value
+            {
+				&ConfigurationValue::True => true,
+				&ConfigurationValue::False => false,
+                _ => panic!("bad value for use_total_hops"),
+            },
 			"channels" => match value
 			{
 				&ConfigurationValue::Array(ref classlist) => channels=Some(classlist.iter().map(|v|match v{
@@ -192,6 +208,7 @@ impl ChannelsPerHopPerLinkClass
 		ChannelsPerHopPerLinkClass{
 			routing,
 			channels,
+			use_total_hops,
 		}
 	}
 }

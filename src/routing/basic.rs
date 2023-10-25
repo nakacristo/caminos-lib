@@ -10,7 +10,6 @@ Implementation of basic routing algorithms.
 
 */
 
-
 use std::cell::RefCell;
 use ::rand::{rngs::StdRng,Rng};
 
@@ -20,6 +19,7 @@ use crate::routing::prelude::*;
 use crate::topology::{Topology,Location};
 use crate::matrix::Matrix;
 use crate::pattern::prelude::*;
+use crate::pattern::UniformPattern;
 
 ///Use the shortest path from origin to destination
 #[derive(Debug)]
@@ -361,6 +361,352 @@ impl Valiant
 		}
 	}
 }
+
+
+/**
+This is an adapted Valiant version for the Dragonfly topology, suitable for source adaptive routings, as UGAL.
+It removes switches from source and target groups as intermediate switches.
+See Valiant, L. G. (1982). A scheme for fast parallel communication. SIAM journal on computing, 11(2), 350-361.
+
+```ignore
+Valiant4Dragonfly{
+	first: Shortest,
+	second: Shortest,
+	first_reserved_virtual_channels: [0],//optional parameter, defaults to empty. Reserves some VCs to be used only in the first stage
+	second_reserved_virtual_channels: [1,2],//optional, defaults to empty. Reserves some VCs to be used only in the second stage.
+	intermediate_bypass: CartesianTransform{sides:[4,4],project:[true,false]} //optional, defaults to None. A pattern on the routers such that when reaching a router `x` with `intermediate_bypass(x)==intermediate_bypass(Valiant4Dragonfly_choice)` the first stage is terminated.
+	local_missrouting: true, //allow local missrouting, only if target in the group
+	dragonfly_bypass: true, //Take shorcuts avoiding dumb hops
+	legend_name: "Using Valiant4Dragonfly scheme, shortest to intermediate and shortest to destination",
+}
+```
+ **/
+
+
+#[derive(Debug)]
+pub struct Valiant4Dragonfly
+{
+	first: Box<dyn Routing>,
+	second: Box<dyn Routing>,
+	//pattern to select intermideate nodes
+	pattern:Box<dyn Pattern>,
+	first_reserved_virtual_channels: Vec<usize>,
+	second_reserved_virtual_channels: Vec<usize>,
+	//exclude_h_groups:bool,
+	intermediate_bypass: Option<Box<dyn Pattern>>,
+	local_missrouting: bool, //only local missrouting if target in the group
+	dragonfly_bypass: bool, //lggl routes
+}
+
+impl Routing for Valiant4Dragonfly
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
+	{
+		/*let (target_location,_link_class)=topology.server_neighbour(target_server);
+		let target_router=match target_location
+		{
+			Location::RouterPort{router_index,router_port:_} =>router_index,
+			_ => panic!("The server is not attached to a router"),
+		};*/
+		let distance=topology.distance(current_router,target_router);
+		if distance==0 //careful here
+		{
+			for i in 0..topology.ports(current_router)
+			{
+				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router,i)
+				{
+					if server==target_server.expect("There sould be a server here")
+					{
+						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
+					}
+				}
+			}
+			unreachable!();
+		}
+		let meta=routing_info.meta.as_ref().unwrap();
+		match routing_info.selections
+		{
+			None =>
+				{
+					//self.second.next(&meta[1].borrow(),topology,current_router,target_server,num_virtual_channels,rng)
+					let base=self.second.next(&meta[1].borrow(),topology,current_router,target_router, target_server,num_virtual_channels,rng)?;
+					let idempotent = base.idempotent;
+
+
+					let r=base.into_iter().filter_map(|egress|
+						{
+							if !self.first_reserved_virtual_channels.contains(&egress.virtual_channel)
+							{
+								Some(egress)
+
+							}else{
+								None
+							}
+						}).collect();
+
+					Ok(RoutingNextCandidates{candidates:r,idempotent})
+				}
+			Some(ref s) =>
+				{
+					let middle=s[0] as usize;
+					let middle_server=
+						{
+							let mut x=None;
+							for i in 0..topology.ports(middle)
+							{
+								if let (Location::ServerPort(server),_link_class)=topology.neighbour(middle,i)
+								{
+									x=Some(server);
+									break;
+								}
+							}
+							x.unwrap()
+						};
+
+					let second_distance=topology.distance(middle,target_router);//Only exact if the base routing is shortest.
+					//self.first.next(&meta[0].borrow(),topology,current_router,middle_server,num_virtual_channels,rng).into_iter().filter(|egress|!self.second_reserved_virtual_channels.contains(&egress.virtual_channel)).collect()
+					let base = self.first.next(&meta[0].borrow(),topology,current_router, middle, Some(middle_server),  num_virtual_channels,rng)?;
+					let idempotent = base.idempotent;
+					let r=base.into_iter().filter_map(|mut egress|{
+						//egress.hops = Some(routing_info.hops);
+						if self.second_reserved_virtual_channels.contains(&egress.virtual_channel) { //may not be the best way....
+							None
+							/*if let Some(ref mut eh)=egress.estimated_remaining_hops
+                            {
+                                *eh += second_distance;
+                            }
+                            Some(egress)*/
+
+						} else {
+							if let Some(ref mut eh)=egress.estimated_remaining_hops
+							{
+								*eh += second_distance;
+							}
+							Some(egress)
+						}
+					}).collect();
+					Ok(RoutingNextCandidates{candidates:r,idempotent})
+				}
+		}
+		// let num_ports=topology.ports(current_router);
+		// let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
+		// for i in 0..num_ports
+		// {
+		// 	//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+		// 	if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,i)
+		// 	{
+		// 		if distance-1==topology.distance(router_index,target_router)
+		// 		{
+		// 			r.extend((0..num_virtual_channels).map(|vc|(i,vc)));
+		// 		}
+		// 	}
+		// }
+		// //println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
+		// r
+	}
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, _target_server:Option<usize>, rng: &mut StdRng)
+	{
+		let degree = topology.degree(current_router);
+		let (server_source_location,_link_class) = topology.neighbour(current_router, degree);
+		let source_server=match server_source_location
+		{
+			Location::ServerPort(server) =>server,
+			_ => panic!("The server is not attached to a router"),
+		};
+
+		let cartesian_data = topology.cartesian_data().expect("Should be a cartesian data");//.expect("something").unpack(current_router)[1] ==
+
+		let src_coord = cartesian_data.unpack(current_router);
+		let trg_coord = cartesian_data.unpack(target_router);
+
+		let mut middle = current_router;
+		let mut middle_coord = cartesian_data.unpack(target_router);
+		//degree is the degree of the topology
+
+		if self.local_missrouting && (src_coord[1] == trg_coord[1])
+		{
+			//only local missrouting
+			while src_coord[0] == middle_coord[0] || trg_coord[0] == middle_coord[0] {
+
+				let middle_server = self.pattern.get_destination(source_server,topology, rng);
+				let (middle_location,_link_class)=topology.server_neighbour(middle_server);
+				middle=match middle_location
+				{
+					Location::RouterPort{router_index,router_port:_} =>router_index,
+					_ => panic!("The server is not attached to a router"),
+				};
+				middle_coord = cartesian_data.unpack(middle);
+
+			}
+			middle_coord[1] = trg_coord[1];
+			middle = cartesian_data.pack(&middle_coord);
+
+		}else{ //general missrouting
+			while src_coord[1] == middle_coord[1] || trg_coord[1] == middle_coord[1] {
+				//||(self.exclude_h_groups && (((middle_coord[1] - (degree/2)*middle_coord[0]) % cartesian_data.sides[1])  > trg_coord[1]  &&  ((middle_coord[1] - (degree/2)*middle_coord[0] - (degree/2)) % cartesian_data.sides[1] ) <= trg_coord[1] ))  {
+
+				//	middle = rng.gen_range(0..topology.num_routers());
+
+				let middle_server = self.pattern.get_destination(source_server,topology, rng);
+				let (middle_location,_link_class)=topology.server_neighbour(middle_server);
+				middle=match middle_location
+				{
+					Location::RouterPort{router_index,router_port:_} =>router_index,
+					_ => panic!("The server is not attached to a router"),
+				};
+				middle_coord = cartesian_data.unpack(middle);
+
+			}
+		}
+
+		// if middle == current_router && !self.use_min_b{
+		// 	middle = target_router;
+		// }
+
+		let mut bri=routing_info.borrow_mut();
+		bri.visited_routers=Some(vec![current_router]);
+		bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
+
+		bri.selections=Some(vec![middle as i32]);
+		self.first.initialize_routing_info(&bri.meta.as_ref().unwrap()[0],topology,current_router,middle,None,rng)
+	}
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
+	{
+		let mut bri=routing_info.borrow_mut();
+		let middle = bri.selections.as_ref().map(|s| s[0] as usize);
+		match middle
+		{
+			None =>
+				{
+					//Already towards true destination
+					let meta=bri.meta.as_mut().unwrap();
+					meta[1].borrow_mut().hops+=1;
+					self.second.update_routing_info(&meta[1],topology,current_router,current_port,target_router,target_server,rng);
+				}
+			Some(middle) =>
+				{
+					let at_middle = if let Some(ref pattern) = self.intermediate_bypass {
+						let proj_middle = pattern.get_destination(middle, topology, rng);
+						let proj_current = pattern.get_destination(current_router, topology, rng);
+						proj_middle == proj_current
+					}else if self.dragonfly_bypass && //this is a hack which looks ugly but works
+						topology.cartesian_data().expect("something").unpack(current_router)[1] ==
+							topology.cartesian_data().expect("something").unpack(middle)[1] //were on the same group
+						&& topology.distance(middle, target_router) < topology.distance(current_router, target_router)
+					{
+						true
+					}else{
+						current_router == middle
+					};
+					if at_middle
+					{
+						bri.selections=None;
+						let meta=bri.meta.as_ref().unwrap();
+						self.second.initialize_routing_info(&meta[1],topology,current_router,target_router,target_server,rng);
+					}
+					else
+					{
+						let meta=bri.meta.as_mut().unwrap();
+						meta[0].borrow_mut().hops+=1;
+						self.first.update_routing_info(&meta[0],topology,current_router,current_port,middle,None,rng);
+					}
+				}
+		};
+
+
+		match bri.visited_routers
+		{
+			Some(ref mut v) =>
+				{
+					v.push(current_router);
+				}
+			None => panic!("visited_routers not initialized"),
+		};
+
+
+	}
+	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		self.first.initialize(topology,rng);
+		self.second.initialize(topology,rng);
+		self.pattern.initialize(topology.num_servers(), topology.num_servers(), topology, rng);
+		if let Some(ref mut pattern) = self.intermediate_bypass
+		{
+			let size = topology.num_routers();
+			pattern.initialize(size,size,topology,rng);
+		}
+	}
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, num_virtual_channels:usize, rng:&mut StdRng)
+	{
+		let mut bri=routing_info.borrow_mut();
+		let middle = bri.selections.as_ref().map(|s| s[0] as usize);
+		let meta=bri.meta.as_mut().unwrap();
+
+		match middle
+		{
+			None =>
+				{
+					//Already towards true destination
+					self.first.performed_request(requested,&meta[1],topology,current_router,target_router,target_server,num_virtual_channels,rng);
+				}
+			Some(_) =>
+				{
+					//Already towards true destination
+					self.second.performed_request(requested,&meta[0],topology,current_router,target_router,target_server,num_virtual_channels,rng);
+				}
+		};
+	}
+}
+
+impl Valiant4Dragonfly
+{
+	pub fn new(arg: RoutingBuilderArgument) -> Valiant4Dragonfly
+	{
+		//let mut order=None;
+		//let mut servers_per_router=None;
+		let mut first=None;
+		let mut second=None;
+		let mut pattern: Box<dyn Pattern> = Box::new(UniformPattern::uniform_pattern(true)); //pattern to intermideate node
+		// let mut exclude_h_groups=false;
+		let mut first_reserved_virtual_channels=vec![];
+		let mut second_reserved_virtual_channels=vec![];
+		let mut local_missrouting=false;
+		let mut intermediate_bypass=None;
+		let mut dragonfly_bypass=false;
+		match_object_panic!(arg.cv,"Valiant4Dragonfly",value,
+			"first" => first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"second" => second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"pattern" => pattern= Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})).expect("pattern not valid for Valiant4Dragonfly"),
+			// "exclude_h_groups"=> exclude_h_groups=value.as_bool().expect("bad value for exclude_h_groups"),
+			"first_reserved_virtual_channels" => first_reserved_virtual_channels=value.
+				as_array().expect("bad value for first_reserved_virtual_channels").iter()
+				.map(|v|v.as_f64().expect("bad value in first_reserved_virtual_channels") as usize).collect(),
+			"second_reserved_virtual_channels" => second_reserved_virtual_channels=value.
+				as_array().expect("bad value for second_reserved_virtual_channels").iter()
+				.map(|v|v.as_f64().expect("bad value in second_reserved_virtual_channels") as usize).collect(),
+			"intermediate_bypass" => intermediate_bypass=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"local_missrouting" => local_missrouting=value.as_bool().expect("bad value for local_missrouting"),
+			"dragonfly_bypass" => dragonfly_bypass=value.as_bool().expect("bad value for dragonfly_bypass"),
+		);
+		let first=first.expect("There were no first");
+		let second=second.expect("There were no second");
+
+		Valiant4Dragonfly{
+			first,
+			second,
+			pattern,
+			first_reserved_virtual_channels,
+			second_reserved_virtual_channels,
+			intermediate_bypass,
+			local_missrouting,
+			dragonfly_bypass,
+		}
+	}
+}
+
 
 
 ///Mindless routing

@@ -695,7 +695,7 @@ pub struct Simulation<'a>
 
 impl<'a> Simulation<'a>
 {
-	fn new(cv: &ConfigurationValue, plugs:&'a Plugs) -> Simulation<'a>
+	pub fn new(cv: &ConfigurationValue, plugs:&'a Plugs) -> Simulation<'a>
 	{
 		let mut seed: Option<usize> = None;
 		let mut topology =None;
@@ -877,7 +877,7 @@ impl<'a> Simulation<'a>
 		}
 	}
 	///Run the simulations until it finishes.
-	fn run(&mut self)
+	pub fn run(&mut self)
 	{
 		self.print_memory_breakdown();
 		self.statistics.print_header();
@@ -1214,8 +1214,8 @@ impl<'a> Simulation<'a>
 			}
 		}
 	}
-	///Write the result of the simulation somewhere, typically to a 'result' file in a 'run*' directory.
-	fn write_result(&self,output:&mut dyn Write)
+	///Get config value for the simulation results.
+	pub fn get_simulation_results(&self) -> ConfigurationValue
 	{
 		// https://stackoverflow.com/questions/22355273/writing-to-a-file-or-stdout-in-rust
 		//output.write(b"Hello from the simulator\n").unwrap();
@@ -1431,7 +1431,228 @@ impl<'a> Simulation<'a>
 			}
 			result_content.push( (String::from("packet_defined_statistics"),ConfigurationValue::Array(pds_content)) );
 		}
-		let result=ConfigurationValue::Object(String::from("Result"),result_content);
+		ConfigurationValue::Object(String::from("Result"),result_content)
+	}
+
+	///Write the result of the simulation somewhere, typically to a 'result' file in a 'run*' directory.
+	fn write_result(&self,output:&mut dyn Write)
+	{
+		// https://stackoverflow.com/questions/22355273/writing-to-a-file-or-stdout-in-rust
+		//output.write(b"Hello from the simulator\n").unwrap();
+		//Result
+		//{
+		//	accepted_load: 0.9,
+		//	average_message_delay: 100,
+		//}
+		// let measurement = &self.statistics.current_measurement;
+		// let cycles=self.shared.cycle-measurement.begin_cycle;
+		// let num_servers=self.shared.network.servers.len();
+		// let injected_load=measurement.created_phits as f64/cycles as f64/num_servers as f64;
+		// let accepted_load=measurement.consumed_phits as f64/cycles as f64/num_servers as f64;
+		// let average_message_delay=measurement.total_message_delay as f64/measurement.consumed_messages as f64;
+		// let average_packet_network_delay=measurement.total_packet_network_delay as f64/measurement.consumed_packets as f64;
+		// let jscp=self.shared.network.jain_server_consumed_phits();
+		// let jsgp=self.shared.network.jain_server_created_phits();
+		// let average_packet_hops=measurement.total_packet_hops as f64 / measurement.consumed_packets as f64;
+		// let total_packet_per_hop_count=measurement.total_packet_per_hop_count.iter().map(|&count|ConfigurationValue::Number(count as f64)).collect();
+		// //let total_arrivals:usize = self.statistics.link_statistics.iter().map(|rls|rls.iter().map(|ls|ls.phit_arrivals).sum::<usize>()).sum();
+		// //let total_links:usize = self.statistics.link_statistics.iter().map(|rls|rls.len()).sum();
+		// let total_arrivals:usize = (0..self.shared.network.topology.num_routers()).map(|i|(0..self.shared.network.topology.degree(i)).map(|j|self.statistics.link_statistics[i][j].phit_arrivals).sum::<usize>()).sum();
+		// let total_links: usize = (0..self.shared.network.topology.num_routers()).map(|i|self.shared.network.topology.degree(i)).sum();
+		// let average_link_utilization = total_arrivals as f64 / cycles as f64 / total_links as f64;
+		// let maximum_arrivals:usize = self.statistics.link_statistics.iter().map(|rls|rls.iter().map(|ls|ls.phit_arrivals).max().unwrap()).max().unwrap();
+		// let maximum_link_utilization = maximum_arrivals as f64 / cycles as f64;
+		// let server_average_cycle_last_created_phit : f64 = (self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).sum::<Time>() as f64)/(self.shared.network.servers.len() as f64);
+		// let server_average_cycle_last_consumed_message : f64 = (self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).sum::<Time>() as f64)/(self.shared.network.servers.len() as f64);
+		// let server_average_missed_generations : f64 = (self.shared.network.servers.iter().map(|s|s.statistics.current_measurement.missed_generations).sum::<usize>() as f64)/(self.shared.network.servers.len() as f64);
+		// let servers_with_missed_generations : usize = self.shared.network.servers.iter().map(|s|if s.statistics.current_measurement.missed_generations > 0 {1} else {0}).sum::<usize>();
+		// let virtual_channel_usage: Vec<_> =measurement.virtual_channel_usage.iter().map(|&count|
+		// 	ConfigurationValue::Number(count as f64 / cycles as f64 / total_links as f64)
+		// ).collect();
+		// let git_id=get_git_id();
+		// let version_number = get_version_number();
+		// let mut result_content = vec![
+		// 	(String::from("cycle"),ConfigurationValue::Number(self.shared.cycle as f64)),
+		// 	(String::from("injected_load"),ConfigurationValue::Number(injected_load)),
+		// 	(String::from("accepted_load"),ConfigurationValue::Number(accepted_load)),
+		// 	(String::from("average_message_delay"),ConfigurationValue::Number(average_message_delay)),
+		// 	(String::from("average_packet_network_delay"),ConfigurationValue::Number(average_packet_network_delay)),
+		// 	(String::from("server_generation_jain_index"),ConfigurationValue::Number(jsgp)),
+		// 	(String::from("server_consumption_jain_index"),ConfigurationValue::Number(jscp)),
+		// 	(String::from("average_packet_hops"),ConfigurationValue::Number(average_packet_hops)),
+		// 	(String::from("total_packet_per_hop_count"),ConfigurationValue::Array(total_packet_per_hop_count)),
+		// 	(String::from("average_link_utilization"),ConfigurationValue::Number(average_link_utilization)),
+		// 	(String::from("maximum_link_utilization"),ConfigurationValue::Number(maximum_link_utilization)),
+		// 	(String::from("server_average_cycle_last_created_phit"),ConfigurationValue::Number(server_average_cycle_last_created_phit)),
+		// 	(String::from("server_average_cycle_last_consumed_message"),ConfigurationValue::Number(server_average_cycle_last_consumed_message)),
+		// 	(String::from("server_average_missed_generations"),ConfigurationValue::Number(server_average_missed_generations)),
+		// 	(String::from("servers_with_missed_generations"),ConfigurationValue::Number(servers_with_missed_generations as f64)),
+		// 	(String::from("virtual_channel_usage"),ConfigurationValue::Array(virtual_channel_usage)),
+		// 	//(String::from("git_id"),ConfigurationValue::Literal(format!("\"{}\"",git_id))),
+		// 	(String::from("git_id"),ConfigurationValue::Literal(git_id.to_string())),
+		// 	(String::from("version_number"),ConfigurationValue::Literal(version_number.to_string())),
+		// ];
+		// if let Some(content)=self.shared.routing.statistics(self.shared.cycle)
+		// {
+		// 	result_content.push((String::from("routing_statistics"),content));
+		// }
+		// if let Some(content) = self.shared.network.routers.iter().enumerate().fold(None,|maybe_stat,(index,router)|router.borrow().aggregate_statistics(maybe_stat,index,self.shared.network.routers.len(),self.shared.cycle))
+		// {
+		// 	result_content.push((String::from("router_aggregated_statistics"),content));
+		// }
+		// if let Ok(linux_process) = procfs::process::Process::myself()
+		// {
+		// 	let status = linux_process.status().expect("failed to get status of the self process");
+		// 	if let Some(peak_memory)=status.vmhwm
+		// 	{
+		// 		//Peak resident set size by kibibytes ("high water mark").
+		// 		result_content.push((String::from("linux_high_water_mark"),ConfigurationValue::Number(peak_memory as f64)));
+		// 	}
+		// 	let stat = linux_process.stat().expect("failed to get stat of the self process");
+		// 	let tps = procfs::ticks_per_second().expect("could not get the number of ticks per second.") as f64;
+		// 	result_content.push((String::from("user_time"),ConfigurationValue::Number(stat.utime as f64/tps)));
+		// 	result_content.push((String::from("system_time"),ConfigurationValue::Number(stat.stime as f64/tps)));
+		// }
+		// if self.statistics.temporal_step > 0
+		// {
+		// 	let step = self.statistics.temporal_step;
+		// 	let samples = self.statistics.temporal_statistics.len();
+		// 	let mut injected_load_collect = Vec::with_capacity(samples);
+		// 	let mut accepted_load_collect = Vec::with_capacity(samples);
+		// 	let mut average_message_delay_collect = Vec::with_capacity(samples);
+		// 	let mut average_packet_network_delay_collect = Vec::with_capacity(samples);
+		// 	let mut average_packet_hops_collect = Vec::with_capacity(samples);
+		// 	let mut virtual_channel_usage_collect = Vec::with_capacity(samples);
+		// 	for measurement in self.statistics.temporal_statistics.iter()
+		// 	{
+		// 		let injected_load=measurement.created_phits as f64/step as f64/num_servers as f64;
+		// 		injected_load_collect.push(ConfigurationValue::Number(injected_load));
+		// 		let accepted_load=measurement.consumed_phits as f64/step as f64/num_servers as f64;
+		// 		accepted_load_collect.push(ConfigurationValue::Number(accepted_load));
+		// 		let average_message_delay=measurement.total_message_delay as f64/measurement.consumed_messages as f64;
+		// 		average_message_delay_collect.push(ConfigurationValue::Number(average_message_delay));
+		// 		let average_packet_network_delay=measurement.total_message_delay as f64/measurement.consumed_messages as f64;
+		// 		average_packet_network_delay_collect.push(ConfigurationValue::Number(average_packet_network_delay));
+		// 		let average_packet_hops=measurement.total_packet_hops as f64 / measurement.consumed_packets as f64;
+		// 		average_packet_hops_collect.push(ConfigurationValue::Number(average_packet_hops));
+		// 		let virtual_channel_usage: Vec<_> =measurement.virtual_channel_usage.iter().map(|&count|
+		// 			ConfigurationValue::Number(count as f64 / step as f64 / total_links as f64)
+		// 		).collect();
+		// 		virtual_channel_usage_collect.push(ConfigurationValue::Array(virtual_channel_usage));
+		// 	};
+		// 	let jscp_collect = self.shared.network.temporal_jain_server_consumed_phits()
+		// 		.into_iter()
+		// 		.map(|x|ConfigurationValue::Number(x))
+		// 		.collect();
+		// 	let jsgp_collect = self.shared.network.temporal_jain_server_created_phits()
+		// 		.into_iter()
+		// 		.map(|x|ConfigurationValue::Number(x))
+		// 		.collect();
+		// 	let temporal_content = vec![
+		// 		//(String::from("cycle"),ConfigurationValue::Number(self.shared.cycle as f64)),
+		// 		(String::from("injected_load"),ConfigurationValue::Array(injected_load_collect)),
+		// 		(String::from("accepted_load"),ConfigurationValue::Array(accepted_load_collect)),
+		// 		(String::from("average_message_delay"),ConfigurationValue::Array(average_message_delay_collect)),
+		// 		(String::from("average_packet_network_delay"),ConfigurationValue::Array(average_packet_network_delay_collect)),
+		// 		(String::from("server_generation_jain_index"),ConfigurationValue::Array(jsgp_collect)),
+		// 		(String::from("server_consumption_jain_index"),ConfigurationValue::Array(jscp_collect)),
+		// 		(String::from("average_packet_hops"),ConfigurationValue::Array(average_packet_hops_collect)),
+		// 		(String::from("virtual_channel_usage"),ConfigurationValue::Array(virtual_channel_usage_collect)),
+		// 		//(String::from("total_packet_per_hop_count"),ConfigurationValue::Array(total_packet_per_hop_count)),
+		// 		//(String::from("average_link_utilization"),ConfigurationValue::Number(average_link_utilization)),
+		// 		//(String::from("maximum_link_utilization"),ConfigurationValue::Number(maximum_link_utilization)),
+		// 		//(String::from("git_id"),ConfigurationValue::Literal(format!("{}",git_id))),
+		// 	];
+		// 	result_content.push((String::from("temporal_statistics"),ConfigurationValue::Object(String::from("TemporalStatistics"),temporal_content)));
+		// }
+		// if !self.statistics.server_percentiles.is_empty()
+		// {
+		// 	let mut servers_injected_load : Vec<f64> = self.shared.network.servers.iter().map(|s|s.statistics.current_measurement.created_phits as f64/cycles as f64).collect();
+		// 	let mut servers_accepted_load : Vec<f64> = self.shared.network.servers.iter().map(|s|s.statistics.current_measurement.consumed_phits as f64/cycles as f64).collect();
+		// 	let mut servers_average_message_delay : Vec<f64> = self.shared.network.servers.iter().map(|s|s.statistics.current_measurement.total_message_delay as f64/s.statistics.current_measurement.consumed_messages as f64).collect();
+		// 	let mut servers_cycle_last_created_phit : Vec<Time> = self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_created_phit).collect();
+		// 	let mut servers_cycle_last_consumed_message : Vec<Time> = self.shared.network.servers.iter().map(|s|s.statistics.cycle_last_consumed_message).collect();
+		// 	let mut servers_missed_generations : Vec<usize> = self.shared.network.servers.iter().map(|s|s.statistics.current_measurement.missed_generations).collect();
+		// 	//XXX There are more efficient ways to find percentiles than to sort them, but should not be notable in any case. See https://en.wikipedia.org/wiki/Selection_algorithm
+		// 	servers_injected_load.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
+		// 	servers_accepted_load.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
+		// 	servers_average_message_delay.sort_by(|a,b|a.partial_cmp(b).unwrap_or(Ordering::Less));
+		// 	servers_cycle_last_created_phit.sort_unstable();
+		// 	servers_cycle_last_consumed_message.sort_unstable();
+		// 	servers_missed_generations.sort_unstable();
+		// 	for &percentile in self.statistics.server_percentiles.iter()
+		// 	{
+		// 		let mut index:usize = num_servers * usize::from(percentile) /100;
+		// 		if index >= num_servers
+		// 		{
+		// 			//This happens at least in percentile 100%.
+		// 			//We cannot find a value greater than ALL, just return the greatest.
+		// 			index = num_servers -1;
+		// 		}
+		// 		let server_content = vec![
+		// 			(String::from("injected_load"),ConfigurationValue::Number(servers_injected_load[index])),
+		// 			(String::from("accepted_load"),ConfigurationValue::Number(servers_accepted_load[index])),
+		// 			(String::from("average_message_delay"),ConfigurationValue::Number(servers_average_message_delay[index])),
+		// 			(String::from("cycle_last_created_phit"),ConfigurationValue::Number(servers_cycle_last_created_phit[index] as f64)),
+		// 			(String::from("cycle_last_consumed_message"),ConfigurationValue::Number(servers_cycle_last_consumed_message[index] as f64)),
+		// 			(String::from("missed_generations"),ConfigurationValue::Number(servers_missed_generations[index] as f64)),
+		// 		];
+		// 		result_content.push((format!("server_percentile{}",percentile),ConfigurationValue::Object(String::from("ServerStatistics"),server_content)));
+		// 	}
+		// }
+		// if !self.statistics.packet_percentiles.is_empty()
+		// {
+		// 	let mut packets_delay : Vec<Time> = self.statistics.packet_statistics.iter().map(|ps|ps.delay).collect();
+		// 	let num_packets = packets_delay.len();
+		// 	if num_packets>0
+		// 	{
+		// 		let mut packets_hops : Vec<usize> = self.statistics.packet_statistics.iter().map(|ps|ps.hops).collect();
+		// 		let mut packets_consumed_cycle: Vec<Time> = self.statistics.packet_statistics.iter().map(|ps|ps.consumed_cycle).collect();
+		// 		packets_delay.sort_unstable();
+		// 		packets_hops.sort_unstable();
+		// 		packets_consumed_cycle.sort_unstable();
+		// 		for &percentile in self.statistics.packet_percentiles.iter()
+		// 		{
+		// 			let mut index:usize = num_packets * usize::from(percentile) /100;
+		// 			if index >= num_packets
+		// 			{
+		// 				//This happens at least in percentile 100%.
+		// 				//We cannot find a value greater than ALL, just return the greatest.
+		// 				index = num_packets -1;
+		// 			}
+		// 			let packet_content = vec![
+		// 				(String::from("delay"),ConfigurationValue::Number(packets_delay[index] as f64)),
+		// 				(String::from("hops"),ConfigurationValue::Number(packets_hops[index] as f64)),
+		// 				(String::from("consumed_cycle"),ConfigurationValue::Number(packets_consumed_cycle[index] as f64)),
+		// 			];
+		// 			result_content.push((format!("packet_percentile{}",percentile),ConfigurationValue::Object(String::from("PacketStatistics"),packet_content)));
+		// 		}
+		// 	}
+		// }
+		// if !self.statistics.packet_defined_statistics_measurement.is_empty()
+		// {
+		// 	let mut pds_content=vec![];
+		// 	for definition_measurement in self.statistics.packet_defined_statistics_measurement.iter()
+		// 	{
+		// 		let mut dm_list = vec![];
+		// 		for (key,val,count) in definition_measurement
+		// 		{
+		// 			let fcount = *count as f32;
+		// 			//One average for each value field
+		// 			let averages = ConfigurationValue::Array( val.iter().map(|v|ConfigurationValue::Number(f64::from(v/fcount))).collect() );
+		// 			let dm_content: Vec<(String,ConfigurationValue)> = vec![
+		// 				(String::from("key"),ConfigurationValue::Array(key.to_vec())),
+		// 				(String::from("average"),averages),
+		// 				(String::from("count"),ConfigurationValue::Number(*count as f64)),
+		// 			];
+		// 			dm_list.push( ConfigurationValue::Object(String::from("PacketBin"),dm_content) );
+		// 		}
+		// 		pds_content.push(ConfigurationValue::Array(dm_list));
+		// 	}
+		// 	result_content.push( (String::from("packet_defined_statistics"),ConfigurationValue::Array(pds_content)) );
+		// }
+		// let result=ConfigurationValue::Object(String::from("Result"),result_content);
+		let result = self.get_simulation_results();
 		writeln!(output,"{}",result).unwrap();
 	}
 }

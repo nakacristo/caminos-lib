@@ -1291,4 +1291,209 @@ mod internal
 }
 
 
+// #[cfg(test)]
+// mod tests {
+// 	use procfs::sys::vm::DropCache::Default;
+// 	use crate::{Message, Packet, PacketRef, Plugs};
+// 	use crate::router::new_router;
+// 	use super::*;
+//
+// 	fn create_input_output_router(router_index: usize, topology: Box<dyn Topology>, mut rng: &StdRng ) -> InputOutput
+// 	{
+// 		//let router_index= 0;
+// 		let plugs = Plugs::default();
+//
+// 		let maximum_packet_size = 16;
+// 		let general_frequency_divisor = 1;
+//
+// 		//let mut output_buffer_size=None;
+// 		//let mut allocator_value=None;
+// 		let mut transmission_mechanism=None;
+// 		let mut to_server_mechanism=None;
+// 		let mut from_server_mechanism=None;
+// 		let mut crossbar_delay: Time =0;
+// 		let mut neglect_busy_output = false;
+// 		let mut crossbar_frequency_divisor = general_frequency_divisor;
+//
+//
+// 		//let sides=sides.expect("There were no sides");
+// 		let virtual_channels= 4; //virtual_channels.expect("There were no virtual_channels");
+// 		let virtual_channel_policies= vec![]; // virtual_channel_policies.expect("There were no virtual_channel_policies");
+// 		//let routing=routing.expect("There were no routing");
+// 		let buffer_size= 64; //buffer_size.expect("There were no buffer_size");
+// 		let output_buffer_size=32; //output_buffer_size.expect("There were no output_buffer_size");
+// 		let bubble= false; //bubble.expect("There were no bubble");
+// 		let flit_size=16; //flit_size.expect("There were no flit_size");
+// 		let intransit_priority= false; //intransit_priority.expect("There were no intransit_priority");
+// 		let allow_request_busy_port= true; //allow_request_busy_port.expect("There were no allow_request_busy_port");
+// //		let output_priorize_lowest_label=output_priorize_lowest_label.expect("There were no output_priorize_lowest_label");
+// 		let input_ports= 2; //topology.ports(router_index);
+//
+// 		use rand::SeedableRng;
+// 		let mut rng_allo =StdRng::seed_from_u64(10u64);
+// 		let allo_cv = ConfigurationValue::Object("Random".to_string(),vec![("seed".to_string(),ConfigurationValue::Number(1f64))]);
+// 		let allocator = new_allocator(AllocatorBuilderArgument{
+// 			cv: &allo_cv,//&allocator_value.expect("There were no allocator"),
+// 			num_clients:input_ports * virtual_channels,
+// 			num_resources:input_ports * virtual_channels,
+// 			plugs: &plugs,
+// 			rng: &mut rng_allo,
+// 		});
+//
+// 		let selected_input=(0..input_ports).map(|_|
+// 			(0..virtual_channels).map(|_|None).collect()
+// 		).collect();
+//
+// 		let selected_output=(0..input_ports).map(|_|
+// 			(0..virtual_channels).map(|_|None).collect()
+// 		).collect();
+//
+// 		let time_at_input_head=(0..input_ports).map(|_|
+// 			(0..virtual_channels).map(|_|0).collect()
+// 		).collect();
+//
+// 		let transmission_mechanism = transmission_mechanism.unwrap_or_else(||"SimpleVirtualChannels".to_string());
+// 		//let from_server_mechanism = from_server_mechanism.unwrap_or_else(||"TransmissionFromServer".to_string());
+// 		let from_server_mechanism = from_server_mechanism.unwrap_or_else(||"SimpleVirtualChannels".to_string());
+// 		let to_server_mechanism = to_server_mechanism.unwrap_or_else(||"TransmissionToServer".to_string());
+// 		//let transmission_mechanism = super::SimpleVirtualChannels::new(virtual_channels,buffer_size,flit_size);
+// 		let transmission_builder_argument = TransmissionMechanismBuilderArgument{name:"",virtual_channels,buffer_size,size_to_send:flit_size};
+// 		let transmission_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{name:&transmission_mechanism,..transmission_builder_argument});
+// 		let to_server_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{name:&to_server_mechanism,..transmission_builder_argument});
+// 		//let from_server_mechanism = TransmissionFromServer::new(virtual_channels,buffer_size,flit_size);
+// 		let from_server_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{name:&from_server_mechanism,..transmission_builder_argument});
+//
+// 		let transmission_port_status:Vec<Box<dyn StatusAtEmissor>> = (0..input_ports).map(|p|
+// 			if let (Location::ServerPort(_server),_link_class)=topology.neighbour(router_index,p)
+// 			{
+// 				to_server_mechanism.new_status_at_emissor()
+// 			}
+// 			else
+// 			{
+// 				transmission_mechanism.new_status_at_emissor()
+// 			}
+// 		).collect();
+//
+// 		let reception_port_space = (0..input_ports).map(|p|
+// 			if let (Location::ServerPort(_server),_link_class)=topology.neighbour(router_index,p)
+// 			{
+// 				from_server_mechanism.new_space_at_receptor()
+// 			}
+// 			else
+// 			{
+// 				transmission_mechanism.new_space_at_receptor()
+// 			}
+// 		).collect();
+//
+// 		let output_buffers= if output_buffer_size==0 {
+// 			panic!("output_buffer_size must be greater than 0");
+// 		} else {
+// 			(0..input_ports).map(|_|
+// 				(0..virtual_channels).map(|_|AugmentedBuffer::new()).collect()
+// 			).collect()
+// 		};
+// 		let output_buffer_phits_traversing_crossbar = vec![ vec![ 0 ; virtual_channels ] ; input_ports ];
+//
+// 		InputOutput{
+//
+// 			self_rc: Weak::new(),
+// 			next_events: vec![],
+// 			last_process_at_cycle: None,
+// 			router_index,
+// 			//routing,
+// 			virtual_channel_policies,
+// 			bubble,
+// 			flit_size,
+// 			intransit_priority,
+// 			allow_request_busy_port,
+// //			output_priorize_lowest_label,
+// 			neglect_busy_output,
+// 			buffer_size,
+// 			crossbar_delay,
+// 			transmission_port_status,
+// 			reception_port_space,
+// 			from_server_mechanism,
+// 			output_buffer_size,
+// 			output_buffers,
+// 			output_buffer_phits_traversing_crossbar,
+// 			output_schedulers: vec![],
+// 			selected_input,
+// 			selected_output,
+// 			time_at_input_head,
+// 			output_arbiter: OutputArbiter::Token{port_token: vec![0;input_ports]},
+// 			maximum_packet_size,
+// 			crossbar_frequency_divisor,
+// 			crossbar_allocator: allocator,
+// 			statistics_begin_cycle: 0,
+// 			statistics_output_buffer_occupation_per_vc: vec![0f64;virtual_channels],
+// 			statistics_reception_space_occupation_per_vc: vec![0f64;virtual_channels],
+// 		}
+// 	}
+//
+// 	#[test]
+// 	fn input_output_test()
+// 	{
+// 		use crate::topology::{new_topology,TopologyBuilderArgument};
+// 		use crate::RoutingInfo;
+// 		use rand::SeedableRng;
+//
+// 		let mut rng=StdRng::seed_from_u64(10u64);
+// 		let plugs = Plugs::default();
+// 		//let cv = ConfigurationValue::Object("FixedRandom".to_string(),vec![("allow_self".to_string(),ConfigurationValue::True)]);
+// 		// TODO: topology::dummy?
+// 		let topo_cv = ConfigurationValue::Object("Hamming".to_string(),vec![("sides".to_string(),ConfigurationValue::Array(vec![])), ("servers_per_router".to_string(),ConfigurationValue::Number(1.0))]);
+// 		let topology = new_topology(TopologyBuilderArgument{cv:&topo_cv,plugs:&plugs,rng:&mut rng});
+//
+// 		let mut router = Rc::new(RefCell::new( create_input_output_router(0,topology, &mut rng) ));
+// 		router.borrow_mut().self_rc=Rc::<_>::downgrade(&router);
+// 		let time = 1u64;
+//
+//
+// 		let m = Message{
+// 			origin: 0,
+// 			destination: 0,
+// 			size:16,
+// 			creation_cycle: time,
+// 		};
+//
+// 		let p = Packet{
+// 			size:16,
+// 			routing_info: RefCell::new(RoutingInfo::new()),
+// 			message: Rc::from(m), //Message{},
+// 			index:0,
+// 			cycle_into_network:RefCell::new(0),
+// 			extra: RefCell::new(None),
+// 		}.into_ref();
+//
+// 		let phit = Rc::new(Phit{
+//             packet: p,
+//             index: 0,
+//             virtual_channel: RefCell::new(None),
+//         });
+//
+// 		router.borrow_mut().insert(time, phit, 0, &mut rng);
+//
+// 		let ss = SimulationShared{
+// 			cycle:0,
+// 			network: Network{
+// 				topology,
+// 				routers,
+// 				servers,
+// 			},
+// 			traffic,
+// 			routing,
+// 			link_classes,
+// 			maximum_packet_size,
+// 			general_frequency_divisor,
+// 		};
+//
+// 		let sm = SimulationMut{
+// 			rng,
+// 		};
+//
+// 		router.borrow_mut().process(ss, sm);
+//
+// 	}
+// }
+
 
