@@ -925,6 +925,10 @@ impl Eventful for InputOutput
 						}
 						if self.crossbar_delay==0 {
 							self.output_buffers[exit_port][exit_vc].push(phit,(entry_port,entry_vc));
+							let mut output_scheduler = self.output_schedulers[exit_port].borrow_mut();
+							if let Some(event) = output_scheduler.schedule(simulation.cycle,0) {
+								events.push(event);
+							}
 						} else {
 							let event = Rc::<RefCell<internal::PhitToOutput>>::from(internal::PhitToOutputArgument{
 								//router: self.self_rc.upgrade().unwrap(),

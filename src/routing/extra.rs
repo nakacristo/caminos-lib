@@ -261,10 +261,10 @@ impl Routing for SumRouting
 	}
 	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, _num_virtual_channels:usize, rng:&mut StdRng)
 	{
+		use sum_routing_internal::{SumRoutingSelection,SumRoutingCase::*};
 		let mut bri=routing_info.borrow_mut();
-		//if let SumRoutingPolicy::TryBoth=self.policy
-		//if let SumRoutingPolicy::Stubborn | SumRoutingPolicy::StubbornWhenSecond =self.policy
-		if bri.selections.as_ref().unwrap().len()>1
+		//if bri.selections.as_ref().unwrap().len()>1
+		if let DoubleChoice(..) = bri.selections.case()
 		{
 			let &CandidateEgress{ref annotation,..} = requested;
 			if let Some(annotation) = annotation.as_ref()
@@ -272,13 +272,20 @@ impl Routing for SumRouting
 				let s = annotation.values[0];
 				match self.policy
 				{
-					SumRoutingPolicy::Stubborn => bri.selections=Some(vec![s]),
-					SumRoutingPolicy::StubbornWhenSecond => bri.selections = if s==1 {
-						Some(vec![1])
+					//SumRoutingPolicy::Stubborn => bri.selections=Some(vec![s]),
+					SumRoutingPolicy::Stubborn => bri.selections.set_single(s),
+					//SumRoutingPolicy::StubbornWhenSecond => bri.selections = if s==1 {
+					//	Some(vec![1])
+					//} else {
+					//	Some( vec![ bri.selections.as_ref().unwrap()[0],bri.selections.as_ref().unwrap()[1],s ] )
+					//},
+					SumRoutingPolicy::StubbornWhenSecond => if s==1 {
+						bri.selections.set_single(1);
 					} else {
-						Some( vec![ bri.selections.as_ref().unwrap()[0],bri.selections.as_ref().unwrap()[1],s ] )
+						bri.selections.set_request(s);
 					},
-					_ => bri.selections = Some( vec![ bri.selections.as_ref().unwrap()[0],bri.selections.as_ref().unwrap()[1],s ] ),
+					//_ => bri.selections = Some( vec![ bri.selections.as_ref().unwrap()[0],bri.selections.as_ref().unwrap()[1],s ] ),
+					_ => bri.selections.set_request(s),
 				}
 			}
 		}
@@ -293,14 +300,6 @@ impl Routing for SumRouting
 			let sub_num_vc = self.allowed_virtual_channels[s].len();
 			routing.performed_request(&sub_requested,&meta[s],topology,current_router,target_router,target_server,sub_num_vc,rng);
 		}
-		//let cs: Vec<i32> = bri.selections.as_ref().unwrap().iter().take(2).cloned().collect();
-		//for sel in cs
-		//{
-		//	let s = sel as usize;
-		//	let routing = &self.routing[s];
-		//	sub_requested.annotation = requested.annotation.as_ref().unwrap().meta[s].clone();
-		//	routing.performed_request(requested,&meta[s],topology,current_router,target_server,num_virtual_channels,rng);
-		//}
 	}
 	fn statistics(&self, cycle:Time) -> Option<ConfigurationValue>
 	{
@@ -373,6 +372,51 @@ impl SumRouting
 			enabled_statistics,
 			tracked_hops: RefCell::new([0,0]),
 		}
+	}
+}
+
+mod sum_routing_internal
+{
+	pub trait SumRoutingSelection
+	{
+		fn case(&self) -> SumRoutingCase;
+		/// Set a single routing as selected.
+		fn set_single(&mut self, selection:i32);
+		/// Mark a request as been performed.
+		fn set_request(&mut self, request:i32);
+	}
+	use SumRoutingCase::*;
+	impl SumRoutingSelection for Option<Vec<i32>>
+	{
+		fn case(&self) -> SumRoutingCase
+		{
+			if let Some(s) = self {
+				if s.len()==1 {
+					SingleChoice(s[0])
+				} else {
+					DoubleChoice(s[0],s[1])
+				}
+			} else {
+				panic!("Invalid selections");
+			}
+		}
+		fn set_single(&mut self, selection:i32)
+		{
+			*self = Some(vec![selection]);
+		}
+		fn set_request(&mut self, request:i32)
+		{
+			if let Some(ref mut s) = self {
+				if s.len()>=2 {
+					*s = vec![s[0],s[1],request];
+				}
+			}
+		}
+	}
+	pub enum SumRoutingCase
+	{
+		SingleChoice(i32),
+		DoubleChoice(i32,i32),
 	}
 }
 

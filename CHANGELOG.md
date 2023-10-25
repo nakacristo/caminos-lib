@@ -1,6 +1,26 @@
 # Change Log
 
-## next [0.6.2]
+## [0.6.2]
+
+### 2023-10-13
+Publish 0.6.2.
+
+### 2023-10-09
+Some output tweaks.
+Added [AsCartesianTopology] meta-topology to gives sides to an arbitrary topology.
+
+### 2023-10-03
+Manage separately the path as passed by terminal as the path detected by `std::env::current_exe`.
+
+### 2023-10-02
+Add `sum` as alias for the `add` config function.
+
+### 2023-09-25
+`canonicalize` the path to CAMINOS' binary in ExperimentFiles, to be apt for SLURM scripts.
+
+### 2023-09-18
+Fix InputOutput router to allow for `crossbar_delay=0`.
+Little cleaning on SumRouting.
 
 ### 2023-09-13
 Fixes and cleanup on the InputOutput router.

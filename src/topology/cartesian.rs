@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use ::rand::{Rng,rngs::StdRng};
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::config_parser::ConfigurationValue;
-use crate::topology::{Topology,Location};
+use crate::topology::{Topology,Location,NeighbourRouterIteratorItem,TopologyBuilderArgument,new_topology};
 //use crate::routing::{RoutingInfo,Routing,CandidateEgress,RoutingBuilderArgument,RoutingNextCandidates};
 use crate::routing::prelude::*;
 use crate::routing::RoutingAnnotation;
@@ -12,6 +12,7 @@ use crate::pattern::*; //For Valiant
 
 extern crate itertools;
 use itertools::Itertools;
+use crate::matrix::Matrix;
 
 ///A Cartesian ortahedral region of arbitrary dimension.
 #[derive(Quantifiable)]
@@ -636,6 +637,92 @@ impl Hamming
 	}
 }
 
+/**
+Gives a Cartesian representation to a topology, providing the `cartesian_data` method.
+However, does not provide of `coordinated_routing_record`.
+This can be used, for example, to declare the sides of a file-given topology.
+
+```ignore
+AsCartesianTopology{
+	topology: File{ filename:"/path/topo_with_100_switches", format:0, servers_per_router:5 }
+	sides: [10,10],
+}
+```
+**/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct AsCartesianTopology
+{
+	pub topology: Box<dyn Topology>,
+	pub cartesian_data: CartesianData,
+}
+
+impl Topology for AsCartesianTopology
+{
+	fn num_routers(&self) -> usize { self.topology.num_routers() }
+	fn num_servers(&self) -> usize { self.topology.num_servers() }
+	fn neighbour(&self, router_index:usize, port:usize) -> (Location,usize) { self.topology.neighbour(router_index,port) }
+	fn server_neighbour(&self, server_index:usize) -> (Location,usize) { self.topology.server_neighbour(server_index) }
+	fn diameter(&self) -> usize { self.topology.diameter() }
+	fn distance(&self,origin:usize,destination:usize) -> usize { self.topology.distance(origin,destination) }
+	fn amount_shortest_paths(&self,origin:usize,destination:usize) -> usize { self.topology.distance(origin,destination) }
+	fn average_amount_shortest_paths(&self) -> f32 { self.topology.average_amount_shortest_paths() }
+	fn maximum_degree(&self) -> usize { self.topology.maximum_degree() }
+	fn minimum_degree(&self) -> usize { self.topology.minimum_degree() }
+	fn degree(&self, router_index: usize) -> usize { self.topology.degree(router_index) }
+	fn ports(&self, router_index: usize) -> usize { self.topology.ports(router_index) }
+	fn neighbour_router_iter<'a>(&'a self, router_index:usize) -> Box<dyn Iterator<Item=NeighbourRouterIteratorItem> + 'a>
+	{ self.topology.neighbour_router_iter(router_index) }
+	fn cartesian_data(&self) -> Option<&CartesianData>
+	{
+		Some(&self.cartesian_data)
+	}
+	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], rng:Option<&mut StdRng>)->Vec<i32>
+	{ self.topology.coordinated_routing_record(coordinates_a,coordinates_b,rng) }
+	fn is_direction_change(&self, _router_index:usize, _input_port: usize, _output_port: usize) -> bool {
+		todo!()
+		// This seems it should be implemented
+	}
+	fn up_down_distance(&self,origin:usize,destination:usize) -> Option<(usize,usize)>
+	{ self.topology.up_down_distance(origin,destination) }
+	fn dragonfly_size(&self) -> Option<crate::topology::dragonfly::ArrangementSize>
+	{ self.topology.dragonfly_size() }
+	fn bfs(&self, origin:usize, class_weight:Option<&[usize]>) -> Vec<usize>
+	{ self.topology.bfs(origin,class_weight) }
+	fn compute_distance_matrix(&self, class_weight:Option<&[usize]>) -> Matrix<usize>
+	{ self.topology.compute_distance_matrix(class_weight) }
+	fn compute_amount_shortest_paths(&self) -> (Matrix<usize>,Matrix<usize>)
+	{ self.topology.compute_amount_shortest_paths() }
+	fn components(&self,allowed_classes:&[bool]) -> Vec<Vec<usize>>
+	{ self.topology.components(allowed_classes) }
+	fn compute_near_far_matrices(&self) -> (Matrix<usize>,Matrix<usize>)
+	{ self.topology.compute_near_far_matrices() }
+	fn eccentricity(&self, router_index:usize) -> usize
+	{ self.topology.eccentricity(router_index) }
+}
+
+impl AsCartesianTopology
+{
+	pub fn new(mut arg:TopologyBuilderArgument) -> AsCartesianTopology
+	{
+		let mut sides:Option<Vec<_>>=None;
+		let mut topology:Option<Box<dyn Topology>> = None;
+		match_object_panic!(arg.cv,"AsCartesianTopology",value,
+			"sides" => sides = Some(value.as_array().expect("bad value for sides").iter().map(|v|v.as_usize().expect("bad value in sides")).collect()),
+			"topology" => topology = Some(new_topology(arg.with_cv(value))),
+		);
+		let sides=sides.expect("There were no sides");
+		let topology=topology.expect("There were no topology");
+		let nr = topology.num_routers();
+		let sm = sides.iter().product();
+		assert_eq!(nr,sm,"size of the topology does not match the given sides.");
+		AsCartesianTopology{
+			cartesian_data: CartesianData::new(&sides),
+			topology,
+		}
+	}
+}
+
 //struct CartesianRoutingRecord
 //{
 //	coordinates: Vec<usize>,
@@ -891,6 +978,8 @@ impl DOR
 /// Valiant DOR. Proposed by Valiant for Multidimensional grids. Generally you should randomize n-1 dimensions, thereby employing shortest routes when the topology is just a path.
 /// `routing_info.selections=Some([k,r])` indicates that the `next` call should go toward `r` at dimension `randomized[k]`. `r` having been selected randomly previously.
 /// `routing_info.selections=None` indicates to behave as DOR.
+///
+/// It should not be confused with Valiant's general strategy of routing through a random intermediate, that may use DOR for those sections.
 #[derive(Debug)]
 pub struct ValiantDOR
 {

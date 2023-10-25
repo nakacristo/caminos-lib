@@ -471,7 +471,7 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 					};
 					Ok(if condition { true_expression } else { false_expression })
 				}
-				"add" | "plus" =>
+				"add" | "plus" | "sum" =>
 				{
 					let mut first=None;
 					let mut second=None;

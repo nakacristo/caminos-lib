@@ -484,6 +484,8 @@ pub struct ExperimentFiles
 	ssh2_session: Option<Session>,
 	//TODO: learn what happens when paths are not UNICODE.
 	//TODO: perhaps it should be possible a ssh:// location. Maybe an URL.
+	///How caminos was called in the terminal.
+	pub binary_call: Option<PathBuf>,
 	///The path where caminos binary file is located.
 	pub binary: Option<PathBuf>,
 	///The root path of the experiments
@@ -963,7 +965,9 @@ impl<'a> Experiment<'a>
 				host: None,
 				username: None,
 				ssh2_session: None,
-				binary: Some(binary.to_path_buf()),
+				//binary: Some(binary.canonicalize().expect("could not canonicalize the path to the binary.").to_path_buf()),
+				binary_call: Some(binary.to_path_buf()),
+				binary: Some(std::env::current_exe().expect("could not get the current executing binary").canonicalize().expect("could not canonicalize the path to the binary.")),
 				root: Some(root.to_path_buf()),
 				cfg_contents: None,
 				parsed_cfg: None,
@@ -1068,6 +1072,7 @@ impl<'a> Experiment<'a>
 				host: None,
 				username: None,
 				ssh2_session: None,
+				binary_call: None,
 				binary: None,
 				root: Some(path.to_path_buf()),
 				cfg_contents: None,
@@ -2016,6 +2021,7 @@ impl<'a> Experiment<'a>
 								host,
 								username,
 								ssh2_session: None,
+								binary_call: None,
 								binary: binary.map(|value|Path::new(&value).to_path_buf()),
 								root: root.map(|value|Path::new(&value).to_path_buf()),
 								cfg_contents: None,
