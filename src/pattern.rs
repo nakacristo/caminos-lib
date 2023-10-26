@@ -197,6 +197,18 @@ Circulant{
 }
 ```
 
+### CartesianEmbedding
+
+[CartesianEmbedding] builds the natural embedding between two blocks, by keeping the coordinate.
+
+Example mapping nodes in a block of 16 nodes into one of 64 nodes.
+```ignore
+CartesianEmbedding{
+	source_sides: [4,4],
+	destination_sides: [8,8],
+}
+```
+
 ## meta patterns
 
 ### Product
@@ -304,6 +316,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"IndependentRegions" => Box::new(IndependentRegions::new(arg)),
 			"RestrictedMiddleUniform" => Box::new(RestrictedMiddleUniform::new(arg)),
 			"Circulant" => Box::new(Circulant::new(arg)),
+			"CartesianEmbedding" => Box::new(CartesianEmbedding::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -1998,6 +2011,78 @@ impl RestrictedMiddleUniform
 	}
 }
 
+/**
+Maps from a block into another following the natural embedding, keeping the corrdinates of every node.
+Both block must have the same number of dimensions, and each dimension should be greater at the destination than at the source.
+This is intended to be used to place several small applications in a larger machine.
+It can combined with [CartesianTransform] to be placed at an offset, to set a stride, or others.
+
+Example mapping nodes in a block of 16 nodes into one of 64 nodes.
+```ignore
+CartesianEmbedding{
+	source_sides: [4,4],
+	destination_sides: [8,8],
+}
+```
+**/
+#[derive(Debug,Quantifiable)]
+struct CartesianEmbedding
+{
+	source_cartesian_data: CartesianData,
+	destination_cartesian_data: CartesianData,
+}
+
+impl Pattern for CartesianEmbedding
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		if source_size!=self.source_cartesian_data.size
+		{
+			panic!("Source sizes do not agree on CartesianEmbedding.");
+		}
+		if target_size!=self.destination_cartesian_data.size
+		{
+			panic!("Detination sizes do not agree on CartesianEmbedding.");
+		}
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		let up_origin=self.source_cartesian_data.unpack(origin);
+		self.destination_cartesian_data.pack(&up_origin)
+	}
+}
+
+impl CartesianEmbedding
+{
+	pub fn new(arg:PatternBuilderArgument) -> CartesianEmbedding
+	{
+		let mut source_sides:Option<Vec<_>>=None;
+		let mut destination_sides:Option<Vec<_>>=None;
+		match_object_panic!(arg.cv,"CartesianEmbedding",value,
+			"source_sides" => source_sides = Some(value.as_array().expect("bad value for source_sides").iter()
+				.map(|v|v.as_usize().expect("bad value in source_sides")).collect()),
+			"destination_sides" => destination_sides = Some(value.as_array().expect("bad value for destination_sides").iter()
+				.map(|v|v.as_usize().expect("bad value in destination_sides")).collect()),
+		);
+		let source_sides=source_sides.expect("There were no source_sides");
+		let destination_sides=destination_sides.expect("There were no destination_sides");
+		if source_sides.len() != destination_sides.len()
+		{
+			panic!("Different number of dimensions in CartesianEmbedding.")
+		}
+		for (index,(ss, ds)) in std::iter::zip( source_sides.iter(), destination_sides.iter() ).enumerate()
+		{
+			if ss>ds
+			{
+				panic!("Source is greater than destination at side {index}. {ss}>{ds}",index=index,ss=ss,ds=ds);
+			}
+		}
+		CartesianEmbedding{
+			source_cartesian_data: CartesianData::new(&source_sides),
+			destination_cartesian_data: CartesianData::new(&destination_sides),
+		}
+	}
+}
 
 #[cfg(test)]
 mod tests {
