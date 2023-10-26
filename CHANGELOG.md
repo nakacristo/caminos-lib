@@ -4,6 +4,7 @@
 
 ### 2023-10-26
 Added multiplier to CartesianTransform.
+Added links in pattern documentation.
 
 ### 2023-10-25
 Merge with alex-master.

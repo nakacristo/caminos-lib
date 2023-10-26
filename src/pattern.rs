@@ -58,7 +58,7 @@ pub struct PatternBuilderArgument<'a>
 
 ### Uniform
 
-In the uniform pattern all elements have same probability to send to any other.
+In the [uniform](UniformPattern) pattern all elements have same probability to send to any other.
 ```ignore
 Uniform{
 	legend_name: "uniform",
@@ -67,7 +67,7 @@ Uniform{
 
 ### GloballyShufflingDestinations
 
-An uniform-like pattern that avoids repeating the same destination. It keeps a global vector of destinations. It is shuffled and each created message gets its destination from there. Sometimes you may be selected yourself as destination.
+The [GloballyShufflingDestinations] is an uniform-like pattern that avoids repeating the same destination. It keeps a global vector of destinations. It is shuffled and each created message gets its destination from there. Sometimes you may be selected yourself as destination.
 
 ```ignore
 GloballyShufflingDestinations{
@@ -77,7 +77,7 @@ GloballyShufflingDestinations{
 
 ### GroupShufflingDestinations
 
-Alike `GloballyShufflingDestinations` but keeping one destination vector per each group.
+The [GroupShufflingDestinations] pattern is alike [GloballyShufflingDestinations] but keeping one destination vector per each group.
 
 ```ignore
 GroupShufflingDestinations{
@@ -89,7 +89,7 @@ GroupShufflingDestinations{
 
 ### UniformDistance
 
-Each message gets its destination sampled uniformly at random among the servers attached to neighbour routers.
+In [UniformDistance] each message gets its destination sampled uniformly at random among the servers attached to neighbour routers.
 It may build a pattern either of servers or switches, controlled through the `switch_level` configuration flag.
 This pattern autoscales if requested a size multiple of the network size.
 
@@ -105,8 +105,7 @@ UniformDistance{
 ```
 
 ### RestrictedMiddleUniform
-A pattern in which the destinations are randomly sampled from the destinations for which there are some middle router satisfying
-some criteria. Note this is only a pattern, the actual packet route does not have to go throught such middle router.
+[RestrictedMiddleUniform] is a pattern in which the destinations are randomly sampled from the destinations for which there are some middle router satisfying some criteria. Note this is only a pattern, the actual packet route does not have to go throught such middle router.
 It has the same implicit concentration scaling as UniformDistance, allowing building a pattern over a multiple of the number of switches.
 
 Example configuration:
@@ -131,7 +130,7 @@ RestrictedMiddleUniform{
 Each element has a unique destination and a unique element from which it is a destination.
 
 ### RandomPermutation
-Have same chance to generate any permutation
+The [RandomPermutation] has same chance to generate any permutation
 ```ignore
 RandomPermutation{
 	legend_name: "random server permutation",
@@ -139,7 +138,7 @@ RandomPermutation{
 ```
 
 ### RandomInvolution
-Can only generate involutions. This is, if `p` is the permutation then for any element `x`, `p(p(x))=x`.
+The [RandomInvolution] can only generate involutions. This is, if `p` is the permutation then for any element `x`, `p(p(x))=x`.
 ```ignore
 RandomInvolution{
 	legend_name: "random server involution",
@@ -147,10 +146,10 @@ RandomInvolution{
 ```
 
 ### FixedRandom
-Each source has an independent unique destination. By the "birtday paradox" we can expect several sources to share a destination, causing incast contention.
+In [FixedRandom] each source has an independent unique destination. By the "birthday paradox" we can expect several sources to share a destination, causing incast contention.
 
 ### FileMap
-A map read from file. Each elment has a unique destination.
+With [FileMap] a map is read from a file. Each elment has a unique destination.
 ```ignore
 FileMap{
 	/// Note this is a string literal.
@@ -160,10 +159,11 @@ FileMap{
 ```
 
 ### CartesianTransform
-Sees the elments as a n-dimensional orthohedra. Then it applies several transformations. When mapping directly servers it may be useful to use as `sides[0]` the number of servers per router.
+With [CartesianTransform] the nodes are seen as in a n-dimensional orthohedra. Then it applies several transformations. When mapping directly servers it may be useful to use as `sides[0]` the number of servers per router.
 ```ignore
 CartesianTransform{
 	sides: [4,8,8],
+	multiplier: [1,1,1],//optional
 	shift: [0,4,0],//optional
 	permute: [0,2,1],//optional
 	complement: [false,true,false],//optional
@@ -174,8 +174,8 @@ CartesianTransform{
 }
 ```
 
-### Hotspots.
-A pool of hotspots is build from a given list of `destinations` plus some amount `extra_random_destinations` computed randomly on initialization.
+### Hotspots
+[Hotspots] builds a pool of hotspots from a given list of `destinations` plus some amount `extra_random_destinations` computed randomly on initialization.
 Destinations are randomly selected from such pool.
 This causes incast contention, more explicitly than `FixedRandom`.
 ```ignore
@@ -187,7 +187,7 @@ Hotspots{
 ```
 
 ### Circulant
-Each node send traffic to the node `current+g`, where `g` is any of the elements given in the vector `generators`. The operations
+In [Circulant] each node send traffic to the node `current+g`, where `g` is any of the elements given in the vector `generators`. The operations
 being made modulo the destination size. Among the candidates one of them is selected in each call with uniform distribution.
 
 In this example each node `x` send to either `x+1` or `x+2`.
@@ -200,7 +200,7 @@ Circulant{
 ## meta patterns
 
 ### Product
-The elements are divided in blocks. Blocks are mapped to blocks by the `global_pattern`. The `block_pattern` must has input and output size equal to `block_size` and maps the specific elements.
+With [Product](ProductPattern) the elements are divided in blocks. Blocks are mapped to blocks by the `global_pattern`. The `block_pattern` must has input and output size equal to `block_size` and maps the specific elements.
 ```ignore
 Product{
 	block_pattern: RandomPermutation,
@@ -210,8 +210,8 @@ Product{
 }
 ```
 
-### Component
-Divides the topology along link classes. The 'local' pattern is Uniform.
+### Components
+[Components](ComponentsPattern) divides the topology along link classes. The 'local' pattern is Uniform.
 ```ignore
 Components{
 	global_pattern: RandomPermutation,
@@ -221,7 +221,7 @@ Components{
 ```
 
 ### Composition
-Allows to concatenate transformations.
+The [Composition] pattern allows to concatenate transformations.
 ```ignore
 Composition{
 	patterns: [  FileMap{filename: "/patterns/second"}, FileMap{filename: "/patterns/first"}  ]
@@ -230,8 +230,8 @@ Composition{
 ```
 
 
-### Pow.
-A Pow is composition of a `pattern` with itself `exponent` times.
+### Pow
+A [Pow] is composition of a `pattern` with itself `exponent` times.
 ```ignore
 Pow{
 	pattern: FileMap{filename: "/patterns/mypattern"},
@@ -242,7 +242,7 @@ Pow{
 
 
 ### RandomMix
-Probabilistically mix a list of patterns.
+[RandomMix] probabilistically mixes a list of patterns.
 ```ignore
 RandomMix{
 	patterns: [Hotspots{extra_random_destinations:10}, Uniform],
@@ -252,7 +252,7 @@ RandomMix{
 ```
 
 ### IndependentRegions
-Partition the nodes in independent regions, each with its own pattern. Source and target sizes must be equal.
+With [IndependentRegions] the set of nodes is partitioned in independent regions, each with its own pattern. Source and target sizes must be equal.
 ```ignore
 IndependentRegions{
 	// An array with the patterns for each region.
@@ -1654,7 +1654,7 @@ impl FixedRandom
 /// ```
 #[derive(Quantifiable)]
 #[derive(Debug)]
-struct IndependentRegions
+pub struct IndependentRegions
 {
 	/// The actual size of each region. An empty vector if not given nor initialized.
 	/// If not empty it must sum up to the total size and have as many elements as the `patterns` field.
@@ -1909,14 +1909,14 @@ Circulant{
 ```
 **/
 #[derive(Quantifiable,Debug)]
-struct Circulant
+pub struct Circulant
 {
 	//config:
 	///The generators to be employed.
-	generators: Vec<i32>,
+	pub generators: Vec<i32>,
 	//intialized:
 	///The size of the destinations set, captured at initialization.
-	size: i32,
+	pub size: i32,
 }
 
 impl Pattern for Circulant
