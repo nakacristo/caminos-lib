@@ -25,7 +25,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * Router methods insert and acknowledge now return `Vec<EventGeneration>` and are responsible for their scheduling.
 
 ## [0.5.0] to [0.6.0]
-* Removed unnecessary generic parameter TM from routers Basic and InputOutput. They now may select [TransmissionMechanism]s to employ.
+* Removed unnecessary generic parameter TM from routers Basic and InputOutput. They now may select [TransmissionMechanisms](router::TransmissionMechanism) to employ.
 * Renamed TransmissionFromServer into TransmissionFromOblivious.
 * Some changes in the Dragonfly struct, to allow for more global arrangements.
 * `Event::process` now receives SimulationShared and SimulationMut for better encapsulation.
@@ -625,9 +625,9 @@ pub struct SimulationShared
 impl SimulationShared
 {
 	/**
-		Whether the current cycle is a multiple of the frequency divisor of the given `link_class`.
-		These are the cycles in which it is allowed to send a phit through the link.
-		The phit reception event should then be scheduled normally at cycle+delay.
+	Whether the current cycle is a multiple of the frequency divisor of the given `link_class`.
+	These are the cycles in which it is allowed to send a phit through the link.
+	The phit reception event should then be scheduled normally at cycle+delay.
 	**/
 	pub fn is_link_cycle(&self, link_class: usize) -> bool
 	{

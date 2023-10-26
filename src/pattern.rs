@@ -1667,7 +1667,7 @@ pub struct IndependentRegions
 
 /**
 Build an integer vector with elements proportional to the given `weights` and with a total `target_sum`.
-Based on https://stackoverflow.com/questions/16226991/allocate-an-array-of-integers-proportionally-compensating-for-rounding-errors
+Based on <https://stackoverflow.com/questions/16226991/allocate-an-array-of-integers-proportionally-compensating-for-rounding-errors>
 **/
 pub fn proportional_vec_with_sum(weights:&Vec<f64>, target_sum:usize) -> Vec<usize>
 {

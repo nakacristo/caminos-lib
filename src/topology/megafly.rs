@@ -22,9 +22,9 @@ REFS Megafly, Dragonfly+
 
 
 Mellanox Technologies, “Interconnect your future with Mellanox,” March 2014
-http://www.slideshare.net/mellanox/140307-mellanox-versus-cray-p,
+<http://www.slideshare.net/mellanox/140307-mellanox-versus-cray-p>,
 accessed: 2016-04-10.
-https://documents.pub/document/interconnect-your-future-with-mellanox.html?page=22 says 06-may-2015
+<https://documents.pub/document/interconnect-your-future-with-mellanox.html?page=22> says 06-may-2015
 
 Chen, D., Heidelberger, P., Stunkel, C., Sugawara, Y., Minkenberg, C., Prisacari, B., Rodriguez, G.: An evaluation of network architectures for next generation supercomputers. In: 2016 7th International Workshop on Performance Modeling, Benchmarking and Simulation of High Performance Computer Systems (PMBS), pp. 11–21, November 2016
 

@@ -19,7 +19,7 @@ The canonic dimensions (the CanonicDragonfly name has been deprecated) are
 For the palm-tree arrangement we refer to the doctoral thesis of Marina García.
 
 For the palmtree arrangement exteded to other size ratios and the [Dragonfly2ColorsRouting] routing see
-Cristóbal Camarero, Enrique Vallejo, and Ramón Beivide. 2014. Topological Characterization of Hamming and Dragonfly Networks and Its Implications on Routing. ACM Trans. Archit. Code Optim. 11, 4, Article 39 (January 2015), 25 pages. https://doi.org/10.1145/2677038
+Cristóbal Camarero, Enrique Vallejo, and Ramón Beivide. 2014. Topological Characterization of Hamming and Dragonfly Networks and Its Implications on Routing. ACM Trans. Archit. Code Optim. 11, 4, Article 39 (January 2015), 25 pages. <https://doi.org/10.1145/2677038>
 
 Example configuration:
 ```ignore

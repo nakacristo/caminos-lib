@@ -56,7 +56,7 @@ pub struct RequestInfo<'a>
 }
 
 ///How virtual channels are selected for a packet
-///They provide the function filter(Vec<CandidateEgress>) -> Vec<CandidateEgress>
+///They provide the function `filter(Vec<CandidateEgress>) -> Vec<CandidateEgress>`
 ///It needs:
 ///	rng, self.virtual_ports(credits and length), phit.packet.routing_info.borrow().hops, server_ports,
 /// topology.{distance,neighbour}, port_average_neighbour_queue_length, port_last_transmission
