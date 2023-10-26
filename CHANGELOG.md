@@ -2,6 +2,9 @@
 
 ## next, [0.6.3]
 
+### 2023-10-26
+Added multiplier to CartesianTransform.
+
 ### 2023-10-25
 Merge with alex-master.
 Added documentation for the link classes employed in Dragonfly.

@@ -775,12 +775,13 @@ impl ComponentsPattern
 Interpretate the origin as with cartesian coordinates and apply transformations.
 May permute the dimensions if they have same side.
 May complement the dimensions.
-Order of composition is: first shift, second permute, third complement, fourth project.
+Order of composition is: multiplier, shift, permute, complement, project, randomize, pattern. If you need another order you may [compose](Composition) several of them.
 
 Example configuration:
 ```ignore
 CartesianTransform{
 	sides: [4,8,8],
+	multiplier: [1,1,1],//optional
 	shift: [0,4,0],//optional
 	permute: [0,2,1],//optional
 	complement: [false,true,false],//optional
@@ -797,7 +798,9 @@ pub struct CartesianTransform
 {
 	///The Cartesian interpretation.
 	cartesian_data: CartesianData,
-	///A shift to each coordinate, modulo the side.
+	///A factor multiplying each coordinate. Use 1 for nops.
+	multiplier: Option<Vec<i32>>,
+	///A shift to each coordinate, modulo the side. Use 0 for nops.
 	shift: Option<Vec<usize>>,
 	///Optionally how dimensions are permuted.
 	///`permute=[0,2,1]` means to permute dimensions 1 and 2, keeping dimension 0 as is.
@@ -837,11 +840,20 @@ impl Pattern for CartesianTransform
 	}
 	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
+		use std::convert::TryInto;
 		let up_origin=self.cartesian_data.unpack(origin);
+		let up_multiplied=match self.multiplier
+		{
+			Some(ref v) => v.iter().enumerate().map(|(index,&value)|{
+				let dst:i32  = (up_origin[index] as i32*value).rem_euclid(self.cartesian_data.sides[index] as i32);
+				dst.try_into().unwrap()
+			}).collect(),
+			None => up_origin,
+		};
 		let up_shifted=match self.shift
 		{
-			Some(ref v) => v.iter().enumerate().map(|(index,&value)|(up_origin[index]+value)%self.cartesian_data.sides[index]).collect(),
-			None => up_origin,
+			Some(ref v) => v.iter().enumerate().map(|(index,&value)|(up_multiplied[index]+value)%self.cartesian_data.sides[index]).collect(),
+			None => up_multiplied,
 		};
 		let up_permuted=match self.permute
 		{
@@ -879,6 +891,7 @@ impl CartesianTransform
 	{
 		let mut sides:Option<Vec<_>>=None;
 		let mut shift=None;
+		let mut multiplier=None;
 		let mut permute=None;
 		let mut complement=None;
 		let mut project=None;
@@ -886,11 +899,13 @@ impl CartesianTransform
 		let mut patterns=None;
 		match_object_panic!(arg.cv,"CartesianTransform",value,
 			"sides" => sides = Some(value.as_array().expect("bad value for sides").iter()
-				.map(|v|v.as_f64().expect("bad value in sides") as usize).collect()),
+				.map(|v|v.as_usize().expect("bad value in sides")).collect()),
+			"multiplier" => multiplier=Some(value.as_array().expect("bad value for multiplier").iter()
+				.map(|v|v.as_i32().expect("bad value in multiplier") ).collect()),
 			"shift" => shift=Some(value.as_array().expect("bad value for shift").iter()
-				.map(|v|v.as_f64().expect("bad value in shift") as usize).collect()),
+				.map(|v|v.as_usize().expect("bad value in shift") ).collect()),
 			"permute" => permute=Some(value.as_array().expect("bad value for permute").iter()
-				.map(|v|v.as_f64().expect("bad value in permute") as usize).collect()),
+				.map(|v|v.as_usize().expect("bad value in permute") ).collect()),
 			"complement" => complement=Some(value.as_array().expect("bad value for complement").iter()
 				.map(|v|v.as_bool().expect("bad value in complement")).collect()),
 			"project" => project=Some(value.as_array().expect("bad value for project").iter()
@@ -905,6 +920,7 @@ impl CartesianTransform
 		//let complement=complement.expect("There were no complement");
 		CartesianTransform{
 			cartesian_data: CartesianData::new(&sides),
+			multiplier,
 			shift,
 			permute,
 			complement,
