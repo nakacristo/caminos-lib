@@ -4,6 +4,7 @@
 
 ### 2023-10-30
 Improved documentation of `new_topology`.
+New pattern [RemappedNodes].
 
 ### 2023-10-26
 Added multiplier to CartesianTransform.

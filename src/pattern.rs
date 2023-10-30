@@ -276,6 +276,18 @@ IndependentRegions{
 	// relative_sizes: [88, 11],
 }
 ```
+### RemappedNodes
+[RemappedNodes] allows to apply another pattern using indices that are mapped by another pattern.
+
+Example building a cycle in random order.
+```ignore
+RemappedNodes{
+	/// The underlaying pattern to be used.
+	pattern: Circulant{generators:[1]},
+	/// The pattern defining the relabelling.
+	map: RandomPermutation,
+}
+```
 
 */
 pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
@@ -317,6 +329,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"RestrictedMiddleUniform" => Box::new(RestrictedMiddleUniform::new(arg)),
 			"Circulant" => Box::new(Circulant::new(arg)),
 			"CartesianEmbedding" => Box::new(CartesianEmbedding::new(arg)),
+			"RemappedNodes" => Box::new(RemappedNodes::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -2084,6 +2097,96 @@ impl CartesianEmbedding
 	}
 }
 
+/**
+Apply some other [Pattern] over a set of nodes whose indices have been remapped according to a [Pattern]-given permutation.
+A source `x` chooses as destination `map(pattern(invmap(x)))`, where `map` is the given permutation, `invmap` its inverse and `pattern` is the underlaying pattern to apply. In other words, if `pattern(a)=b`, then destination of `map(a)` is set to `map(b)`. It can be seen as a [Composition] that manages building the inverse map.
+
+Remapped nodes requires source and destination to be of the same size. The pattern creating the map is called once and must return in a permutation, as to be able to make its inverse.
+
+For a similar operation on other types see [RemappedServersTopology].
+
+Example building a cycle in random order.
+```ignore
+RemappedNodes{
+	/// The underlaying pattern to be used.
+	pattern: Circulant{generators:[1]},
+	/// The pattern defining the relabelling.
+	map: RandomPermutation,
+}
+```
+
+**/
+#[derive(Debug,Quantifiable)]
+struct RemappedNodes
+{
+	/// Maps from inner indices to outer indices.
+	/// It must be a permutation.
+	from_base_map: Vec<usize>,
+	/// Maps from outer indices to inner indices.
+	/// The inverse of `from_base_map`.
+	into_base_map: Vec<usize>,
+	/// The inner pattern to be applied.
+	pattern: Box<dyn Pattern>,
+	/// The pattern to build the map vectors.
+	map: Box<dyn Pattern>,
+}
+
+impl Pattern for RemappedNodes
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		if source_size != target_size
+		{
+			panic!("RemappedNodes requires source and target sets to have same size.");
+		}
+		let n = source_size;
+		self.map.initialize(n,n,topology,rng);
+		self.from_base_map = (0..n).map(|inner_index|{
+			self.map.get_destination(inner_index,topology,rng)
+		}).collect();
+		let mut into_base_map = vec![None;n];
+		for (inside,&outside) in self.from_base_map.iter().enumerate()
+		{
+			match into_base_map[outside]
+			{
+				None => into_base_map[outside]=Some(inside),
+				Some(already_inside) => panic!("Two inside nodes ({inside} and {already_inside}) mapped to the same outer index ({outside}).",inside=inside,already_inside=already_inside,outside=outside),
+			}
+		}
+		self.into_base_map = into_base_map.iter().map(|x|x.expect("node not mapped")).collect();
+		self.pattern.initialize(n,n,topology,rng);
+	}
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		let inner_origin = self.into_base_map[origin];
+		let inner_dest = self.pattern.get_destination(inner_origin,topology,rng);
+		self.from_base_map[inner_dest]
+	}
+}
+
+impl RemappedNodes
+{
+	fn new(arg:PatternBuilderArgument) -> RemappedNodes
+	{
+		let mut pattern = None;
+		let mut map = None;
+		match_object_panic!(arg.cv, "RemappedNodes", value,
+			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"map" => map = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+		);
+		let pattern = pattern.expect("There were no pattern in configuration of RemappedServersTopology.");
+		let map = map.expect("There were no map in configuration of RemappedServersTopology.");
+		RemappedNodes{
+			from_base_map: vec![],
+			into_base_map: vec![],
+			pattern,
+			map,
+		}
+	}
+}
+
+
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -2179,5 +2282,4 @@ mod tests {
 		}
 	}
 }
-
 
