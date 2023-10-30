@@ -18,6 +18,8 @@ RemappedServersTopology{
 }
 ```
 
+For the same concept on patterns see [RemappedNodes](crate::pattern::RemappedNodes).
+
 **/
 #[derive(Debug,Quantifiable)]
 pub struct RemappedServersTopology

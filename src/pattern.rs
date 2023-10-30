@@ -2103,7 +2103,7 @@ A source `x` chooses as destination `map(pattern(invmap(x)))`, where `map` is th
 
 Remapped nodes requires source and destination to be of the same size. The pattern creating the map is called once and must return in a permutation, as to be able to make its inverse.
 
-For a similar operation on other types see [RemappedServersTopology].
+For a similar operation on other types see [RemappedServersTopology](crate::topology::operations::RemappedServersTopology).
 
 Example building a cycle in random order.
 ```ignore
@@ -2117,7 +2117,7 @@ RemappedNodes{
 
 **/
 #[derive(Debug,Quantifiable)]
-struct RemappedNodes
+pub struct RemappedNodes
 {
 	/// Maps from inner indices to outer indices.
 	/// It must be a permutation.
