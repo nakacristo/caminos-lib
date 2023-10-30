@@ -2026,7 +2026,7 @@ CartesianEmbedding{
 ```
 **/
 #[derive(Debug,Quantifiable)]
-struct CartesianEmbedding
+pub struct CartesianEmbedding
 {
 	source_cartesian_data: CartesianData,
 	destination_cartesian_data: CartesianData,

@@ -2,6 +2,9 @@
 
 ## next, [0.6.3]
 
+### 2023-10-30
+Improved documentation of `new_topology`.
+
 ### 2023-10-26
 Added multiplier to CartesianTransform.
 Added links in pattern documentation.
