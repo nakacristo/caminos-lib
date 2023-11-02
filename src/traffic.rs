@@ -1573,13 +1573,18 @@ impl BoundedDifference
 #[derive(Debug)]
 pub struct TrafficMap
 {
+	/// fuente_maquina -> fuente_app -> destino_app -> destino maquina
+
 	/// Maps the origin of the traffic.
-	from_base_map: Vec<usize>,
+	/// fuente_maquina -> fuente_app
+	from_machine_to_app: Vec<usize>,
 
 	/// Maps the destination of the traffic.
-	into_base_map: Vec<usize>,
+	/// destino_app -> destino_maquina
+	from_app_to_machine: Vec<Option<usize>>,
 
     /// The traffic to be mapped.
+	/// fuente_app -> destino_app
 	application: Box<dyn Traffic>,
 
 	/// The map to be applied to the traffic.
@@ -1590,20 +1595,33 @@ impl Traffic for TrafficMap
 {
 	fn generate_message(&mut self, origin: usize, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>, TrafficError>
 	{
-		// Get the origin of the message from the base map
-		let new_origin = self.from_base_map[origin];
-
-		// Get the destination of the message from the base map
-		let destination = self.into_base_map[new_origin];
-
-		// Check if it is a self message
-		if new_origin == destination
+		// the machine origin of the message
+		if origin >= self.from_machine_to_app.len()
 		{
-			return Err(TrafficError::SelfMessage);
+			return Err(TrafficError::OriginOutsideTraffic);
 		}
 
-		// Generate the message from the application
-		return self.application.generate_message(new_origin, cycle, topology, rng);
+		// Get the origin of the message (the app) from the base map
+		let app_origin = self.from_machine_to_app[origin];
+
+		// generate the message from the application
+		let message = self.application.generate_message(app_origin, cycle, topology, rng);
+
+		// get the destination of the message (the app) from the base map
+		let app_destination = self.map.get_destination(app_origin, topology, rng);
+
+		// get the destination of the message (the machine) from the base map
+		let machine_destination = self.from_app_to_machine[app_destination];
+
+		// build the message
+		let message = Rc::new(Message{
+			origin,
+			destination: machine_destination.expect("There was no destination for the message"),
+			size: message.unwrap().size,
+			creation_cycle: message.unwrap().creation_cycle,
+		});
+
+		Ok(message)
 	}
 
 	fn probability_per_cycle(&self, server: usize) -> f32
@@ -1643,23 +1661,28 @@ impl TrafficMap
 		let application = application.expect("There were no application in configuration of TrafficMap.");
 		let mut map = map.expect("There were no map in configuration of TrafficMap.");
 
-		map.initialize(arg.topology.num_servers(), arg.topology.num_servers(), arg.topology, arg.rng);
+		let n = arg.topology.num_servers();
 
-		// Initialize pattern
-		let mut from_base_map = Vec::new();
-		let mut into_base_map = Vec::new();
+		map.initialize(n, n, arg.topology, arg.rng);
 
-		for i in 0..arg.topology.num_servers()
+		let mut from_machine_to_app: Vec<_> = (0..n).map(|inner_origin| {
+			map.get_destination(inner_origin, arg.topology, arg.rng)
+		}).collect();
+
+		let mut from_app_to_machine = vec![None; n];
+		for (origin, &destination) in from_machine_to_app.iter().enumerate()
 		{
-			let destination = map.get_destination(i,arg.topology, arg.rng);
-			from_base_map.push(i);
-			into_base_map.push(destination);
+			match from_app_to_machine[destination]
+			{
+				None => from_app_to_machine[destination] = Some(origin),
+				Some(already_mapped) => panic!("Two origins map to the same destination: {} and {}", already_mapped, origin),
+			}
 		}
 
 		TrafficMap
 		{
-			from_base_map,
-			into_base_map,
+			from_machine_to_app,
+			from_app_to_machine,
 			application,
 			map
 		}
