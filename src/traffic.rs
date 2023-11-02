@@ -265,6 +265,11 @@ impl Traffic for Homogeneous
 			creation_cycle: cycle,
 		});
 		self.generated_messages.insert(message.as_ref() as *const Message);
+		//debug the messages
+		// let cartesian_data = topology.cartesian_data().unwrap();
+		// println!("{} -> {}",cartesian_data.unpack(&origin), cartesian_data.unpack(&destination));
+		//print vectors cartesian_data.unpack(&origin), cartesian_data.unpack(&destination));
+		//println!("({}, {}),",origin,destination);
 		Ok(message)
 	}
 	fn probability_per_cycle(&self, _server:usize) -> f32

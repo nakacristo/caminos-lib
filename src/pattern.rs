@@ -284,10 +284,12 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"EmbeddedMap" => Box::new(FileMap::embedded(arg)),
 			"Product" => Box::new(ProductPattern::new(arg)),
 			"Components" => Box::new(ComponentsPattern::new(arg)),
+			"MapVector" => Box::new(MapVector::new(arg)),
 			"CartesianTransform" => Box::new(CartesianTransform::new(arg)),
 			"CartesianTiling" => Box::new(CartesianTiling::new(arg)),
 			"Composition" => Box::new(Composition::new(arg)),
 			"Pow" => Box::new(Pow::new(arg)),
+			"IndependentVector" => Box::new(IndependentVector::new(arg)),
 			"CartesianFactor" => Box::new(CartesianFactor::new(arg)),
 			"CartesianFactorDimension" => Box::new(CartesianFactorDimension::new(arg)),
 			"Hotspots" => Box::new(Hotspots::new(arg)),
@@ -914,6 +916,241 @@ impl CartesianTransform
 		}
 	}
 }
+
+
+
+/**
+Example configuration:
+```ignore
+IndependentVector{
+	sides: [4,8,8],
+	shift: [0,4,0],//optional
+	permute: [0,2,1],//optional
+	complement: [false,true,false],//optional
+	project: [false,false,false],//optional
+	//random: [false,false,true],//optional
+	//patterns: [Identity,Identity,Circulant{generators:[1,-1]}]//optional
+	legend_name: "Some lineal transformation over a 8x8 mesh with 4 servers per router",
+}
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct IndependentVector
+{
+	///The Cartesian interpretation.
+	cartesian_data: CartesianData,
+	///A shift to each coordinate, modulo the side.
+	shift: Option<Vec<usize>>,
+	///Optionally how dimensions are permuted.
+	///`permute=[0,2,1]` means to permute dimensions 1 and 2, keeping dimension 0 as is.
+	permute: Option<Vec<usize>>,
+	///Optionally, which dimensions must be complemented.
+	///`complement=[true,false,false]` means `target_coordinates[0]=side-1-coordinates[0]`.
+	complement: Option<Vec<bool>>,
+	///Indicates dimensions to be projected into 0. This causes incast contention.
+	project: Option<Vec<bool>>,
+	///Indicates dimensions in which to select a random coordinate.
+	///A random roll performed in each call to `get_destination`.
+	random: Option<Vec<bool>>,
+	///Optionally, set a pattern at coordinate. Use Identity for those coordinates with no operation.
+	patterns: Option<Vec<Box<dyn Pattern>>>,
+}
+
+impl Pattern for IndependentVector
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		if source_size!=target_size
+		{
+			panic!("In a IndependentVector source_size({}) must be equal to target_size({}).",source_size,target_size);
+		}
+		if source_size!=self.cartesian_data.size
+		{
+			panic!("Sizes do not agree on IndependentVector.");
+		}
+		if let Some(ref mut patterns) = self.patterns
+		{
+			for (index,ref mut pat) in patterns.iter_mut().enumerate()
+			{
+				let coordinate_size = self.cartesian_data.sides[index];
+				pat.initialize(coordinate_size, coordinate_size, topology, rng );
+			}
+		}
+	}
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		let up_origin=self.cartesian_data.unpack(origin);
+		let up_shifted=match self.shift
+		{
+			Some(ref v) => v.iter().enumerate().map(|(index,&value)|(up_origin[index]+value)%self.cartesian_data.sides[index]).collect(),
+			None => up_origin,
+		};
+		let up_permuted=match self.permute
+		{
+			//XXX Should we panic on side mismatch?
+			Some(ref v) => v.iter().map(|&index|up_shifted[index]).collect(),
+			None => up_shifted,
+		};
+		let up_complemented=match self.complement
+		{
+			Some(ref v) => up_permuted.iter().enumerate().map(|(index,&value)|if v[index]{self.cartesian_data.sides[index]-1-value}else {value}).collect(),
+			None => up_permuted,
+		};
+		let up_projected=match self.project
+		{
+			Some(ref v) => up_complemented.iter().enumerate().map(|(index,&value)|if v[index]{0} else {value}).collect(),
+			None => up_complemented,
+		};
+		let up_randomized=match self.random
+		{
+			Some(ref v) => up_projected.iter().enumerate().map(|(index,&value)|if v[index]{rng.gen_range(0..self.cartesian_data.sides[index])} else {value}).collect(),
+			None => up_projected,
+		};
+		let up_patterned = match self.patterns
+		{
+			Some(ref v) => {
+				let origin = self.cartesian_data.pack(&up_randomized);
+				up_randomized.iter().enumerate().map(|(index, &value)| v[index].get_destination(origin, topology, rng)).collect()
+			},
+			None => up_randomized,
+		};
+		self.cartesian_data.pack(&up_patterned)
+	}
+}
+
+impl IndependentVector
+{
+	fn new(arg:PatternBuilderArgument) -> IndependentVector
+	{
+		let mut sides:Option<Vec<_>>=None;
+		let mut shift=None;
+		let mut permute=None;
+		let mut complement=None;
+		let mut project=None;
+		let mut random =None;
+		let mut patterns=None;
+		match_object_panic!(arg.cv,"IndependentVector",value,
+			"sides" => sides = Some(value.as_array().expect("bad value for sides").iter()
+				.map(|v|v.as_f64().expect("bad value in sides") as usize).collect()),
+			"shift" => shift=Some(value.as_array().expect("bad value for shift").iter()
+				.map(|v|v.as_f64().expect("bad value in shift") as usize).collect()),
+			"permute" => permute=Some(value.as_array().expect("bad value for permute").iter()
+				.map(|v|v.as_f64().expect("bad value in permute") as usize).collect()),
+			"complement" => complement=Some(value.as_array().expect("bad value for complement").iter()
+				.map(|v|v.as_bool().expect("bad value in complement")).collect()),
+			"project" => project=Some(value.as_array().expect("bad value for project").iter()
+				.map(|v|v.as_bool().expect("bad value in project")).collect()),
+			"random" => random=Some(value.as_array().expect("bad value for random").iter()
+				.map(|v|v.as_bool().expect("bad value in random")).collect()),
+			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+		);
+		let sides=sides.expect("There were no sides");
+		//let permute=permute.expect("There were no permute");
+		//let complement=complement.expect("There were no complement");
+		IndependentVector{
+			cartesian_data: CartesianData::new(&sides),
+			shift,
+			permute,
+			complement,
+			project,
+			random,
+			patterns,
+		}
+	}
+}
+
+/**
+
+Example configuration:
+```ignore
+MapVector{
+
+}
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct MapVector
+{
+	///The Cartesian interpretation.
+	cartesian_data: CartesianData,
+	///The coefficient by which it is multiplied each dimension.
+	factor: usize,
+	///As given in initialization.
+	target_size: usize,
+	///The coefficient by which it is multiplied each dimension.
+	factors: Vec<f64>,
+	///Sum at the end
+	sum: f64,
+}
+
+impl Pattern for MapVector
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		//self.target_size = target_size;
+		// if source_size!=self.cartesian_data.size
+		// {
+		// 	panic!("Sizes do not agree on MapVector.");
+		// }
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		let mut up_origin=self.cartesian_data.unpack(origin);
+		let mut factor = self.factor * up_origin[0];
+
+		for f in 0..up_origin.len()
+		{
+			if factor < self.cartesian_data.sides[f]
+			{
+				up_origin[f] = (up_origin[f]+ factor) % self.cartesian_data.sides[f];
+				break;
+			}
+			factor = (factor / self.cartesian_data.sides[f]) as usize;
+		}
+		//let destination = self.cartesian_data.pack(&up_origin); //
+		let destination = up_origin.iter().zip(self.factors.iter()).map(|(&coord,&f)|coord as f64 * f).sum::<f64>();
+		(destination + self.target_size as f64 + self.sum as f64) as usize % self.target_size
+		//println!("origin: {}, destination: {}", origin, destination);
+		//destination// % self.target_size
+	}
+}
+
+impl MapVector
+{
+	fn new(arg:PatternBuilderArgument) -> MapVector
+	{
+		let mut sides: Option<Vec<_>>=None;
+		let mut factor=None;
+		let mut factors=None;
+		let mut target_size=0;
+		let mut sum = 0.0;
+		match_object_panic!(arg.cv,"MapVector",value,
+			"sides" => sides=Some(value.as_array().expect("bad value for sides").iter()
+				.map(|v|v.as_f64().expect("bad value in sides") as usize).collect()),
+			"factor" => factor=Some(value.as_f64().expect("bad value for factor") as usize),
+			"factors" => factors=Some(value.as_array().expect("bad value for factors").iter()
+				.map(|v|v.as_f64().expect("bad value in factors")).collect()),
+			"target_size" => target_size=value.as_f64().expect("bad value for target_size") as usize,
+			"sum" => sum=value.as_f64().expect("bad value for sum"),
+
+		);
+		let sides=sides.expect("There were no sides");
+		let factors=factors.expect("There were no factors");
+		let factor=factor.expect("There were no factor");
+
+		MapVector{
+			cartesian_data: CartesianData::new(&sides),
+			factor,
+			target_size,
+			factors,
+			sum
+		}
+	}
+}
+
 
 
 /// Extend a pattern by giving it a Cartesian representation and a number of repetition periods per dimension.
