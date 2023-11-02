@@ -2337,8 +2337,8 @@ impl RemappedNodes
 			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 			"map" => map = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 		);
-		let pattern = pattern.expect("There were no pattern in configuration of RemappedServersTopology.");
-		let map = map.expect("There were no map in configuration of RemappedServersTopology.");
+		let pattern = pattern.expect("There were no pattern in configuration of RemappedNodes.");
+		let map = map.expect("There were no map in configuration of RemappedNodes.");
 		RemappedNodes{
 			from_base_map: vec![],
 			into_base_map: vec![],
