@@ -51,6 +51,17 @@ pub struct PatternBuilderArgument<'a>
 	pub plugs: &'a Plugs,
 }
 
+impl<'a> PatternBuilderArgument<'a>
+{
+	fn with_cv<'b>(&'b self, new_cv:&'b ConfigurationValue) -> PatternBuilderArgument<'b>
+	{
+		PatternBuilderArgument{
+			cv: new_cv,
+			plugs: self.plugs,
+		}
+	}
+}
+
 
 /**Build a new pattern. Patterns are maps between two sets which may depend on the RNG. Generally over the whole set of servers, but sometimes among routers or groups. Check the domentation of the parent Traffic/Permutation for its interpretation.
 
@@ -289,6 +300,9 @@ RemappedNodes{
 }
 ```
 
+### CartesianCut
+
+With [CartesianCut] you see the nodes as block with an embedded block. Then you define a pattern inside the small block and another outside. See [CartesianCut] for details and examples.
 */
 pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 {
@@ -329,6 +343,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"RestrictedMiddleUniform" => Box::new(RestrictedMiddleUniform::new(arg)),
 			"Circulant" => Box::new(Circulant::new(arg)),
 			"CartesianEmbedding" => Box::new(CartesianEmbedding::new(arg)),
+			"CartesianCut" => Box::new(CartesianCut::new(arg)),
 			"RemappedNodes" => Box::new(RemappedNodes::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
@@ -2096,6 +2111,154 @@ impl CartesianEmbedding
 		}
 	}
 }
+
+/**
+Select a block in source/destination sets to send traffic according to a pattern and the remainder according to another. The `uncut_sides` paarmeter define a large block that may be the whole set, otherwise discarding elements from the end. The `cut_sides` paraemeter defines a subblock embedded in the former. This defines two sets of nodes: the ones in the subblock and the rest. A pattern can be provided for each of these two sets. It is possible to specify offsets and strides for the subblock.
+
+For example, in a network with 150 servers we could do the following to see it as a `[3,10,5]` block with an `[3,4,3]` block embedded in it. The small block of 36 server selects destinations randomly inside it. The rest of the network, `150-36=114` servers also send randomly among themselves. No message is send between those two sets. The middle dimension has offset 1, so coordinates `[x,0,z]` are out of the small block. It has also stride 2, so it only includes odd `y` coordinates. More precisely, it includes those `[x,y,z]` with any `x`, `z<3`, and `y=2k+1` for `k<4`.
+```ignore
+CartesianCut{
+	uncut_sides: [3,10,5],
+	cut_sides: [3,4,3],
+	cut_strides: [1,2,1],// defaults to a 1s vector
+	cut_offsets: [0,1,0],// defaults to a 0s vector
+	cut_pattern: Uniform,
+	remainder_pattern: Uniform,//defaults to Identity
+}
+```
+This same example would work for more than 150 servers, putting all that excess in the large set.
+
+Another notable example is to combine several of them. Here, we use a decomposition of the previous whole `[3,10,5]` block into two disjoint blocks of size `[3,5,5]`. The offset is chosen to make sure of both being disjoint (a packing) and covering the whole. Then we select a pattern for each block. Since the two patterns are disjoint the can be [composed](Composition) to obtain a pattern that follows each of the blocks.
+```ignore
+Composition{patterns:[
+	CartesianCut{
+		uncut_sides: [3,10,5],
+		cut_sides: [3,5,5],
+		cut_offsets: [0,0,0],
+		cut_pattern: RandomPermutation,
+		//remainder_pattern: Identity,
+	},
+	CartesianCut{
+		uncut_sides: [3,10,5],
+		cut_sides: [3,5,5],
+		cut_offsets: [0,5,0],
+		cut_pattern: Uniform,
+		//remainder_pattern: Identity,
+	},
+]}
+```
+**/
+#[derive(Debug,Quantifiable)]
+pub struct CartesianCut
+{
+	// /// An offset before the block.
+	// start_margin: usize,
+	// /// Some nodes out of the cube at the end.
+	// end_margin: usize,
+	/// The source sides. Any node beyond its size goes directly to the remained pattern.
+	uncut_cartesian_data: CartesianData,
+	/// The block we cut
+	cut_cartesian_data: CartesianData,
+	/// Offsets to set where the cut start at each dimension. Default to 0.
+	cut_offsets: Vec<usize>,
+	/// At each dimension cut 1 stripe for each `cut_stride[dim]` uncut cells. Default to 1.
+	cut_strides: Vec<usize>,
+	/// The pattern over the cut block.
+	cut_pattern: Box<dyn Pattern>,
+	/// The pattern over the rest.
+	remainder_pattern: Box<dyn Pattern>,
+}
+
+impl Pattern for CartesianCut
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		let cut_size = self.cut_cartesian_data.size;
+		self.cut_pattern.initialize(cut_size,cut_size,topology,rng);
+		self.remainder_pattern.initialize(source_size-cut_size,target_size-cut_size,topology,rng);
+	}
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		let cut_size = self.cut_cartesian_data.size;
+		if origin >= self.uncut_cartesian_data.size
+		{
+			let base = origin - cut_size;
+			return self.remainder_pattern.get_destination(base,topology,rng);
+		}
+		let coordinates = self.uncut_cartesian_data.unpack(origin);
+		let mut cut_count = 0;
+		for dim in (0..coordinates.len()).rev()
+		{
+			if coordinates[dim] < self.cut_offsets[dim]
+			{
+				// Coordinate within margin
+				return self.remainder_pattern.get_destination(origin - cut_count,topology,rng);
+			}
+			// how many 'rows' of cut are included.
+			let hypercut_instances = (coordinates[dim] - self.cut_offsets[dim] + self.cut_strides[dim] -1 ) / self.cut_strides[dim];
+			// the size of each 'row'.
+			let hypercut_size : usize = self.cut_cartesian_data.sides[0..dim].iter().product();
+			if hypercut_instances >= self.cut_cartesian_data.sides[dim]
+			{
+				// Beyond the cut
+				cut_count += self.cut_cartesian_data.sides[dim]*hypercut_size;
+				return self.remainder_pattern.get_destination(origin - cut_count,topology,rng);
+			}
+			cut_count += hypercut_instances*hypercut_size;
+			if (coordinates[dim] - self.cut_offsets[dim]) % self.cut_strides[dim] != 0
+			{
+				// Space between stripes
+				return self.remainder_pattern.get_destination(origin - cut_count,topology,rng);
+			}
+		}
+		self.cut_pattern.get_destination(cut_count,topology,rng)
+	}
+}
+
+impl CartesianCut
+{
+	pub fn new(arg:PatternBuilderArgument) -> CartesianCut
+	{
+		let mut uncut_sides:Option<Vec<_>>=None;
+		let mut cut_sides:Option<Vec<_>>=None;
+		let mut cut_offsets:Option<Vec<_>>=None;
+		let mut cut_strides:Option<Vec<_>>=None;
+		let mut cut_pattern:Option<Box<dyn Pattern>>=None;
+		let mut remainder_pattern:Option<Box<dyn Pattern>>=None;
+		match_object_panic!(arg.cv,"CartesianCut",value,
+			"uncut_sides" => uncut_sides = Some(value.as_array().expect("bad value for uncut_sides").iter()
+				.map(|v|v.as_usize().expect("bad value in uncut_sides")).collect()),
+			"cut_sides" => cut_sides = Some(value.as_array().expect("bad value for cut_sides").iter()
+				.map(|v|v.as_usize().expect("bad value in cut_sides")).collect()),
+			"cut_offsets" => cut_offsets = Some(value.as_array().expect("bad value for cut_offsets").iter()
+				.map(|v|v.as_usize().expect("bad value in cut_offsets")).collect()),
+			"cut_strides" => cut_strides = Some(value.as_array().expect("bad value for cut_strides").iter()
+				.map(|v|v.as_usize().expect("bad value in cut_strides")).collect()),
+			"cut_pattern" => cut_pattern = Some(new_pattern(arg.with_cv(value))),
+			"remainder_pattern" => remainder_pattern = Some(new_pattern(arg.with_cv(value))),
+		);
+		let uncut_sides=uncut_sides.expect("There were no uncut_sides");
+		let cut_sides=cut_sides.expect("There were no cut_sides");
+		let n=uncut_sides.len();
+		assert_eq!(n,cut_sides.len(),"CartesianCut: dimensions for uncut_sides and cut_sides must match.");
+		let cut_offsets = cut_offsets.unwrap_or_else(||vec![0;n]);
+		assert_eq!(n,cut_offsets.len(),"CartesianCut: dimensions for cut_offsets do not match.");
+		let cut_strides = cut_strides.unwrap_or_else(||vec![1;n]);
+		assert_eq!(n,cut_strides.len(),"CartesianCut: dimensions for cut_strides do not match.");
+		let cut_pattern = cut_pattern.expect("There were no cut_pattern");
+		let remainder_pattern = remainder_pattern.unwrap_or_else(||Box::new(Identity{}));
+		CartesianCut{
+			uncut_cartesian_data: CartesianData::new(&uncut_sides),
+			cut_cartesian_data: CartesianData::new(&cut_sides),
+			cut_offsets,
+			cut_strides,
+			cut_pattern,
+			remainder_pattern,
+		}
+	}
+}
+
+
 
 /**
 Apply some other [Pattern] over a set of nodes whose indices have been remapped according to a [Pattern]-given permutation.
