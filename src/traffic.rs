@@ -182,18 +182,22 @@ SubRangeTraffic{
 
 Defines a sequence of traffics with the given finalization times.
 
+```ignore
 TimeSequenced{
 	traffics: [HomogeneousTraffic{...}, HomogeneousTraffic{...}],
 	times: [2000, 15000],
 }
+```
 
 ### Sequence
 
 Defines a sequence of traffics. When one is completed the next starts.
 
+```ignore
 Sequence{
 	traffics: [Burst{...}, Burst{...}],
 }
+```
 
 
 */
