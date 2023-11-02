@@ -2264,7 +2264,7 @@ impl CartesianCut
 Apply some other [Pattern] over a set of nodes whose indices have been remapped according to a [Pattern]-given permutation.
 A source `x` chooses as destination `map(pattern(invmap(x)))`, where `map` is the given permutation, `invmap` its inverse and `pattern` is the underlaying pattern to apply. In other words, if `pattern(a)=b`, then destination of `map(a)` is set to `map(b)`. It can be seen as a [Composition] that manages building the inverse map.
 
-Remapped nodes requires source and destination to be of the same size. The pattern creating the map is called once and must return in a permutation, as to be able to make its inverse.
+Remapped nodes requires source and destination to be of the same size. The pattern creating the map is called once and must result in a permutation, as to be able to make its inverse.
 
 For a similar operation on other types see [RemappedServersTopology](crate::topology::operations::RemappedServersTopology).
 
