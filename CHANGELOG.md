@@ -2,6 +2,10 @@
 
 ## next, [0.6.3]
 
+### 2023-11-02
+New pattern [CartesianCut].
+Added `PatternBuilderArgument::with_cv`.
+
 ### 2023-10-30
 Improved documentation of `new_topology`.
 New pattern [RemappedNodes].
