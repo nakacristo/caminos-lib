@@ -9,12 +9,10 @@ use crate::routing::prelude::*;
 use crate::matrix::Matrix;
 use crate::match_object_panic;
 use crate::routing::RoutingAnnotation;
-use crate::match_object_panic;
 use crate::pattern::*; //For Valiant
 
 //extern crate itertools;
 use itertools::Itertools;
-use crate::matrix::Matrix;
 
 ///A Cartesian ortahedral region of arbitrary dimension.
 #[derive(Quantifiable)]

@@ -1414,7 +1414,7 @@ impl MultimodalBurst
 			pattern.initialize(servers, servers, arg.topology, arg.rng);
 		}
 		let each_pending = provenance.iter().map(|(_pattern,total_messages,_message_size,step_size)|(*total_messages,*step_size)).collect();
-		let first_consuming = provenance[0].4;
+		let first_consuming = 0;//provenance[0].4;
 		MultimodalBurst{
 			servers,
 			provenance,
