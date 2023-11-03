@@ -1541,8 +1541,19 @@ impl Traffic for TrafficMap
 
 	fn try_consume(&mut self, server: usize, message: Rc<Message>, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool
 	{
+
 		let server_app = self.from_machine_to_app[server].expect("There was no origin for the message");
-		self.application.try_consume(server_app, message, cycle, topology, rng)
+		let destination_app = self.from_app_to_machine[message.destination];
+
+		println!("server_app: {}, destination_app: {}, server: {}, message: {:?}", server_app, destination_app, server, message);
+
+		let modified_message = Rc::new(Message{
+			origin: server_app,
+			destination: destination_app,
+			size: message.size,
+			creation_cycle: message.creation_cycle,
+		});
+		self.application.try_consume(server, modified_message, cycle, topology, rng)
 	}
 
 	fn is_finished(&self) -> bool
