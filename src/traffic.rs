@@ -1518,18 +1518,15 @@ impl Traffic for TrafficMap
 
 		let app_destination = message.destination;
 
-		// get the destination of the message (the app) from the base map
-		//let app_destination = self.map.get_destination(app_origin, topology, rng);
-
 		// get the destination of the message (the machine) from the base map
 		let machine_destination = self.from_app_to_machine[app_destination];
 
 		// build the message
 		let message = Rc::new(Message{
 			origin,
-			destination: machine_destination,//.expect("There was no destination for the message"),
-			size: message.unwrap().size,
-			creation_cycle: message.unwrap().creation_cycle,
+			destination: machine_destination,
+			size: message.size,
+			creation_cycle: message.creation_cycle,
 		});
 
 		Ok(message)
@@ -1579,18 +1576,15 @@ impl TrafficMap
 
 		map.initialize(n, n, arg.topology, arg.rng);
 
-		let mut from_app_to_machine: Vec<_> = (0..n).map(|inner_origin| {
+		let from_app_to_machine: Vec<_> = (0..n).map(|inner_origin| {
 			map.get_destination(inner_origin, arg.topology, arg.rng)
 		}).collect();
 
+		// from_machine_to_app is the inverse of from_app_to_machine
 		let mut from_machine_to_app = vec![None; n];
-		for (origin, &destination) in from_machine_to_app.iter().enumerate()
+		for &i in from_app_to_machine.iter()
 		{
-			match from_app_to_machine[destination]
-			{
-				None => from_app_to_machine[destination] = Some(origin),
-				Some(already_mapped) => panic!("Two origins map to the same destination: {} and {}", already_mapped, origin),
-			}
+			from_machine_to_app[from_app_to_machine[i]] = Some(i);
 		}
 
 		TrafficMap
