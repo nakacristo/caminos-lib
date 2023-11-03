@@ -74,7 +74,7 @@ pub struct Dragonfly
 	group_size: usize,
 	/// Number of groups. Denoted by `g` in Dally's paper. In a canonic dragonfly `g = a*h+1`.
 	number_of_groups: usize,
-
+	lag: usize,
 	// cached values:
 	// Cartesian data [switch_index, group_index]
 	cartesian_data: CartesianData,
@@ -193,6 +193,7 @@ impl Topology for Dragonfly
 			number_of_groups: self.number_of_groups,
 			group_size: self.group_size,
 			number_of_ports: self.global_ports_per_router,
+			lag: self.lag,
 		})
 	}
 }
@@ -206,12 +207,14 @@ impl Dragonfly
 		let mut global_arrangement=None;
 		let mut group_size=None;
 		let mut number_of_groups = None;
+		let mut lag =1;
 		match_object_panic!(arg.cv,["Dragonfly", "CanonicDragonfly"],value,
 			"global_ports_per_router" => global_ports_per_router=Some(value.as_f64().expect("bad value for global_ports_per_router")as usize),
 			"servers_per_router" => servers_per_router=Some(value.as_f64().expect("bad value for servers_per_router")as usize),
 			"global_arrangement" => global_arrangement=Some(new_arrangement(value.into())),
 			"group_size" => group_size=Some(value.as_usize().expect("bad value for group_size")),
 			"number_of_groups" => number_of_groups=Some(value.as_usize().expect("bad value for number_of_groups")),
+			"lag" => lag=value.as_usize().expect("bad value for lag"),
 		);
 		let global_ports_per_router=global_ports_per_router.expect("There were no global_ports_per_router");
 		let servers_per_router=servers_per_router.expect("There were no servers_per_router");
@@ -222,6 +225,7 @@ impl Dragonfly
 			number_of_groups,
 			group_size,
 			number_of_ports: global_ports_per_router,
+			lag,
 		},arg.rng);
 		let mut topo=Dragonfly{
 			global_ports_per_router,
@@ -229,6 +233,7 @@ impl Dragonfly
 			global_arrangement,
 			group_size,
 			number_of_groups,
+			lag,
 			distance_matrix:Matrix::constant(0,0,0),
 			cartesian_data: CartesianData::new(&vec![group_size, number_of_groups]),
 		};
@@ -270,6 +275,7 @@ pub struct ArrangementSize
 	pub number_of_groups: usize,
 	pub group_size: usize,
 	pub number_of_ports: usize,
+	pub lag: usize,
 }
 
 impl ArrangementSize
@@ -372,10 +378,10 @@ impl Arrangement for Palmtree
 		//) / self.size.number_of_ports;
 		// extended, for other sizes. tested by extended_palmtree
 		let target_group_offset = self.size.group_size - input.group_offset - 1;
-		let target_port = self.size.number_of_ports-1-input.port_index;
+		let target_port = self.size.number_of_ports - 1 - input.port_index;
 		let target_group_index = (
 			input.group_index+1+
-				((target_group_offset)*self.size.number_of_ports+target_port) % (self.size.number_of_groups-1)
+				((target_group_offset)*(self.size.number_of_ports/self.size.lag)+target_port/self.size.lag) % (self.size.number_of_groups-1)
 		) % self.size.number_of_groups;
 		ArrangementPoint{
 			group_index: target_group_index,
@@ -670,7 +676,7 @@ mod tests {
 		//let size = ArrangementSize { number_of_groups: 10, group_size: 5, number_of_ports: 3 };
 		for (group_size,number_of_ports) in [(5,3), (8,4)]
 		{
-			let size = ArrangementSize { number_of_groups: group_size*number_of_ports+1, group_size, number_of_ports };
+			let size = ArrangementSize { number_of_groups: group_size*number_of_ports+1, group_size, number_of_ports,lag: 1usize };
 			palmtree.initialize(size,&mut rng);
 			assert!( palmtree.is_valid(), "invalid arrangement {:?}", size );
 			let gtdm = palmtree.global_trunking_distribution();
@@ -702,7 +708,7 @@ mod tests {
 		{
 			let a = 2*h;
 			let g = a*h+1;
-			let size = ArrangementSize{ number_of_groups:g, group_size:a, number_of_ports:h};
+			let size = ArrangementSize{ number_of_groups:g, group_size:a, number_of_ports:h, lag: 1usize};
 			let palmtree = Palmtree{size};
 			for input_group in 0..g
 			{
