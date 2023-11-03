@@ -97,7 +97,8 @@ pub struct ChannelsPerHopPerLinkClass
 {
 	///The base routing to use.
 	routing: Box<dyn Routing>,
-	///`channels[class][k]` is the list of available VCs to use in the k-th hop given in links of the given `class`.
+	///`channels[class][k]` is the list of available VCs to use in the k-th hop given in links of the given `class` if `use_total_hops` is false
+	/// or the absolute k-th hop when it is true..
 	channels: Vec<Vec<Vec<usize>>>,
 	///Use total number of hops for each link class.
 	use_total_hops: bool,

@@ -24,7 +24,7 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * Router methods insert and acknowledge now return `Vec<EventGeneration>` and are responsible for their scheduling.
 
 ## [0.5.0] to [0.6.0]
-* Removed unnecessary generic parameter TM from routers Basic and InputOutput. They now may select [TransmissionMechanism]s to employ.
+* Removed unnecessary generic parameter TM from routers Basic and InputOutput. They now may select [TransmissionMechanisms](router::TransmissionMechanism) to employ.
 * Renamed TransmissionFromServer into TransmissionFromOblivious.
 * Some changes in the Dragonfly struct, to allow for more global arrangements.
 * `Event::process` now receives SimulationShared and SimulationMut for better encapsulation.

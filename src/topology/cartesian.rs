@@ -6,11 +6,13 @@ use crate::config_parser::ConfigurationValue;
 use crate::topology::{Topology,Location,NeighbourRouterIteratorItem,TopologyBuilderArgument,new_topology};
 //use crate::routing::{RoutingInfo,Routing,CandidateEgress,RoutingBuilderArgument,RoutingNextCandidates};
 use crate::routing::prelude::*;
+use crate::matrix::Matrix;
+use crate::match_object_panic;
 use crate::routing::RoutingAnnotation;
 use crate::match_object_panic;
 use crate::pattern::*; //For Valiant
 
-extern crate itertools;
+//extern crate itertools;
 use itertools::Itertools;
 use crate::matrix::Matrix;
 

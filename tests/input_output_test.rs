@@ -1,11 +1,11 @@
+/*!
+    Tests for the Input_output router
+*/
+
 mod common;
 use caminos_lib::*;
 use caminos_lib::config_parser::ConfigurationValue;
 use common::*;
-
-/*!
-    Tests for the Input_output router
-*/
 
 /// Test local traffic inside a router. There are two servers and each server sends one message of 16 phits to each other.
 /// We check that the values obtained in the simulation `[cycle (latency), accepted_load, injected_load, average_packet_hops]` are the expected ones.
@@ -40,9 +40,9 @@ fn input_output_switch_local_traffic()
             message_size,
 
     };
-    
+
     //Virtual Channel Policies
-    let vcp_args = VirtualChannelPoliciesBuilder{ 
+    let vcp_args = VirtualChannelPoliciesBuilder{
         policies: vec![
             ConfigurationValue::Object("LowestLabel".to_string(), vec![]),
             ConfigurationValue::Object("EnforceFlowControl".to_string(), vec![]),
@@ -76,7 +76,7 @@ fn input_output_switch_local_traffic()
 
     let topology = create_hamming_topology(hamming_builder);
     let traffic = create_burst_traffic(burst_traffic_builder);
-    let router = create_input_output_router(router_args); 
+    let router = create_input_output_router(router_args);
     let routing = create_shortest_routing();
     let link_classes = create_link_classes();
 
@@ -94,7 +94,7 @@ fn input_output_switch_local_traffic()
     };
 
     let plugs = Plugs::default();
-    let simulation_cv = create_simulation(simulation_builder); 
+    let simulation_cv = create_simulation(simulation_builder);
 
     // println!("{:#?}", simulation_cv);
     let mut simulation = Simulation::new(&simulation_cv, &plugs);
@@ -104,7 +104,7 @@ fn input_output_switch_local_traffic()
 
     let estimated_injected_load =  (message_size * messages_per_server) as f64 / (cycles as f64); // Aprox... Maybe not the best value now but it is a start
     let packet_hops = 0.0;
-    
+
     match_object_panic!( &results, "Result", value,
         "cycle" => assert_eq!(value.as_f64().expect("Cycle data"), cycles as f64, "Cycle"),
         "injected_load" => assert_eq!(value.as_f64().expect("Injected load data"), estimated_injected_load, "Injected load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),

@@ -95,10 +95,12 @@ pub struct TrafficBuilderArgument<'a>
 
 ## Base traffics.
 
-### Homogeneous traffic
-Is a traffic where all servers behave equally and uniform in time. Some `pattern` is generated
+### Homogeneous
+[Homogeneous] is a traffic where all servers behave equally and uniform in time. Some `pattern` is generated
 by `servers` number of involved servers along the whole simulation. Each server tries to use its link toward the network a `load`
 fraction of the cycles. The generated messages has a size in phits of `message_size`. The generation is the typical Bernoulli process.
+
+Example configuration.
 ```ignore
 HomogeneousTraffic{
 	pattern:Uniform,
@@ -109,7 +111,7 @@ HomogeneousTraffic{
 ```
 
 ### Burst
-In the Burst traffic each of the involved `servers` has a initial list of `messages_per_server` messages to emit. When all the messages
+In the [Burst] traffic each of the involved `servers` has a initial list of `messages_per_server` messages to emit. When all the messages
 are consumed the simulation is requested to end.
 ```ignore
 Burst{
@@ -122,7 +124,7 @@ Burst{
 
 ### Reactive
 
-A Reactive traffic is composed of an `action_traffic` generated normally, whose packets, when consumed create a response by the `reaction_traffic`.
+A [Reactive] traffic is composed of an `action_traffic` generated normally, whose packets, when consumed create a response by the `reaction_traffic`.
 If both subtraffics are requesting to end and there is no pending message the reactive traffic also requests to end.
 ```ignore
 Reactive{
@@ -135,7 +137,7 @@ Reactive{
 
 ### TrafficSum
 
-Generates several traffic at once, if the total load allows it.
+[TrafficSum](Sum) generates several traffic at once. Each node genrates load for all the traffics, if the total load allows it.
 ```ignore
 TrafficSum{
 	list: [HomogeneousTraffic{...},... ],
@@ -144,7 +146,7 @@ TrafficSum{
 
 ### ShiftedTraffic
 
-A ShiftedTraffic shifts a given traffic a certain amount of servers. Yu should really check if some pattern transformation fit your purpose, since it will be simpler.
+A [ShiftedTraffic](Shifted) shifts a given traffic a certain amount of servers. Yu should really check if some pattern transformation fit your purpose, since it will be simpler.
 ```ignore
 ShiftedTraffic{
 	traffic: HomogeneousTraffic{...},
@@ -154,7 +156,7 @@ ShiftedTraffic{
 
 ### ProductTraffic
 
-A ProductTraffic divides the servers into blocks. Each group generates traffic following the `block_traffic`, but instead of having the destination in the same block it is selected a destination by using the `global_pattern` of the block. Blocks of interest are
+A [ProductTraffic] divides the servers into blocks. Each group generates traffic following the `block_traffic`, but instead of having the destination in the same block it is selected a destination by using the `global_pattern` of the block. Blocks of interest are
 * The servers attached to a router. Then if the global_pattern is a permutation, all the servers will comunicate with servers attached to the same router. This can stress the network a lot more than a permutation of servers.
 * All servers in a group of a dragonfly. If the global_pattern is a permutation, there is only a global link between groups, and Shortest routing is used, then all the packets generated in a group will try by the same global link. Other global links being unused.
 Note there is also a product at pattern level, which may be easier to use.
@@ -169,7 +171,7 @@ ProductTraffic{
 
 ### SubRangeTraffic
 
-A SubRangeTraffic makes servers outise the range to not generate traffic.
+A [SubRangeTraffic] makes servers outise the range to not generate traffic.
 ```ignore
 SubRangeTraffic{
 	start: 100,
@@ -180,20 +182,24 @@ SubRangeTraffic{
 
 ### TimeSequenced
 
-Defines a sequence of traffics with the given finalization times.
+[TimeSequenced] defines a sequence of traffics with the given finalization times.
 
+```ignore
 TimeSequenced{
 	traffics: [HomogeneousTraffic{...}, HomogeneousTraffic{...}],
 	times: [2000, 15000],
 }
+```
 
 ### Sequence
 
-Defines a sequence of traffics. When one is completed the next starts.
+Defines a [Sequence] of traffics. When one is completed the next starts.
 
+```ignore
 Sequence{
 	traffics: [Burst{...}, Burst{...}],
 }
+```
 
 
 */
@@ -227,7 +233,18 @@ pub fn new_traffic(arg:TrafficBuilderArgument) -> Box<dyn Traffic>
 	}
 }
 
-///Traffic in which all messages have same size, follow the same pattern, and there is no change with time.
+/**
+Traffic in which all messages have same size, follow the same pattern, and there is no change with time.
+
+```ignore
+HomogeneousTraffic{
+	pattern:Uniform,
+	servers:1000,
+	load: 0.9,
+	message_size: 16,
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Homogeneous
@@ -265,11 +282,6 @@ impl Traffic for Homogeneous
 			creation_cycle: cycle,
 		});
 		self.generated_messages.insert(message.as_ref() as *const Message);
-		//debug the messages
-		// let cartesian_data = topology.cartesian_data().unwrap();
-		// println!("{} -> {}",cartesian_data.unpack(&origin), cartesian_data.unpack(&destination));
-		//print vectors cartesian_data.unpack(&origin), cartesian_data.unpack(&destination));
-		//println!("({}, {}),",origin,destination);
 		Ok(message)
 	}
 	fn probability_per_cycle(&self, _server:usize) -> f32
@@ -334,8 +346,16 @@ impl Homogeneous
 	}
 }
 
-///Traffic which is the sum of a list of oter traffics.
-///While it will clearly work when the sum of the generation rates is at most 1, it should behave nicely enough otherwise.
+/**
+Traffic which is the sum of a list of oter traffics.
+While it will clearly work when the sum of the generation rates is at most 1, it should behave nicely enough otherwise.
+
+```ignore
+TrafficSum{
+	list: [HomogeneousTraffic{...},... ],
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Sum
@@ -446,9 +466,17 @@ impl Sum
 	}
 }
 
-///Traffic which is another shifted by some amount of servers
-///First check whether a transformation at the `Pattern` level is enough.
-///The server `index+shift` will be seen as just `index` by the inner traffic.
+/**
+Traffic which is another shifted by some amount of servers
+First check whether a transformation at the `Pattern` level is enough.
+The server `index+shift` will be seen as just `index` by the inner traffic.
+```ignore
+ShiftedTraffic{
+	traffic: HomogeneousTraffic{...},
+	shift: 50,
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Shifted
@@ -547,8 +575,18 @@ impl Shifted
 	}
 }
 
-///Divides the network in blocks and use a `Traffic` inside blocks applying a global `Pattern` among blocks.
-///First check whether a transformation at the `Pattern` level is enough; specially see the `Product` pattern.
+/**
+Divides the network in blocks and use a `Traffic` inside blocks applying a global `Pattern` among blocks.
+First check whether a transformation at the `Pattern` level is enough; specially see the `Product` pattern.
+
+```ignore
+ProductTraffic{
+	block_size: 10,
+	block_traffic: HomogeneousTraffic{...},
+	global_pattern: RandomPermutation,
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct ProductTraffic
@@ -639,7 +677,17 @@ impl ProductTraffic
 	}
 }
 
-///Only allow servers in range will generate messages. The messages can go out of the given range.
+/**
+Only allow servers in range will generate messages. The messages can go out of the given range.
+
+```ignore
+SubRangeTraffic{
+	start: 100,
+	end: 200,
+	traffic: HomogeneousTraffic{...},
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct SubRangeTraffic
@@ -706,8 +754,19 @@ impl SubRangeTraffic
 	}
 }
 
-///Initialize an amount of messages to send from each server.
-///The traffic will be considered complete when all servers have generated their messages and all of them have been consumed.
+/**
+Initialize an amount of messages to send from each server.
+The traffic will be considered complete when all servers have generated their messages and all of them have been consumed.
+
+```ignore
+Burst{
+	pattern:Uniform,
+	servers:1000,
+	messages_per_server:200,
+	message_size: 16,
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Burst
@@ -947,7 +1006,16 @@ impl Reactive
 
 
 
-///Selects the traffic from a sequence depending on current cycle
+/**
+Selects the traffic from a sequence depending on current cycle. This traffics is useful to make sequences of traffics that do no end by themselves.
+
+```ignore
+TimeSequenced{
+	traffics: [HomogeneousTraffic{...}, HomogeneousTraffic{...}],
+	times: [2000, 15000],
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct TimeSequenced
@@ -1059,7 +1127,15 @@ impl TimeSequenced
 	}
 }
 
-///A sequence of traffics. When a traffic declares itself to be finished moves to the next.
+/**
+A sequence of traffics. When a traffic declares itself to be finished moves to the next.
+
+```ignore
+Sequence{
+	traffics: [Burst{...}, Burst{...}],
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Sequence
@@ -1178,13 +1254,12 @@ pub struct MultimodalBurst
 	///Number of servers applying this traffic.
 	servers: usize,
 	/// For each kind of message `provenance` we have
-	/// `(pattern,total_messages,message_size,step_size,step_consumed)`
+	/// `(pattern,total_messages,message_size,step_size)`
 	/// a Pattern deciding the destination of the message
 	/// a usize with the total number of messages of this kind that each server must generate
 	/// a usize with the size of each message size.
 	/// a usize with the number of messages to send of this kind before switching to the next one.
-	/// a usize with the number of messages to consume of this kind before switching to the next one.
-	provenance: Vec< (Box<dyn Pattern>,usize,usize,usize,usize) >,
+	provenance: Vec< (Box<dyn Pattern>,usize,usize,usize) >,
 	///For each server and kind we track `pending[server][kind]=(total_remaining,step_remaining)`.
 	///where `total_remaining` is the total number of messages of this kind that this server has yet to send.
 	///and `step_remaining` is the number of messages that the server will send before switch to the next kind.
@@ -1225,7 +1300,7 @@ impl Traffic for MultimodalBurst
 				if *step_remaining == 0
 				{
 					//When the whole step is performed advance `next_provenance`.
-					let (ref _pattern, _total_messages, _message_size, step_size, _step_consumed) = self.provenance[provenance_index];
+					let (ref _pattern, _total_messages, _message_size, step_size) = self.provenance[provenance_index];
 					*step_remaining = step_size;
 					self.next_provenance[origin] = (provenance_index+1) % pending.len();
 				}
@@ -1234,7 +1309,7 @@ impl Traffic for MultimodalBurst
 			provenance_index = (provenance_index+1) % pending.len();
 		}
 		// Build the message
-		let (ref pattern,_total_messages,message_size,_step_size, _step_consumed) = self.provenance[provenance_index];
+		let (ref pattern,_total_messages,message_size,_step_size) = self.provenance[provenance_index];
 		let destination=pattern.get_destination(origin,topology,rng);
 		if origin==destination
 		{
@@ -1306,7 +1381,7 @@ impl MultimodalBurst
 	pub fn new(arg:TrafficBuilderArgument) -> MultimodalBurst
 	{
 		let mut servers=None;
-		let mut provenance : Option<Vec<(_,_,_,_,_)>> = None;
+		let mut provenance : Option<Vec<(_,_,_,_)>> = None;
 		match_object_panic!(arg.cv,"MultimodalBurst",value,
 			"servers" => servers=Some(value.as_f64().expect("bad value for servers") as usize),
 			"provenance" => match value
@@ -1316,32 +1391,29 @@ impl MultimodalBurst
 					let mut pattern=None;
 					let mut message_size=None;
 					let mut step_size=None;
-					let mut step_consumed=0;
 					match_object_panic!(pcv,"Provenance",pvalue,
 						"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:pvalue,plugs:arg.plugs})),
 						"messages_per_server" | "total_messages" =>
 							messages_per_server=Some(pvalue.as_f64().expect("bad value for messages_per_server") as usize),
 						"message_size" => message_size=Some(pvalue.as_f64().expect("bad value for message_size") as usize),
 						"step_size" => step_size=Some(pvalue.as_f64().expect("bad value for step_size") as usize),
-						"step_consumed" => step_consumed= pvalue.as_f64().expect("bad value for step_consumed") as usize,
 					);
 					let pattern=pattern.expect("There were no pattern");
 					let messages_per_server=messages_per_server.expect("There were no messages_per_server");
 					let message_size=message_size.expect("There were no message_size");
 					let step_size=step_size.expect("There were no step_size");
-					let step_consumed=step_consumed;
-					(pattern,messages_per_server,message_size,step_size,step_consumed)
+					(pattern,messages_per_server,message_size,step_size)
 				}).collect()),
 				_ => panic!("bad value for provenance"),
 			}
 		);
 		let servers=servers.expect("There were no servers");
 		let mut provenance=provenance.expect("There were no provenance");
-		for (pattern,_total_messages,_message_size,_step_size,_step_consumed) in provenance.iter_mut()
+		for (pattern,_total_messages,_message_size,_step_size) in provenance.iter_mut()
 		{
 			pattern.initialize(servers, servers, arg.topology, arg.rng);
 		}
-		let each_pending = provenance.iter().map(|(_pattern,total_messages,_message_size,step_size,_step_consumed)|(*total_messages,*step_size)).collect();
+		let each_pending = provenance.iter().map(|(_pattern,total_messages,_message_size,step_size)|(*total_messages,*step_size)).collect();
 		let first_consuming = provenance[0].4;
 		MultimodalBurst{
 			servers,
@@ -1481,4 +1553,6 @@ impl BoundedDifference
 		}
 	}
 }
+
+
 

@@ -67,7 +67,7 @@ pub trait Stage : Quantifiable + std::fmt::Debug
 ///Each stage of a XGFT.
 #[derive(Quantifiable)]
 #[derive(Debug)]
-struct FatStage
+pub struct FatStage
 {
 	bottom_factor: usize,
 	top_factor: usize,
@@ -184,7 +184,7 @@ impl FatStage
 ///The stages in a Orthogonal Fat Tree
 #[derive(Quantifiable)]
 #[derive(Debug)]
-struct ProjectiveStage
+pub struct ProjectiveStage
 {
 	plane: FlatGeometryCache,
 }

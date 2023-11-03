@@ -51,6 +51,17 @@ pub struct PatternBuilderArgument<'a>
 	pub plugs: &'a Plugs,
 }
 
+impl<'a> PatternBuilderArgument<'a>
+{
+	fn with_cv<'b>(&'b self, new_cv:&'b ConfigurationValue) -> PatternBuilderArgument<'b>
+	{
+		PatternBuilderArgument{
+			cv: new_cv,
+			plugs: self.plugs,
+		}
+	}
+}
+
 
 /**Build a new pattern. Patterns are maps between two sets which may depend on the RNG. Generally over the whole set of servers, but sometimes among routers or groups. Check the domentation of the parent Traffic/Permutation for its interpretation.
 
@@ -58,7 +69,7 @@ pub struct PatternBuilderArgument<'a>
 
 ### Uniform
 
-In the uniform pattern all elements have same probability to send to any other.
+In the [uniform](UniformPattern) pattern all elements have same probability to send to any other.
 ```ignore
 Uniform{
 	legend_name: "uniform",
@@ -67,7 +78,7 @@ Uniform{
 
 ### GloballyShufflingDestinations
 
-An uniform-like pattern that avoids repeating the same destination. It keeps a global vector of destinations. It is shuffled and each created message gets its destination from there. Sometimes you may be selected yourself as destination.
+The [GloballyShufflingDestinations] is an uniform-like pattern that avoids repeating the same destination. It keeps a global vector of destinations. It is shuffled and each created message gets its destination from there. Sometimes you may be selected yourself as destination.
 
 ```ignore
 GloballyShufflingDestinations{
@@ -77,7 +88,7 @@ GloballyShufflingDestinations{
 
 ### GroupShufflingDestinations
 
-Alike `GloballyShufflingDestinations` but keeping one destination vector per each group.
+The [GroupShufflingDestinations] pattern is alike [GloballyShufflingDestinations] but keeping one destination vector per each group.
 
 ```ignore
 GroupShufflingDestinations{
@@ -89,7 +100,7 @@ GroupShufflingDestinations{
 
 ### UniformDistance
 
-Each message gets its destination sampled uniformly at random among the servers attached to neighbour routers.
+In [UniformDistance] each message gets its destination sampled uniformly at random among the servers attached to neighbour routers.
 It may build a pattern either of servers or switches, controlled through the `switch_level` configuration flag.
 This pattern autoscales if requested a size multiple of the network size.
 
@@ -105,8 +116,7 @@ UniformDistance{
 ```
 
 ### RestrictedMiddleUniform
-A pattern in which the destinations are randomly sampled from the destinations for which there are some middle router satisfying
-some criteria. Note this is only a pattern, the actual packet route does not have to go throught such middle router.
+[RestrictedMiddleUniform] is a pattern in which the destinations are randomly sampled from the destinations for which there are some middle router satisfying some criteria. Note this is only a pattern, the actual packet route does not have to go throught such middle router.
 It has the same implicit concentration scaling as UniformDistance, allowing building a pattern over a multiple of the number of switches.
 
 Example configuration:
@@ -131,7 +141,7 @@ RestrictedMiddleUniform{
 Each element has a unique destination and a unique element from which it is a destination.
 
 ### RandomPermutation
-Have same chance to generate any permutation
+The [RandomPermutation] has same chance to generate any permutation
 ```ignore
 RandomPermutation{
 	legend_name: "random server permutation",
@@ -139,7 +149,7 @@ RandomPermutation{
 ```
 
 ### RandomInvolution
-Can only generate involutions. This is, if `p` is the permutation then for any element `x`, `p(p(x))=x`.
+The [RandomInvolution] can only generate involutions. This is, if `p` is the permutation then for any element `x`, `p(p(x))=x`.
 ```ignore
 RandomInvolution{
 	legend_name: "random server involution",
@@ -147,10 +157,10 @@ RandomInvolution{
 ```
 
 ### FixedRandom
-Each source has an independent unique destination. By the "birtday paradox" we can expect several sources to share a destination, causing incast contention.
+In [FixedRandom] each source has an independent unique destination. By the "birthday paradox" we can expect several sources to share a destination, causing incast contention.
 
 ### FileMap
-A map read from file. Each elment has a unique destination.
+With [FileMap] a map is read from a file. Each elment has a unique destination.
 ```ignore
 FileMap{
 	/// Note this is a string literal.
@@ -160,10 +170,11 @@ FileMap{
 ```
 
 ### CartesianTransform
-Sees the elments as a n-dimensional orthohedra. Then it applies several transformations. When mapping directly servers it may be useful to use as `sides[0]` the number of servers per router.
+With [CartesianTransform] the nodes are seen as in a n-dimensional orthohedra. Then it applies several transformations. When mapping directly servers it may be useful to use as `sides[0]` the number of servers per router.
 ```ignore
 CartesianTransform{
 	sides: [4,8,8],
+	multiplier: [1,1,1],//optional
 	shift: [0,4,0],//optional
 	permute: [0,2,1],//optional
 	complement: [false,true,false],//optional
@@ -174,8 +185,8 @@ CartesianTransform{
 }
 ```
 
-### Hotspots.
-A pool of hotspots is build from a given list of `destinations` plus some amount `extra_random_destinations` computed randomly on initialization.
+### Hotspots
+[Hotspots] builds a pool of hotspots from a given list of `destinations` plus some amount `extra_random_destinations` computed randomly on initialization.
 Destinations are randomly selected from such pool.
 This causes incast contention, more explicitly than `FixedRandom`.
 ```ignore
@@ -187,7 +198,7 @@ Hotspots{
 ```
 
 ### Circulant
-Each node send traffic to the node `current+g`, where `g` is any of the elements given in the vector `generators`. The operations
+In [Circulant] each node send traffic to the node `current+g`, where `g` is any of the elements given in the vector `generators`. The operations
 being made modulo the destination size. Among the candidates one of them is selected in each call with uniform distribution.
 
 In this example each node `x` send to either `x+1` or `x+2`.
@@ -197,10 +208,22 @@ Circulant{
 }
 ```
 
+### CartesianEmbedding
+
+[CartesianEmbedding] builds the natural embedding between two blocks, by keeping the coordinate.
+
+Example mapping nodes in a block of 16 nodes into one of 64 nodes.
+```ignore
+CartesianEmbedding{
+	source_sides: [4,4],
+	destination_sides: [8,8],
+}
+```
+
 ## meta patterns
 
 ### Product
-The elements are divided in blocks. Blocks are mapped to blocks by the `global_pattern`. The `block_pattern` must has input and output size equal to `block_size` and maps the specific elements.
+With [Product](ProductPattern) the elements are divided in blocks. Blocks are mapped to blocks by the `global_pattern`. The `block_pattern` must has input and output size equal to `block_size` and maps the specific elements.
 ```ignore
 Product{
 	block_pattern: RandomPermutation,
@@ -210,8 +233,8 @@ Product{
 }
 ```
 
-### Component
-Divides the topology along link classes. The 'local' pattern is Uniform.
+### Components
+[Components](ComponentsPattern) divides the topology along link classes. The 'local' pattern is Uniform.
 ```ignore
 Components{
 	global_pattern: RandomPermutation,
@@ -221,7 +244,7 @@ Components{
 ```
 
 ### Composition
-Allows to concatenate transformations.
+The [Composition] pattern allows to concatenate transformations.
 ```ignore
 Composition{
 	patterns: [  FileMap{filename: "/patterns/second"}, FileMap{filename: "/patterns/first"}  ]
@@ -230,8 +253,8 @@ Composition{
 ```
 
 
-### Pow.
-A Pow is composition of a `pattern` with itself `exponent` times.
+### Pow
+A [Pow] is composition of a `pattern` with itself `exponent` times.
 ```ignore
 Pow{
 	pattern: FileMap{filename: "/patterns/mypattern"},
@@ -242,7 +265,7 @@ Pow{
 
 
 ### RandomMix
-Probabilistically mix a list of patterns.
+[RandomMix] probabilistically mixes a list of patterns.
 ```ignore
 RandomMix{
 	patterns: [Hotspots{extra_random_destinations:10}, Uniform],
@@ -252,7 +275,7 @@ RandomMix{
 ```
 
 ### IndependentRegions
-Partition the nodes in independent regions, each with its own pattern. Source and target sizes must be equal.
+With [IndependentRegions] the set of nodes is partitioned in independent regions, each with its own pattern. Source and target sizes must be equal.
 ```ignore
 IndependentRegions{
 	// An array with the patterns for each region.
@@ -264,7 +287,22 @@ IndependentRegions{
 	// relative_sizes: [88, 11],
 }
 ```
+### RemappedNodes
+[RemappedNodes] allows to apply another pattern using indices that are mapped by another pattern.
 
+Example building a cycle in random order.
+```ignore
+RemappedNodes{
+	/// The underlaying pattern to be used.
+	pattern: Circulant{generators:[1]},
+	/// The pattern defining the relabelling.
+	map: RandomPermutation,
+}
+```
+
+### CartesianCut
+
+With [CartesianCut] you see the nodes as block with an embedded block. Then you define a pattern inside the small block and another outside. See [CartesianCut] for details and examples.
 */
 pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 {
@@ -306,6 +344,9 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"IndependentRegions" => Box::new(IndependentRegions::new(arg)),
 			"RestrictedMiddleUniform" => Box::new(RestrictedMiddleUniform::new(arg)),
 			"Circulant" => Box::new(Circulant::new(arg)),
+			"CartesianEmbedding" => Box::new(CartesianEmbedding::new(arg)),
+			"CartesianCut" => Box::new(CartesianCut::new(arg)),
+			"RemappedNodes" => Box::new(RemappedNodes::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -777,12 +818,13 @@ impl ComponentsPattern
 Interpretate the origin as with cartesian coordinates and apply transformations.
 May permute the dimensions if they have same side.
 May complement the dimensions.
-Order of composition is: first shift, second permute, third complement, fourth project.
+Order of composition is: multiplier, shift, permute, complement, project, randomize, pattern. If you need another order you may [compose](Composition) several of them.
 
 Example configuration:
 ```ignore
 CartesianTransform{
 	sides: [4,8,8],
+	multiplier: [1,1,1],//optional
 	shift: [0,4,0],//optional
 	permute: [0,2,1],//optional
 	complement: [false,true,false],//optional
@@ -799,7 +841,9 @@ pub struct CartesianTransform
 {
 	///The Cartesian interpretation.
 	cartesian_data: CartesianData,
-	///A shift to each coordinate, modulo the side.
+	///A factor multiplying each coordinate. Use 1 for nops.
+	multiplier: Option<Vec<i32>>,
+	///A shift to each coordinate, modulo the side. Use 0 for nops.
 	shift: Option<Vec<usize>>,
 	///Optionally how dimensions are permuted.
 	///`permute=[0,2,1]` means to permute dimensions 1 and 2, keeping dimension 0 as is.
@@ -839,11 +883,20 @@ impl Pattern for CartesianTransform
 	}
 	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
+		use std::convert::TryInto;
 		let up_origin=self.cartesian_data.unpack(origin);
+		let up_multiplied=match self.multiplier
+		{
+			Some(ref v) => v.iter().enumerate().map(|(index,&value)|{
+				let dst:i32  = (up_origin[index] as i32*value).rem_euclid(self.cartesian_data.sides[index] as i32);
+				dst.try_into().unwrap()
+			}).collect(),
+			None => up_origin,
+		};
 		let up_shifted=match self.shift
 		{
-			Some(ref v) => v.iter().enumerate().map(|(index,&value)|(up_origin[index]+value)%self.cartesian_data.sides[index]).collect(),
-			None => up_origin,
+			Some(ref v) => v.iter().enumerate().map(|(index,&value)|(up_multiplied[index]+value)%self.cartesian_data.sides[index]).collect(),
+			None => up_multiplied,
 		};
 		let up_permuted=match self.permute
 		{
@@ -881,6 +934,7 @@ impl CartesianTransform
 	{
 		let mut sides:Option<Vec<_>>=None;
 		let mut shift=None;
+		let mut multiplier=None;
 		let mut permute=None;
 		let mut complement=None;
 		let mut project=None;
@@ -888,11 +942,13 @@ impl CartesianTransform
 		let mut patterns=None;
 		match_object_panic!(arg.cv,"CartesianTransform",value,
 			"sides" => sides = Some(value.as_array().expect("bad value for sides").iter()
-				.map(|v|v.as_f64().expect("bad value in sides") as usize).collect()),
+				.map(|v|v.as_usize().expect("bad value in sides")).collect()),
+			"multiplier" => multiplier=Some(value.as_array().expect("bad value for multiplier").iter()
+				.map(|v|v.as_i32().expect("bad value in multiplier") ).collect()),
 			"shift" => shift=Some(value.as_array().expect("bad value for shift").iter()
-				.map(|v|v.as_f64().expect("bad value in shift") as usize).collect()),
+				.map(|v|v.as_usize().expect("bad value in shift") ).collect()),
 			"permute" => permute=Some(value.as_array().expect("bad value for permute").iter()
-				.map(|v|v.as_f64().expect("bad value in permute") as usize).collect()),
+				.map(|v|v.as_usize().expect("bad value in permute") ).collect()),
 			"complement" => complement=Some(value.as_array().expect("bad value for complement").iter()
 				.map(|v|v.as_bool().expect("bad value in complement")).collect()),
 			"project" => project=Some(value.as_array().expect("bad value for project").iter()
@@ -907,6 +963,7 @@ impl CartesianTransform
 		//let complement=complement.expect("There were no complement");
 		CartesianTransform{
 			cartesian_data: CartesianData::new(&sides),
+			multiplier,
 			shift,
 			permute,
 			complement,
@@ -1875,7 +1932,7 @@ impl FixedRandom
 /// ```
 #[derive(Quantifiable)]
 #[derive(Debug)]
-struct IndependentRegions
+pub struct IndependentRegions
 {
 	/// The actual size of each region. An empty vector if not given nor initialized.
 	/// If not empty it must sum up to the total size and have as many elements as the `patterns` field.
@@ -1888,7 +1945,7 @@ struct IndependentRegions
 
 /**
 Build an integer vector with elements proportional to the given `weights` and with a total `target_sum`.
-Based on https://stackoverflow.com/questions/16226991/allocate-an-array-of-integers-proportionally-compensating-for-rounding-errors
+Based on <https://stackoverflow.com/questions/16226991/allocate-an-array-of-integers-proportionally-compensating-for-rounding-errors>
 **/
 pub fn proportional_vec_with_sum(weights:&Vec<f64>, target_sum:usize) -> Vec<usize>
 {
@@ -2130,14 +2187,14 @@ Circulant{
 ```
 **/
 #[derive(Quantifiable,Debug)]
-struct Circulant
+pub struct Circulant
 {
 	//config:
 	///The generators to be employed.
-	generators: Vec<i32>,
+	pub generators: Vec<i32>,
 	//intialized:
 	///The size of the destinations set, captured at initialization.
-	size: i32,
+	pub size: i32,
 }
 
 impl Pattern for Circulant
@@ -2218,6 +2275,316 @@ impl RestrictedMiddleUniform
 		}
 	}
 }
+
+/**
+Maps from a block into another following the natural embedding, keeping the corrdinates of every node.
+Both block must have the same number of dimensions, and each dimension should be greater at the destination than at the source.
+This is intended to be used to place several small applications in a larger machine.
+It can combined with [CartesianTransform] to be placed at an offset, to set a stride, or others.
+
+Example mapping nodes in a block of 16 nodes into one of 64 nodes.
+```ignore
+CartesianEmbedding{
+	source_sides: [4,4],
+	destination_sides: [8,8],
+}
+```
+**/
+#[derive(Debug,Quantifiable)]
+pub struct CartesianEmbedding
+{
+	source_cartesian_data: CartesianData,
+	destination_cartesian_data: CartesianData,
+}
+
+impl Pattern for CartesianEmbedding
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		if source_size!=self.source_cartesian_data.size
+		{
+			panic!("Source sizes do not agree on CartesianEmbedding.");
+		}
+		if target_size!=self.destination_cartesian_data.size
+		{
+			panic!("Detination sizes do not agree on CartesianEmbedding.");
+		}
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		let up_origin=self.source_cartesian_data.unpack(origin);
+		self.destination_cartesian_data.pack(&up_origin)
+	}
+}
+
+impl CartesianEmbedding
+{
+	pub fn new(arg:PatternBuilderArgument) -> CartesianEmbedding
+	{
+		let mut source_sides:Option<Vec<_>>=None;
+		let mut destination_sides:Option<Vec<_>>=None;
+		match_object_panic!(arg.cv,"CartesianEmbedding",value,
+			"source_sides" => source_sides = Some(value.as_array().expect("bad value for source_sides").iter()
+				.map(|v|v.as_usize().expect("bad value in source_sides")).collect()),
+			"destination_sides" => destination_sides = Some(value.as_array().expect("bad value for destination_sides").iter()
+				.map(|v|v.as_usize().expect("bad value in destination_sides")).collect()),
+		);
+		let source_sides=source_sides.expect("There were no source_sides");
+		let destination_sides=destination_sides.expect("There were no destination_sides");
+		if source_sides.len() != destination_sides.len()
+		{
+			panic!("Different number of dimensions in CartesianEmbedding.")
+		}
+		for (index,(ss, ds)) in std::iter::zip( source_sides.iter(), destination_sides.iter() ).enumerate()
+		{
+			if ss>ds
+			{
+				panic!("Source is greater than destination at side {index}. {ss}>{ds}",index=index,ss=ss,ds=ds);
+			}
+		}
+		CartesianEmbedding{
+			source_cartesian_data: CartesianData::new(&source_sides),
+			destination_cartesian_data: CartesianData::new(&destination_sides),
+		}
+	}
+}
+
+/**
+Select a block in source/destination sets to send traffic according to a pattern and the remainder according to another. The `uncut_sides` paarmeter define a large block that may be the whole set, otherwise discarding elements from the end. The `cut_sides` paraemeter defines a subblock embedded in the former. This defines two sets of nodes: the ones in the subblock and the rest. A pattern can be provided for each of these two sets. It is possible to specify offsets and strides for the subblock.
+
+For example, in a network with 150 servers we could do the following to see it as a `[3,10,5]` block with an `[3,4,3]` block embedded in it. The small block of 36 server selects destinations randomly inside it. The rest of the network, `150-36=114` servers also send randomly among themselves. No message is send between those two sets. The middle dimension has offset 1, so coordinates `[x,0,z]` are out of the small block. It has also stride 2, so it only includes odd `y` coordinates. More precisely, it includes those `[x,y,z]` with any `x`, `z<3`, and `y=2k+1` for `k<4`.
+```ignore
+CartesianCut{
+	uncut_sides: [3,10,5],
+	cut_sides: [3,4,3],
+	cut_strides: [1,2,1],// defaults to a 1s vector
+	cut_offsets: [0,1,0],// defaults to a 0s vector
+	cut_pattern: Uniform,
+	remainder_pattern: Uniform,//defaults to Identity
+}
+```
+This same example would work for more than 150 servers, putting all that excess in the large set.
+
+Another notable example is to combine several of them. Here, we use a decomposition of the previous whole `[3,10,5]` block into two disjoint blocks of size `[3,5,5]`. The offset is chosen to make sure of both being disjoint (a packing) and covering the whole. Then we select a pattern for each block. Since the two patterns are disjoint the can be [composed](Composition) to obtain a pattern that follows each of the blocks.
+```ignore
+Composition{patterns:[
+	CartesianCut{
+		uncut_sides: [3,10,5],
+		cut_sides: [3,5,5],
+		cut_offsets: [0,0,0],
+		cut_pattern: RandomPermutation,
+		//remainder_pattern: Identity,
+	},
+	CartesianCut{
+		uncut_sides: [3,10,5],
+		cut_sides: [3,5,5],
+		cut_offsets: [0,5,0],
+		cut_pattern: Uniform,
+		//remainder_pattern: Identity,
+	},
+]}
+```
+**/
+#[derive(Debug,Quantifiable)]
+pub struct CartesianCut
+{
+	// /// An offset before the block.
+	// start_margin: usize,
+	// /// Some nodes out of the cube at the end.
+	// end_margin: usize,
+	/// The source sides. Any node beyond its size goes directly to the remained pattern.
+	uncut_cartesian_data: CartesianData,
+	/// The block we cut
+	cut_cartesian_data: CartesianData,
+	/// Offsets to set where the cut start at each dimension. Default to 0.
+	cut_offsets: Vec<usize>,
+	/// At each dimension cut 1 stripe for each `cut_stride[dim]` uncut cells. Default to 1.
+	cut_strides: Vec<usize>,
+	/// The pattern over the cut block.
+	cut_pattern: Box<dyn Pattern>,
+	/// The pattern over the rest.
+	remainder_pattern: Box<dyn Pattern>,
+}
+
+impl Pattern for CartesianCut
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		let cut_size = self.cut_cartesian_data.size;
+		self.cut_pattern.initialize(cut_size,cut_size,topology,rng);
+		self.remainder_pattern.initialize(source_size-cut_size,target_size-cut_size,topology,rng);
+	}
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		let cut_size = self.cut_cartesian_data.size;
+		if origin >= self.uncut_cartesian_data.size
+		{
+			let base = origin - cut_size;
+			return self.remainder_pattern.get_destination(base,topology,rng);
+		}
+		let coordinates = self.uncut_cartesian_data.unpack(origin);
+		let mut cut_count = 0;
+		for dim in (0..coordinates.len()).rev()
+		{
+			if coordinates[dim] < self.cut_offsets[dim]
+			{
+				// Coordinate within margin
+				return self.remainder_pattern.get_destination(origin - cut_count,topology,rng);
+			}
+			// how many 'rows' of cut are included.
+			let hypercut_instances = (coordinates[dim] - self.cut_offsets[dim] + self.cut_strides[dim] -1 ) / self.cut_strides[dim];
+			// the size of each 'row'.
+			let hypercut_size : usize = self.cut_cartesian_data.sides[0..dim].iter().product();
+			if hypercut_instances >= self.cut_cartesian_data.sides[dim]
+			{
+				// Beyond the cut
+				cut_count += self.cut_cartesian_data.sides[dim]*hypercut_size;
+				return self.remainder_pattern.get_destination(origin - cut_count,topology,rng);
+			}
+			cut_count += hypercut_instances*hypercut_size;
+			if (coordinates[dim] - self.cut_offsets[dim]) % self.cut_strides[dim] != 0
+			{
+				// Space between stripes
+				return self.remainder_pattern.get_destination(origin - cut_count,topology,rng);
+			}
+		}
+		self.cut_pattern.get_destination(cut_count,topology,rng)
+	}
+}
+
+impl CartesianCut
+{
+	pub fn new(arg:PatternBuilderArgument) -> CartesianCut
+	{
+		let mut uncut_sides:Option<Vec<_>>=None;
+		let mut cut_sides:Option<Vec<_>>=None;
+		let mut cut_offsets:Option<Vec<_>>=None;
+		let mut cut_strides:Option<Vec<_>>=None;
+		let mut cut_pattern:Option<Box<dyn Pattern>>=None;
+		let mut remainder_pattern:Option<Box<dyn Pattern>>=None;
+		match_object_panic!(arg.cv,"CartesianCut",value,
+			"uncut_sides" => uncut_sides = Some(value.as_array().expect("bad value for uncut_sides").iter()
+				.map(|v|v.as_usize().expect("bad value in uncut_sides")).collect()),
+			"cut_sides" => cut_sides = Some(value.as_array().expect("bad value for cut_sides").iter()
+				.map(|v|v.as_usize().expect("bad value in cut_sides")).collect()),
+			"cut_offsets" => cut_offsets = Some(value.as_array().expect("bad value for cut_offsets").iter()
+				.map(|v|v.as_usize().expect("bad value in cut_offsets")).collect()),
+			"cut_strides" => cut_strides = Some(value.as_array().expect("bad value for cut_strides").iter()
+				.map(|v|v.as_usize().expect("bad value in cut_strides")).collect()),
+			"cut_pattern" => cut_pattern = Some(new_pattern(arg.with_cv(value))),
+			"remainder_pattern" => remainder_pattern = Some(new_pattern(arg.with_cv(value))),
+		);
+		let uncut_sides=uncut_sides.expect("There were no uncut_sides");
+		let cut_sides=cut_sides.expect("There were no cut_sides");
+		let n=uncut_sides.len();
+		assert_eq!(n,cut_sides.len(),"CartesianCut: dimensions for uncut_sides and cut_sides must match.");
+		let cut_offsets = cut_offsets.unwrap_or_else(||vec![0;n]);
+		assert_eq!(n,cut_offsets.len(),"CartesianCut: dimensions for cut_offsets do not match.");
+		let cut_strides = cut_strides.unwrap_or_else(||vec![1;n]);
+		assert_eq!(n,cut_strides.len(),"CartesianCut: dimensions for cut_strides do not match.");
+		let cut_pattern = cut_pattern.expect("There were no cut_pattern");
+		let remainder_pattern = remainder_pattern.unwrap_or_else(||Box::new(Identity{}));
+		CartesianCut{
+			uncut_cartesian_data: CartesianData::new(&uncut_sides),
+			cut_cartesian_data: CartesianData::new(&cut_sides),
+			cut_offsets,
+			cut_strides,
+			cut_pattern,
+			remainder_pattern,
+		}
+	}
+}
+
+
+
+/**
+Apply some other [Pattern] over a set of nodes whose indices have been remapped according to a [Pattern]-given permutation.
+A source `x` chooses as destination `map(pattern(invmap(x)))`, where `map` is the given permutation, `invmap` its inverse and `pattern` is the underlaying pattern to apply. In other words, if `pattern(a)=b`, then destination of `map(a)` is set to `map(b)`. It can be seen as a [Composition] that manages building the inverse map.
+
+Remapped nodes requires source and destination to be of the same size. The pattern creating the map is called once and must result in a permutation, as to be able to make its inverse.
+
+For a similar operation on other types see [RemappedServersTopology](crate::topology::operations::RemappedServersTopology).
+
+Example building a cycle in random order.
+```ignore
+RemappedNodes{
+	/// The underlaying pattern to be used.
+	pattern: Circulant{generators:[1]},
+	/// The pattern defining the relabelling.
+	map: RandomPermutation,
+}
+```
+
+**/
+#[derive(Debug,Quantifiable)]
+pub struct RemappedNodes
+{
+	/// Maps from inner indices to outer indices.
+	/// It must be a permutation.
+	from_base_map: Vec<usize>,
+	/// Maps from outer indices to inner indices.
+	/// The inverse of `from_base_map`.
+	into_base_map: Vec<usize>,
+	/// The inner pattern to be applied.
+	pattern: Box<dyn Pattern>,
+	/// The pattern to build the map vectors.
+	map: Box<dyn Pattern>,
+}
+
+impl Pattern for RemappedNodes
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		if source_size != target_size
+		{
+			panic!("RemappedNodes requires source and target sets to have same size.");
+		}
+		let n = source_size;
+		self.map.initialize(n,n,topology,rng);
+		self.from_base_map = (0..n).map(|inner_index|{
+			self.map.get_destination(inner_index,topology,rng)
+		}).collect();
+		let mut into_base_map = vec![None;n];
+		for (inside,&outside) in self.from_base_map.iter().enumerate()
+		{
+			match into_base_map[outside]
+			{
+				None => into_base_map[outside]=Some(inside),
+				Some(already_inside) => panic!("Two inside nodes ({inside} and {already_inside}) mapped to the same outer index ({outside}).",inside=inside,already_inside=already_inside,outside=outside),
+			}
+		}
+		self.into_base_map = into_base_map.iter().map(|x|x.expect("node not mapped")).collect();
+		self.pattern.initialize(n,n,topology,rng);
+	}
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		let inner_origin = self.into_base_map[origin];
+		let inner_dest = self.pattern.get_destination(inner_origin,topology,rng);
+		self.from_base_map[inner_dest]
+	}
+}
+
+impl RemappedNodes
+{
+	fn new(arg:PatternBuilderArgument) -> RemappedNodes
+	{
+		let mut pattern = None;
+		let mut map = None;
+		match_object_panic!(arg.cv, "RemappedNodes", value,
+			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"map" => map = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+		);
+		let pattern = pattern.expect("There were no pattern in configuration of RemappedNodes.");
+		let map = map.expect("There were no map in configuration of RemappedNodes.");
+		RemappedNodes{
+			from_base_map: vec![],
+			into_base_map: vec![],
+			pattern,
+			map,
+		}
+	}
+}
+
 
 
 #[cfg(test)]
@@ -2315,5 +2682,4 @@ mod tests {
 		}
 	}
 }
-
 
