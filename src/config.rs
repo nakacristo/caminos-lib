@@ -1297,7 +1297,7 @@ pub fn values_to_f32_with_count(list:&Vec<ConfigurationValue>) -> (Vec<f32>,usiz
 }
 
 
-///Convert a ConfigurationValue into a Vec<u8>.
+///Converts a [ConfigurationValue] into a `Vec<u8>`.
 ///Intended to create binary files for result files.
 pub fn config_to_binary(value:&ConfigurationValue) -> io::Result<Vec<u8>>
 {
@@ -1329,7 +1329,7 @@ impl BinaryConfigWriter
 	{
 		self.vector
 	}
-	///Append the binary version of a ConfigurationValue into a Vec<u8> using a map from names to locations inside the vector.
+	///Append the binary version of a [ConfigurationValue] into a `Vec<u8>` using a map from names to locations inside the vector.
 	///Returns the location at which it has been appended
 	//pub fn config_into_binary(value:&ConfigurationValue, vector:&mut Vec<u8>, name_locations:&mut BTreeMap<String,usize>) -> io::Result<usize>
 	pub fn insert(&mut self, value:&ConfigurationValue) -> io::Result<u32>

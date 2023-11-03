@@ -85,17 +85,19 @@ impl UpDown
 ///Use a shortest up/down path from origin to destination.
 ///But in contrast with UpDown this uses explicit table instead of querying the topology.
 ///Used to define Up*/Down* (UpDownStar), see Autonet, where it is build from some spanning tree.
-///```ignore
-///UpDownStar{
-///	///The switch to select as root.
-///	root: 0,
-///	///Whether to allow travelling horizontal cross-branch links that reduce the up/down distance. Defaults to false.
-///	branch_crossing:true,
-///}
-///Note how the `branch_crossing` option would cause deadlock if it were allowed to use down-links. Consider three flows, each flow having
-///a unique posible last (down-link) hop. If this down-link could be used as a cross-branch by the next flow then that flow could block the former.
-///If this were to happen simultaneously with the three flows it would create a deadlock.
-///```
+/**
+```ignore
+UpDownStar{
+	///The switch to select as root.
+	root: 0,
+	///Whether to allow travelling horizontal cross-branch links that reduce the up/down distance. Defaults to false.
+	branch_crossing:true,
+}
+```
+Note how the `branch_crossing` option would cause deadlock if it were allowed to use down-links. Consider three flows, each flow having
+a unique posible last (down-link) hop. If this down-link could be used as a cross-branch by the next flow then that flow could block the former.
+If this were to happen simultaneously with the three flows it would create a deadlock.
+**/
 #[derive(Debug)]
 pub struct ExplicitUpDown
 {

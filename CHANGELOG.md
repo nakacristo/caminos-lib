@@ -1,5 +1,31 @@
 # Change Log
 
+## next, [0.6.3]
+
+### 2023-11-03
+Added links to `new_traffic` documentation and related improvements.
+
+### 2023-11-02
+New pattern [CartesianCut].
+Added `PatternBuilderArgument::with_cv`.
+
+### 2023-10-30
+Improved documentation of `new_topology`.
+New pattern [RemappedNodes].
+
+### 2023-10-26
+Added multiplier to CartesianTransform.
+Added links in pattern documentation.
+New pattern [CartesianEmbedding].
+
+### 2023-10-25
+Merge with alex-master.
+Added documentation for the link classes employed in Dragonfly.
+Updated `divisor_frequency` in default configuration file.
+
+### 2023-10-19
+When building PDF, in addition to `git_id`, show also the version number.
+
 ## [0.6.2]
 
 ### 2023-10-13
