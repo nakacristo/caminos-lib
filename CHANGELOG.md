@@ -2,6 +2,9 @@
 
 ## next, [0.6.3]
 
+### 2023-11-03
+Added links to `new_traffic` documentation and related improvements.
+
 ### 2023-11-02
 New pattern [CartesianCut].
 Added `PatternBuilderArgument::with_cv`.

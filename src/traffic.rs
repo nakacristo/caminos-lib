@@ -95,10 +95,12 @@ pub struct TrafficBuilderArgument<'a>
 
 ## Base traffics.
 
-### Homogeneous traffic
-Is a traffic where all servers behave equally and uniform in time. Some `pattern` is generated
+### Homogeneous
+[Homogeneous] is a traffic where all servers behave equally and uniform in time. Some `pattern` is generated
 by `servers` number of involved servers along the whole simulation. Each server tries to use its link toward the network a `load`
 fraction of the cycles. The generated messages has a size in phits of `message_size`. The generation is the typical Bernoulli process.
+
+Example configuration.
 ```ignore
 HomogeneousTraffic{
 	pattern:Uniform,
@@ -109,7 +111,7 @@ HomogeneousTraffic{
 ```
 
 ### Burst
-In the Burst traffic each of the involved `servers` has a initial list of `messages_per_server` messages to emit. When all the messages
+In the [Burst] traffic each of the involved `servers` has a initial list of `messages_per_server` messages to emit. When all the messages
 are consumed the simulation is requested to end.
 ```ignore
 Burst{
@@ -122,7 +124,7 @@ Burst{
 
 ### Reactive
 
-A Reactive traffic is composed of an `action_traffic` generated normally, whose packets, when consumed create a response by the `reaction_traffic`.
+A [Reactive] traffic is composed of an `action_traffic` generated normally, whose packets, when consumed create a response by the `reaction_traffic`.
 If both subtraffics are requesting to end and there is no pending message the reactive traffic also requests to end.
 ```ignore
 Reactive{
@@ -135,7 +137,7 @@ Reactive{
 
 ### TrafficSum
 
-Generates several traffic at once, if the total load allows it.
+[TrafficSum](Sum) generates several traffic at once. Each node genrates load for all the traffics, if the total load allows it.
 ```ignore
 TrafficSum{
 	list: [HomogeneousTraffic{...},... ],
@@ -144,7 +146,7 @@ TrafficSum{
 
 ### ShiftedTraffic
 
-A ShiftedTraffic shifts a given traffic a certain amount of servers. Yu should really check if some pattern transformation fit your purpose, since it will be simpler.
+A [ShiftedTraffic](Shifted) shifts a given traffic a certain amount of servers. Yu should really check if some pattern transformation fit your purpose, since it will be simpler.
 ```ignore
 ShiftedTraffic{
 	traffic: HomogeneousTraffic{...},
@@ -154,7 +156,7 @@ ShiftedTraffic{
 
 ### ProductTraffic
 
-A ProductTraffic divides the servers into blocks. Each group generates traffic following the `block_traffic`, but instead of having the destination in the same block it is selected a destination by using the `global_pattern` of the block. Blocks of interest are
+A [ProductTraffic] divides the servers into blocks. Each group generates traffic following the `block_traffic`, but instead of having the destination in the same block it is selected a destination by using the `global_pattern` of the block. Blocks of interest are
 * The servers attached to a router. Then if the global_pattern is a permutation, all the servers will comunicate with servers attached to the same router. This can stress the network a lot more than a permutation of servers.
 * All servers in a group of a dragonfly. If the global_pattern is a permutation, there is only a global link between groups, and Shortest routing is used, then all the packets generated in a group will try by the same global link. Other global links being unused.
 Note there is also a product at pattern level, which may be easier to use.
@@ -169,7 +171,7 @@ ProductTraffic{
 
 ### SubRangeTraffic
 
-A SubRangeTraffic makes servers outise the range to not generate traffic.
+A [SubRangeTraffic] makes servers outise the range to not generate traffic.
 ```ignore
 SubRangeTraffic{
 	start: 100,
@@ -180,20 +182,24 @@ SubRangeTraffic{
 
 ### TimeSequenced
 
-Defines a sequence of traffics with the given finalization times.
+[TimeSequenced] defines a sequence of traffics with the given finalization times.
 
+```ignore
 TimeSequenced{
 	traffics: [HomogeneousTraffic{...}, HomogeneousTraffic{...}],
 	times: [2000, 15000],
 }
+```
 
 ### Sequence
 
-Defines a sequence of traffics. When one is completed the next starts.
+Defines a [Sequence] of traffics. When one is completed the next starts.
 
+```ignore
 Sequence{
 	traffics: [Burst{...}, Burst{...}],
 }
+```
 
 
 */
@@ -227,7 +233,18 @@ pub fn new_traffic(arg:TrafficBuilderArgument) -> Box<dyn Traffic>
 	}
 }
 
-///Traffic in which all messages have same size, follow the same pattern, and there is no change with time.
+/**
+Traffic in which all messages have same size, follow the same pattern, and there is no change with time.
+
+```ignore
+HomogeneousTraffic{
+	pattern:Uniform,
+	servers:1000,
+	load: 0.9,
+	message_size: 16,
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Homogeneous
@@ -329,8 +346,16 @@ impl Homogeneous
 	}
 }
 
-///Traffic which is the sum of a list of oter traffics.
-///While it will clearly work when the sum of the generation rates is at most 1, it should behave nicely enough otherwise.
+/**
+Traffic which is the sum of a list of oter traffics.
+While it will clearly work when the sum of the generation rates is at most 1, it should behave nicely enough otherwise.
+
+```ignore
+TrafficSum{
+	list: [HomogeneousTraffic{...},... ],
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Sum
@@ -441,9 +466,17 @@ impl Sum
 	}
 }
 
-///Traffic which is another shifted by some amount of servers
-///First check whether a transformation at the `Pattern` level is enough.
-///The server `index+shift` will be seen as just `index` by the inner traffic.
+/**
+Traffic which is another shifted by some amount of servers
+First check whether a transformation at the `Pattern` level is enough.
+The server `index+shift` will be seen as just `index` by the inner traffic.
+```ignore
+ShiftedTraffic{
+	traffic: HomogeneousTraffic{...},
+	shift: 50,
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Shifted
@@ -542,8 +575,18 @@ impl Shifted
 	}
 }
 
-///Divides the network in blocks and use a `Traffic` inside blocks applying a global `Pattern` among blocks.
-///First check whether a transformation at the `Pattern` level is enough; specially see the `Product` pattern.
+/**
+Divides the network in blocks and use a `Traffic` inside blocks applying a global `Pattern` among blocks.
+First check whether a transformation at the `Pattern` level is enough; specially see the `Product` pattern.
+
+```ignore
+ProductTraffic{
+	block_size: 10,
+	block_traffic: HomogeneousTraffic{...},
+	global_pattern: RandomPermutation,
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct ProductTraffic
@@ -634,7 +677,17 @@ impl ProductTraffic
 	}
 }
 
-///Only allow servers in range will generate messages. The messages can go out of the given range.
+/**
+Only allow servers in range will generate messages. The messages can go out of the given range.
+
+```ignore
+SubRangeTraffic{
+	start: 100,
+	end: 200,
+	traffic: HomogeneousTraffic{...},
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct SubRangeTraffic
@@ -701,8 +754,19 @@ impl SubRangeTraffic
 	}
 }
 
-///Initialize an amount of messages to send from each server.
-///The traffic will be considered complete when all servers have generated their messages and all of them have been consumed.
+/**
+Initialize an amount of messages to send from each server.
+The traffic will be considered complete when all servers have generated their messages and all of them have been consumed.
+
+```ignore
+Burst{
+	pattern:Uniform,
+	servers:1000,
+	messages_per_server:200,
+	message_size: 16,
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Burst
@@ -942,7 +1006,16 @@ impl Reactive
 
 
 
-///Selects the traffic from a sequence depending on current cycle
+/**
+Selects the traffic from a sequence depending on current cycle. This traffics is useful to make sequences of traffics that do no end by themselves.
+
+```ignore
+TimeSequenced{
+	traffics: [HomogeneousTraffic{...}, HomogeneousTraffic{...}],
+	times: [2000, 15000],
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct TimeSequenced
@@ -1054,7 +1127,15 @@ impl TimeSequenced
 	}
 }
 
-///A sequence of traffics. When a traffic declares itself to be finished moves to the next.
+/**
+A sequence of traffics. When a traffic declares itself to be finished moves to the next.
+
+```ignore
+Sequence{
+	traffics: [Burst{...}, Burst{...}],
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Sequence
