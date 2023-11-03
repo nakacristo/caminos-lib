@@ -1514,7 +1514,7 @@ impl Traffic for TrafficMap
 		let app_origin = self.from_machine_to_app[origin];
 
 		// generate the message from the application
-		let message = self.application.generate_message(app_origin, cycle, topology, rng);
+		let message = self.application.generate_message(app_origin, cycle, topology, rng).unwrap();
 
 		// get the destination of the message (the app) from the base map
 		let app_destination = self.map.get_destination(app_origin, topology, rng);
@@ -1526,8 +1526,8 @@ impl Traffic for TrafficMap
 		let message = Rc::new(Message{
 			origin,
 			destination: machine_destination.expect("There was no destination for the message"),
-			size: message.unwrap().size,
-			creation_cycle: message.unwrap().creation_cycle,
+			size: message.size,
+			creation_cycle: message.creation_cycle,
 		});
 
 		Ok(message)
@@ -1574,7 +1574,7 @@ impl TrafficMap
 
 		map.initialize(n, n, arg.topology, arg.rng);
 
-		let mut from_machine_to_app: Vec<_> = (0..n).map(|inner_origin| {
+		let from_machine_to_app: Vec<_> = (0..n).map(|inner_origin| {
 			map.get_destination(inner_origin, arg.topology, arg.rng)
 		}).collect();
 
