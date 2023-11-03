@@ -1486,11 +1486,11 @@ pub struct TrafficMap
 
 	/// Maps the origin of the traffic.
 	/// fuente_maquina -> fuente_app
-	from_machine_to_app: Vec<usize>,
+	from_machine_to_app: Vec<Option<usize>>,
 
 	/// Maps the destination of the traffic.
 	/// destino_app -> destino_maquina
-	from_app_to_machine: Vec<Option<usize>>,
+	from_app_to_machine: Vec<usize>,
 
     /// The traffic to be mapped.
 	/// fuente_app -> destino_app
@@ -1511,13 +1511,15 @@ impl Traffic for TrafficMap
 		}
 
 		// Get the origin of the message (the app) from the base map
-		let app_origin = self.from_machine_to_app[origin];
+		let app_origin = self.from_machine_to_app[origin].expect("There was no origin for the message");
 
 		// generate the message from the application
-		let message = self.application.generate_message(app_origin, cycle, topology, rng);
+		let message = self.application.generate_message(app_origin, cycle, topology, rng).unwrap();
+
+		let app_destination = message.destination;
 
 		// get the destination of the message (the app) from the base map
-		let app_destination = self.map.get_destination(app_origin, topology, rng);
+		//let app_destination = self.map.get_destination(app_origin, topology, rng);
 
 		// get the destination of the message (the machine) from the base map
 		let machine_destination = self.from_app_to_machine[app_destination];
@@ -1525,7 +1527,7 @@ impl Traffic for TrafficMap
 		// build the message
 		let message = Rc::new(Message{
 			origin,
-			destination: machine_destination.expect("There was no destination for the message"),
+			destination: machine_destination,//.expect("There was no destination for the message"),
 			size: message.unwrap().size,
 			creation_cycle: message.unwrap().creation_cycle,
 		});
@@ -1536,12 +1538,14 @@ impl Traffic for TrafficMap
 	fn probability_per_cycle(&self, server: usize) -> f32
 	{
 		// The probability of a server is the same as the probability of the server in the application
-		self.application.probability_per_cycle(server)
+		let server_app = self.from_machine_to_app[server].expect("There was no origin for the message");
+		self.application.probability_per_cycle(server_app)
 	}
 
 	fn try_consume(&mut self, server: usize, message: Rc<Message>, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool
 	{
-		self.application.try_consume(server, message, cycle, topology, rng)
+		let server_app = self.from_machine_to_app[server].expect("There was no origin for the message");
+		self.application.try_consume(server_app, message, cycle, topology, rng)
 	}
 
 	fn is_finished(&self) -> bool
@@ -1551,7 +1555,8 @@ impl Traffic for TrafficMap
 
 	fn server_state(&self, server: usize, cycle: Time) -> ServerTrafficState
 	{
-		self.application.server_state(server, cycle)
+		let server_app = self.from_machine_to_app[server].expect("There was no origin for the message");
+		self.application.server_state(server_app, cycle)
 	}
 }
 
@@ -1563,8 +1568,8 @@ impl TrafficMap
 		let mut application = None;
 		let mut map = None;
 		match_object_panic!(arg.cv,"TrafficMap",value,
-			"application" => application = Some(new_traffic(TrafficBuilderArgument{cv:value,rng:&mut arg.rng,..arg})),
-			"map" => map = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"application" => application = Some(new_traffic(TrafficBuilderArgument{cv:value,rng:&mut arg.rng,..arg})), //traffic of the application
+			"map" => map = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})), //map of the application over the machine
 		);
 
 		let application = application.expect("There were no application in configuration of TrafficMap.");
@@ -1574,11 +1579,11 @@ impl TrafficMap
 
 		map.initialize(n, n, arg.topology, arg.rng);
 
-		let mut from_machine_to_app: Vec<_> = (0..n).map(|inner_origin| {
+		let mut from_app_to_machine: Vec<_> = (0..n).map(|inner_origin| {
 			map.get_destination(inner_origin, arg.topology, arg.rng)
 		}).collect();
 
-		let mut from_app_to_machine = vec![None; n];
+		let mut from_machine_to_app = vec![None; n];
 		for (origin, &destination) in from_machine_to_app.iter().enumerate()
 		{
 			match from_app_to_machine[destination]
