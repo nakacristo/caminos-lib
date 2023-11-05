@@ -9,6 +9,7 @@ Extra implementations of routing operations
 */
 
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::convert::TryFrom;
 
 use ::rand::{rngs::StdRng,Rng};
@@ -70,7 +71,7 @@ pub struct SumRouting
 	allowed_virtual_channels: [Vec<usize>;2],
 	//first_extra_label: i32,
 	//second_extra_label: i32,
-	extra_label: [i32;2],
+	extra_label: [i32;3],
 	//
 	enabled_statistics: bool,
 	//when capturing statistics track the hops of each kind.
@@ -135,6 +136,16 @@ impl Routing for SumRouting
 					let el1=self.extra_label[1];
 					//let r1=self.second_routing.next(&meta[1].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
 					let r1=self.routing[1].next(&meta[1].borrow(),topology,current_router,target_router,target_server,avc1.len(),rng)?.into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
+
+					//Check for candidates in both sets
+					let r0_ports=r0.clone().map(|c|c.port).collect::<HashSet<_>>();
+					let r1_ports=r1.clone().map(|c|c.port).collect::<HashSet<_>>();
+					let r0r1_ports=r0_ports.intersection(&r1_ports).collect::<HashSet<_>>();
+					// now map new r0 if the port is in r0r1_ports
+					let r0=r0.map(|c|if r0r1_ports.contains(&c.port) { CandidateEgress{label:c.label+self.extra_label[2],..c} } else { c });
+					let r1=r1.map(|c|if r0r1_ports.contains(&c.port) { CandidateEgress{label:c.label+self.extra_label[2],..c} } else { c });
+
+
 					match self.policy
 					{
 						SumRoutingPolicy::SecondWhenFirstEmpty =>
@@ -338,6 +349,7 @@ impl SumRouting
 		let mut second_allowed_virtual_channels=None;
 		let mut first_extra_label=0i32;
 		let mut second_extra_label=0i32;
+		let mut same_port_extra_label= 0i32;
 		let mut enabled_statistics=false;
 		match_object_panic!(arg.cv,"Sum",value,
 			"policy" => policy=Some(new_sum_routing_policy(value)),
@@ -351,6 +363,7 @@ impl SumRouting
 				.map(|v|v.as_f64().expect("bad value in second_allowed_virtual_channels") as usize).collect()),
 			"first_extra_label" => first_extra_label = value.as_f64().expect("bad value for first_extra_label") as i32,
 			"second_extra_label" => second_extra_label = value.as_f64().expect("bad value for second_extra_label") as i32,
+			"same_port_extra_label" => same_port_extra_label = value.as_f64().expect("bad value for second_extra_label") as i32,
 			"enabled_statistics" => enabled_statistics = value.as_bool().expect("bad value for enabled_statistics"),
 		);
 		let policy=policy.expect("There were no policy");
@@ -368,7 +381,7 @@ impl SumRouting
 			allowed_virtual_channels: [first_allowed_virtual_channels, second_allowed_virtual_channels],
 			//first_extra_label,
 			//second_extra_label,
-			extra_label: [first_extra_label, second_extra_label],
+			extra_label: [first_extra_label, second_extra_label, same_port_extra_label],
 			enabled_statistics,
 			tracked_hops: RefCell::new([0,0]),
 		}
