@@ -1243,7 +1243,7 @@ pub struct OccupancyFunction
 	occupancy_coefficient: i32,
 	///Which multiplies the product of label and occupancy.
 	product_coefficient: i32,
-	///Just added.
+	///Just added.OccupancyFunction
 	constant_coefficient: i32,
 	///Whether to include the own router buffers in the calculation.
 	use_internal_space: bool,
@@ -1252,6 +1252,8 @@ pub struct OccupancyFunction
 	///Whether to aggregate all virtual channels associated to the port.
 	///Defaults to true.
 	aggregate: bool,
+	///VC to use in the occupancy calculation
+	virtual_channels: Option<Vec<usize>>,
 }
 
 impl VirtualChannelPolicy for OccupancyFunction
@@ -1272,7 +1274,17 @@ impl VirtualChannelPolicy for OccupancyFunction
 				let CandidateEgress{port,virtual_channel,label,..} = candidate;
 				let q=if self.use_internal_space
 				{
-					if self.aggregate
+					if self.virtual_channels.is_some()
+					{
+						let vc = self.virtual_channels.as_ref().expect("Some VCs are indicated");
+						let mut occupied_output_space = 0;
+						for i in 0..vc.len()
+						{
+							let virtual_channel_occupied_output_space=info.virtual_channel_occupied_output_space.expect("virtual_channel_occupied_output_space have not been computed for AverageOccupancyFunction");
+							occupied_output_space += virtual_channel_occupied_output_space[port][vc[i]] as i32;
+						}
+						occupied_output_space
+					}else if self.aggregate
 					{
 						let port_occupied_output_space=info.port_occupied_output_space.expect("port_occupied_output_space have not been computed for policy OccupancyFunction");
 						port_occupied_output_space[port] as i32
@@ -1285,17 +1297,30 @@ impl VirtualChannelPolicy for OccupancyFunction
 				}
 				else {0} + if self.use_neighbour_space
 				{
-					if self.aggregate
+					let status=router.get_status_at_emisor(port).expect("This router does not have transmission status");
+					if self.virtual_channels.is_some()
+					{
+						let vc = self.virtual_channels.as_ref().expect("Some VCs are indicated");
+						let mut occupied_next_router = 0;
+						for i in 0..vc.len()
+						{
+							//let virtual_channel_occupied_output_space=info.virtual_channel_occupied_output_space.expect("virtual_channel_occupied_output_space have not been computed for AverageOccupancyFunction");
+							let virtual_channels_credits=router.get_maximum_credits_towards(port,vc[i]).expect("we need routers with maximum credits") as i32
+								- status.known_available_space_for_virtual_channel(vc[i]).expect("remote available space is not known.") as i32;
+							occupied_next_router += virtual_channels_credits;
+						}
+						occupied_next_router
+
+					}else if self.aggregate
 					{
 						//port_average_neighbour_queue_length[port]
-						let status=router.get_status_at_emisor(port).expect("This router does not have transmission status");
 						//FIXME: this could be different than the whole occuped space if using a DAMQ or something, although they are yet to be implemented.
 						(0..status.num_virtual_channels()).map(|c|router.get_maximum_credits_towards(port,c).expect("we need routers with maximum credits") as i32 - status.known_available_space_for_virtual_channel(c).expect("remote available space is not known.") as i32).sum()
 					}
 					else
 					{
 						//port_average_neighbour_queue_length[port]
-						let status=router.get_status_at_emisor(port).expect("This router does not have transmission status");
+						//let status=router.get_status_at_emisor(port).expect("This router does not have transmission status");
 						router.get_maximum_credits_towards(port,virtual_channel).expect("we need routers with maximum credits") as i32 - status.known_available_space_for_virtual_channel(virtual_channel).expect("remote available space is not known.") as i32
 					}
 				}
@@ -1334,6 +1359,7 @@ impl OccupancyFunction
 		let mut use_internal_space=false;
 		let mut use_neighbour_space=false;
 		let mut aggregate=true;
+		let mut virtual_channels=None;
 		match_object_panic!(arg.cv,"OccupancyFunction",value,
 			"label_coefficient" => label_coefficient=Some(value.as_f64().expect("bad value for label_coefficient") as i32),
 			"occupancy_coefficient" => occupancy_coefficient=Some(value.as_f64().expect("bad value for occupancy_coefficient") as i32),
@@ -1342,11 +1368,14 @@ impl OccupancyFunction
 			"use_neighbour_space" => use_neighbour_space=value.as_bool().expect("bad value for use_neighbour_space"),
 			"use_internal_space" => use_internal_space=value.as_bool().expect("bad value for use_internal_space"),
 			"aggregate" => aggregate=value.as_bool().expect("bad value for aggregate"),
+			"virtual_channels" => virtual_channels=Some(value.as_array().expect("bad value for virtual channels")
+				.iter().map(|a| a.as_usize().expect("It should be a number") ).collect()),
 		);
 		let label_coefficient=label_coefficient.expect("There were no multiplier");
 		let occupancy_coefficient=occupancy_coefficient.expect("There were no multiplier");
 		let product_coefficient=product_coefficient.expect("There were no multiplier");
 		let constant_coefficient=constant_coefficient.expect("There were no multiplier");
+
 		OccupancyFunction{
 			label_coefficient,
 			occupancy_coefficient,
@@ -1355,6 +1384,7 @@ impl OccupancyFunction
 			use_internal_space,
 			use_neighbour_space,
 			aggregate,
+			virtual_channels,
 		}
 	}
 }
