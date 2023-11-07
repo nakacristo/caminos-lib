@@ -76,6 +76,10 @@ pub trait Traffic : Quantifiable + Debug
 	}
 	///Indicates the state of the server within the traffic.
 	fn server_state(&self, server:usize, cycle:Time) -> ServerTrafficState;
+
+	/// Indicates the number of tasks in the traffic.
+	/// A task is a process that generates traffic.
+	fn number_tasks(&self) -> usize;
 }
 
 #[derive(Debug)]
@@ -205,6 +209,7 @@ Sequence{
 
 ```ignore
 TrafficMap{
+	tasks: 1000,
 	application: HomogeneousTraffic{...},
 	map: RandomPermutation,
 }
@@ -308,6 +313,10 @@ impl Traffic for Homogeneous
 	{
 		ServerTrafficState::Generating
 	}
+
+	fn number_tasks(&self) -> usize {
+		self.servers
+	}
 }
 
 impl Homogeneous
@@ -344,7 +353,7 @@ impl Homogeneous
 	}
 }
 
-///Traffic which is the sum of a list of oter traffics.
+///Traffic which is the sum of a list of other traffics.
 ///While it will clearly work when the sum of the generation rates is at most 1, it should behave nicely enough otherwise.
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -437,6 +446,11 @@ impl Traffic for Sum
 			}
 		}
 		state
+	}
+
+	fn number_tasks(&self) -> usize {
+		// all traffics have the same number of tasks
+		self.list[0].number_tasks()
 	}
 }
 
@@ -535,6 +549,10 @@ impl Traffic for Shifted
 	{
 		self.traffic.server_state(server-self.shift,cycle)
 	}
+
+	fn number_tasks(&self) -> usize {
+		self.traffic.number_tasks()
+	}
 }
 
 impl Shifted
@@ -621,6 +639,10 @@ impl Traffic for ProductTraffic
 		let local=server % self.block_size;
 		self.block_traffic.server_state(local,cycle)
 	}
+
+	fn number_tasks(&self) -> usize {
+		self.block_traffic.number_tasks()
+	}
 }
 
 impl ProductTraffic
@@ -689,6 +711,10 @@ impl Traffic for SubRangeTraffic
 	fn server_state(&self, server:usize, cycle:Time) -> ServerTrafficState
 	{
 		self.traffic.server_state(server,cycle)
+	}
+
+	fn number_tasks(&self) -> usize {
+		self.traffic.number_tasks()
 	}
 }
 
@@ -799,6 +825,10 @@ impl Traffic for Burst
 			// Sometimes it could be Finished, but it is not worth computing...
 			ServerTrafficState::FinishedGenerating
 		}
+	}
+
+	fn number_tasks(&self) -> usize {
+		self.servers
 	}
 }
 
@@ -933,6 +963,11 @@ impl Traffic for Reactive
 		}
 		if self.is_finished() { Finished } else { UnspecifiedWait }
 	}
+
+	fn number_tasks(&self) -> usize {
+		// Both traffics have the same number of tasks
+		self.action_traffic.number_tasks()
+	}
 }
 
 impl Reactive
@@ -1045,6 +1080,11 @@ impl Traffic for TimeSequenced
 			state
 		}
 	}
+
+	fn number_tasks(&self) -> usize {
+		// each traffic has the same number of tasks
+		self.traffics[0].number_tasks()
+	}
 }
 
 impl TimeSequenced
@@ -1145,6 +1185,11 @@ impl Traffic for Sequence
 			}
 			//In the last traffic we could try to check for FinishedGenerating
 		}
+	}
+
+	fn number_tasks(&self) -> usize {
+		// every traffic has the same number of tasks
+		self.traffics[0].number_tasks()
 	}
 }
 
@@ -1296,6 +1341,10 @@ impl Traffic for MultimodalBurst
 			ServerTrafficState::FinishedGenerating
 		}
 	}
+
+	fn number_tasks(&self) -> usize {
+		self.servers
+	}
 }
 
 impl MultimodalBurst
@@ -1433,6 +1482,10 @@ impl Traffic for BoundedDifference
 			ServerTrafficState::WaitingData
 		}
 	}
+
+	fn number_tasks(&self) -> usize {
+		self.servers
+	}
 }
 
 impl BoundedDifference
@@ -1482,22 +1535,28 @@ impl BoundedDifference
 #[derive(Debug)]
 pub struct TrafficMap
 {
-	/// fuente_maquina -> fuente_app -> destino_app -> destino maquina
+	// src_machine -> src_app -> dst_app -> dst_machine
 
 	/// Maps the origin of the traffic.
-	/// fuente_maquina -> fuente_app
+	/// (source_machine -> source_app)
 	from_machine_to_app: Vec<Option<usize>>,
 
 	/// Maps the destination of the traffic.
-	/// destino_app -> destino_maquina
+	/// (destination_app -> destination_machine)
 	from_app_to_machine: Vec<usize>,
 
-    /// The traffic to be mapped.
-	/// fuente_app -> destino_app
+	/// The traffic to be mapped.
+	/// (source_app -> destination_app)
 	application: Box<dyn Traffic>,
 
+	/// The number of tasks in the traffic.
+	number_tasks: usize,
+
 	/// The map to be applied to the traffic.
-	map : Box<dyn Pattern>
+	map: Box<dyn Pattern>,
+
+	///Set of generated messages.
+	generated_messages: BTreeMap<*const Message,Rc<Message>>,
 }
 
 impl Traffic for TrafficMap
@@ -1514,46 +1573,58 @@ impl Traffic for TrafficMap
 		let app_origin = self.from_machine_to_app[origin].expect("There was no origin for the message");
 
 		// generate the message from the application
-		let message = self.application.generate_message(app_origin, cycle, topology, rng).unwrap();
+		let app_message = self.application.generate_message(app_origin, cycle, topology, rng).unwrap();
 
-		let app_destination = message.destination;
-
-		// get the destination of the message (the machine) from the base map
-		let machine_destination = self.from_app_to_machine[app_destination];
+		let app_destination = app_message.destination;
 
 		// build the message
 		let message = Rc::new(Message{
 			origin,
-			destination: machine_destination,
-			size: message.size,
-			creation_cycle: message.creation_cycle,
+			destination: self.from_app_to_machine[app_destination], // get the destination of the message (the machine) from the base map
+			size: app_message.size,
+			creation_cycle: app_message.creation_cycle,
 		});
-
+		self.generated_messages.insert(message.as_ref() as *const Message, app_message);
 		Ok(message)
 	}
 
 	fn probability_per_cycle(&self, server: usize) -> f32
 	{
 		// The probability of a server is the same as the probability of the server in the application
-		let server_app = self.from_machine_to_app[server].expect("There was no origin for the message");
-		self.application.probability_per_cycle(server_app)
+		let server_app = self.from_machine_to_app[server];
+
+		server_app.map(|app| {
+			// get the probability of the server_app in the application
+			self.application.probability_per_cycle(app)
+		}).unwrap_or(0.0) // if the server_app has no origin, it has no probability
 	}
 
 	fn try_consume(&mut self, server: usize, message: Rc<Message>, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool
 	{
+		// TODO: Maybe we want to return a Result instead of a bool
+
+		let message_ptr = message.as_ref() as *const Message;
+		let app_message = match self.generated_messages.remove(&message_ptr)
+		{
+			Some(app_message) => app_message,
+			None => return false,
+		};
 
 		let server_app = self.from_machine_to_app[server].expect("There was no origin for the message");
-		let destination_app = self.from_app_to_machine[message.destination];
-
-		println!("server_app: {}, destination_app: {}, server: {}, message: {:?}", server_app, destination_app, server, message);
 
 		let modified_message = Rc::new(Message{
 			origin: server_app,
-			destination: destination_app,
-			size: message.size,
-			creation_cycle: message.creation_cycle,
+			destination: app_message.destination,
+			size: app_message.size,
+			creation_cycle: app_message.creation_cycle,
 		});
-		self.application.try_consume(server, modified_message, cycle, topology, rng)
+
+		// debug
+		println!("{}: {} -> {} -> {} -> {}", cycle, message.origin, server_app, app_message.destination, message.destination);
+
+
+		// try to consume the message in the application
+		self.application.try_consume(server_app, modified_message, cycle, topology, rng)
 	}
 
 	fn is_finished(&self) -> bool
@@ -1563,8 +1634,17 @@ impl Traffic for TrafficMap
 
 	fn server_state(&self, server: usize, cycle: Time) -> ServerTrafficState
 	{
-		let server_app = self.from_machine_to_app[server].expect("There was no origin for the message");
-		self.application.server_state(server_app, cycle)
+		let server_app = self.from_machine_to_app[server];
+
+		server_app.map(|app| {
+			// get the state of the server in the application
+			self.application.server_state(app, cycle)
+		}).unwrap_or(ServerTrafficState::Finished) // if the server has no origin, it is finished
+
+	}
+
+	fn number_tasks(&self) -> usize {
+		self.number_tasks
 	}
 }
 
@@ -1575,24 +1655,25 @@ impl TrafficMap
 	{
 		let mut application = None;
 		let mut map = None;
+		let mut number_tasks = None;
 		match_object_panic!(arg.cv,"TrafficMap",value,
+			"tasks" => number_tasks=Some(value.as_f64().expect("bad value for servers") as usize),
 			"application" => application = Some(new_traffic(TrafficBuilderArgument{cv:value,rng:&mut arg.rng,..arg})), //traffic of the application
 			"map" => map = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})), //map of the application over the machine
 		);
 
+		let number_tasks = number_tasks.expect("There were no tasks in configuration of TrafficMap.");
 		let application = application.expect("There were no application in configuration of TrafficMap.");
 		let mut map = map.expect("There were no map in configuration of TrafficMap.");
 
-		let n = arg.topology.num_servers();
+		map.initialize(number_tasks, number_tasks, arg.topology, arg.rng);
 
-		map.initialize(n, n, arg.topology, arg.rng);
-
-		let from_app_to_machine: Vec<_> = (0..n).map(|inner_origin| {
+		let from_app_to_machine: Vec<_> = (0..number_tasks).map(|inner_origin| {
 			map.get_destination(inner_origin, arg.topology, arg.rng)
 		}).collect();
 
 		// from_machine_to_app is the inverse of from_app_to_machine
-		let mut from_machine_to_app = vec![None; n];
+		let mut from_machine_to_app = vec![None; number_tasks];
 		for &i in from_app_to_machine.iter()
 		{
 			from_machine_to_app[from_app_to_machine[i]] = Some(i);
@@ -1600,10 +1681,12 @@ impl TrafficMap
 
 		TrafficMap
 		{
+			application,
 			from_machine_to_app,
 			from_app_to_machine,
-			application,
-			map
+			number_tasks,
+			map,
+			generated_messages: BTreeMap::new(),
 		}
 	}
 }
