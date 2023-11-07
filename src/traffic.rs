@@ -1612,19 +1612,19 @@ impl Traffic for TrafficMap
 
 		let server_app = self.from_machine_to_app[server].expect("There was no origin for the message");
 
-		let modified_message = Rc::new(Message{
-			origin: server_app,
-			destination: app_message.destination,
-			size: app_message.size,
-			creation_cycle: app_message.creation_cycle,
-		});
+		//let modified_message = Rc::new(Message{
+		//	origin: server_app,
+		//	destination: app_message.destination,
+		//	size: app_message.size,
+		//	creation_cycle: app_message.creation_cycle,
+		//});
 
 		// debug
 		println!("{}: {} -> {} -> {} -> {}", cycle, message.origin, server_app, app_message.destination, message.destination);
 
 
 		// try to consume the message in the application
-		self.application.try_consume(server_app, modified_message, cycle, topology, rng)
+		self.application.try_consume(server_app, app_message, cycle, topology, rng)
 	}
 
 	fn is_finished(&self) -> bool
