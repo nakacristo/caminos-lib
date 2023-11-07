@@ -2,6 +2,11 @@
 
 ## next, [0.6.3]
 
+### 2023-11-07
+New traffic [TrafficMap].
+BREAKING CHANGE: Added method `number_tasks`required for trait Traffic.
+BREAKING CHANGE: Renamed in Traffic nomenclature servers into tasks. This includes ServerTrafficState renamed into TaskTrafficState, and `server_state` into `task_state`. Old configuration names are still supported.
+
 ### 2023-11-03
 Added links to `new_traffic` documentation and related improvements.
 

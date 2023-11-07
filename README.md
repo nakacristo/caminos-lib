@@ -22,6 +22,8 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * All cycles are now represented by a `Time` alias of `u64`; instead of `usize`.
 * Removed methods `pending_events`, `add_pending_event`, and `clear_pending_events` from the Eventful trait in favor of the `schedule` method.
 * Router methods insert and acknowledge now return `Vec<EventGeneration>` and are responsible for their scheduling.
+* Renamed in Traffic nomenclature servers into tasks. This includes ServerTrafficState renamed into TaskTrafficState, and `server_state` into `task_state`. Old configuration names are still supported.
+* Added method `number_tasks`required for trait Traffic.
 
 ## [0.5.0] to [0.6.0]
 * Removed unnecessary generic parameter TM from routers Basic and InputOutput. They now may select [TransmissionMechanisms](router::TransmissionMechanism) to employ.
