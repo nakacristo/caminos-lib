@@ -1602,7 +1602,6 @@ impl Traffic for TrafficMap
 	fn try_consume(&mut self, server: usize, message: Rc<Message>, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool
 	{
 		// TODO: Maybe we want to return a Result instead of a bool
-
 		let message_ptr = message.as_ref() as *const Message;
 		let app_message = match self.generated_messages.remove(&message_ptr)
 		{
@@ -1611,17 +1610,6 @@ impl Traffic for TrafficMap
 		};
 
 		let server_app = self.from_machine_to_app[server].expect("There was no origin for the message");
-
-		//let modified_message = Rc::new(Message{
-		//	origin: server_app,
-		//	destination: app_message.destination,
-		//	size: app_message.size,
-		//	creation_cycle: app_message.creation_cycle,
-		//});
-
-		// debug
-		println!("{}: {} -> {} -> {} -> {}", cycle, message.origin, server_app, app_message.destination, message.destination);
-
 
 		// try to consume the message in the application
 		self.application.try_consume(server_app, app_message, cycle, topology, rng)
