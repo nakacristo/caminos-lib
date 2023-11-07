@@ -1048,22 +1048,28 @@ impl CartesianTiling
 }
 
 
-///The pattern resulting of composing a list of patterns.
-///`destination=patterns[len-1]( patterns[len-2] ( ... (patterns[1] ( patterns[0]( origin ) )) ) )`.
+/**
+The pattern resulting of composing a list of patterns.
+`destination=patterns[len-1]( patterns[len-2] ( ... (patterns[1] ( patterns[0]( origin ) )) ) )`.
+The intermediate sizes along the composition can be stated by `middle_sizes`, otherwise they are set equal to the `target_size` of the whole.
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Composition
 {
 	patterns: Vec<Box<dyn Pattern>>,
+	middle_sizes: Vec<usize>,
 }
 
 impl Pattern for Composition
 {
 	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
-		for pattern in self.patterns.iter_mut()
+		for (index,pattern) in self.patterns.iter_mut().enumerate()
 		{
-			pattern.initialize(source_size,target_size,topology,rng);
+			let current_source = if index==0 { source_size } else { *self.middle_sizes.get(index-1).unwrap_or(&target_size) };
+			let current_target = *self.middle_sizes.get(index).unwrap_or(&target_size);
+			pattern.initialize(current_source,current_target,topology,rng);
 		}
 	}
 	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
@@ -1082,13 +1088,18 @@ impl Composition
 	fn new(arg:PatternBuilderArgument) -> Composition
 	{
 		let mut patterns=None;
+		let mut middle_sizes=None;
 		match_object_panic!(arg.cv,"Composition",value,
 			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
 				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+			"middle_sizes" => middle_sizes = Some(value.as_array().expect("bad value for middle_sizes").iter()
+				.map(|v|v.as_usize().expect("bad value for middle_sizes")).collect()),
 		);
 		let patterns=patterns.expect("There were no patterns");
+		let middle_sizes = middle_sizes.unwrap_or_else(||vec![]);
 		Composition{
 			patterns,
+			middle_sizes,
 		}
 	}
 }
@@ -2066,11 +2077,11 @@ impl Pattern for CartesianEmbedding
 	{
 		if source_size!=self.source_cartesian_data.size
 		{
-			panic!("Source sizes do not agree on CartesianEmbedding.");
+			panic!("Source sizes do not agree on CartesianEmbedding. source_size={source_size}, source_sides={sides:?}",source_size=source_size,sides=self.source_cartesian_data.sides);
 		}
 		if target_size!=self.destination_cartesian_data.size
 		{
-			panic!("Detination sizes do not agree on CartesianEmbedding.");
+			panic!("Destination sizes do not agree on CartesianEmbedding. target_size={target_size}, destinations_sides={sides:?}",target_size=target_size,sides=self.destination_cartesian_data.sides);
 		}
 	}
 	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
