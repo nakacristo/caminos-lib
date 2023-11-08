@@ -69,7 +69,7 @@ Plots
 	{
 		//A generated file with latex code to generate the plots. Prepared to be inserted into another document; it is not an standalone file.
 		tex_filename: "throughput.tex",
-		//A pdf generated with the plots. Its source is actually in the `tikz_tmp` directory, which has some additional preambulos than `tex_filename`.
+		//A pdf generated with the plots. Its source is actually in the `tikz_tmp` directory, which has some additional preambles than `tex_filename`.
 		pdf_filename: "throughput.pdf",
 	},
 },
@@ -89,7 +89,7 @@ PreprocessArgMax
 	selector: [ =configuration.traffic.pattern.legend_name, =configuration.routing.legend_name , =configuration.legend_name ],
 	//The target expression to be maximized
 	target: =result.accepted_load,
-	//The axuiliar expression. Its value associated to the same entry that maximized the `target` value is stored.
+	//The auxiliary expression. Its value associated to the same entry that maximized the `target` value is stored.
 	argument: =configuration.traffic.load,
 },
 ```
@@ -991,7 +991,7 @@ fn latex_make_command_name(text:&str) -> String
 ///Draw a plot using the tikz backend.
 ///`backend`: contains options to the backend
 ///`averages[kind_index][point_index]`: contains the data to be plotted. The data is ordered by selector, which is not an index.
-///`kind`: the congiguration of the plots
+///`kind`: the configuration of the plots
 ///`amount_experiments`: (experiments_with_results, total) of the experiments
 ///`files`: An ExperimentFiles struct with the information on where to generate each thing.
 fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<Plotkind>, environment:&mut OutputEnvironment, prefix:String)
@@ -1957,7 +1957,7 @@ fn standard_deviation(list:&Vec<ConfigurationValue>) -> (Option<f32>,Option<f32>
 	(Some(average),Some(deviation))
 }
 
-///Get a Some(x) if all alements are equal.
+///Get a Some(x) if all elements are equal.
 fn shared_element<I:Iterator>(iter:&mut I) -> Option<I::Item> where I::Item : PartialEq
 {
 	if let Some( first ) = iter.next()
