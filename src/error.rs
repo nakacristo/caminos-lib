@@ -9,7 +9,7 @@ Instead of `expect` or `unwrap_or_else` try
 Instead of `panic!` try
 * Return an error. E.g., by `return Err( Error::nonsense_command_output(source_location!()) );`
 
-The `error!` macro may easy up the writting a little. E.g., `error!(nonsense_command_output)` or `error!(command_not_found,"squeue".to_string(),e)`.
+The `error!` macro may easy up the writing a little. E.g., `error!(nonsense_command_output)` or `error!(command_not_found,"squeue".to_string(),e)`.
 
 To include arbitrary messages use the `with_message` method, like as `Error::undetermined(source_location!()).with_message(format!("A text like in a panic: {}",thing_to_dump))`.
 
@@ -298,7 +298,7 @@ impl Error
 
 impl Display for Error
 {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::result::Result<(), std::fmt::Error>
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), std::fmt::Error>
 	{
 		let Error{source_location:location,kind,message} = self;
 		writeln!(formatter,"Error at file {} at line {} column {}.",location.file,location.line,location.column)?;
@@ -313,7 +313,7 @@ impl Display for Error
 
 impl Display for ErrorKind
 {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::result::Result<(), std::fmt::Error>
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), std::fmt::Error>
 	{
 		match self
 		{
