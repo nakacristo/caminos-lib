@@ -10,16 +10,20 @@ use crate::match_object_panic;
 
 /**
 Builds a dragonfly topology, this is, a hierarchical topology where each group is fully-connected (a complete graph) and each pair of groups is connected at least with a global link.
- There are several possible arrangements for the global links, by default it uses the palm-tree arrangement.
+There are several possible arrangements (see [Arrangement]) for the global links, by default it uses the palm-tree arrangement (see [Palmtree]).
+
 The canonic dimensions (the CanonicDragonfly name has been deprecated) are
 * to have as many global links as links to servers in each router,
 * to have in each group the double number of routers than links to a server in a router (this point is taken by default if not given),
 * to have a unique global link joining each pair of groups,
 * and to have a unique local link joining each pair of router in the same group.
-For the palm-tree arrangement we refer to the doctoral thesis of Marina García.
 
-For the palmtree arrangement exteded to other size ratios and the [Dragonfly2ColorsRouting] routing see
-Cristóbal Camarero, Enrique Vallejo, and Ramón Beivide. 2014. Topological Characterization of Hamming and Dragonfly Networks and Its Implications on Routing. ACM Trans. Archit. Code Optim. 11, 4, Article 39 (January 2015), 25 pages. <https://doi.org/10.1145/2677038>
+For the palm-tree arrangement  we refer to the doctoral thesis of Marina García.
+
+For the palmtree arrangement extended to other size ratios and the [Dragonfly2ColorsRouting] routing see this paper[^paper].
+
+
+[^paper]: Cristóbal Camarero, Enrique Vallejo, and Ramón Beivide. 2014. Topological Characterization of Hamming and Dragonfly Networks and Its Implications on Routing. ACM Trans. Archit. Code Optim. 11, 4, Article 39 (January 2015), 25 pages. <https://doi.org/10.1145/2677038>
 
 Example configuration:
 ```ignore

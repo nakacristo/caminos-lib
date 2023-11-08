@@ -724,14 +724,30 @@ File{
 ```
 
 ## Dragonfly networks.
-The `global_ports_per_router` was denotated `h` in the original article of the [Dragonfly]. It is only included the case with groups of size `a=2h` and `g=ah+1` groups. The number of servers per router can be varied, but recommended to the same value as `global_ports_per_router`. Only the palm-tree arrangment of global links is currently supported.
+The `global_ports_per_router` was denotated `h` in the original article of the [Dragonfly].
+The number of servers per router can be varied, but recommended to the same value as `global_ports_per_router`.
+By default use the palm-tree arrangement (see [Palmtree](dragonfly::Palmtree)) of global links,
+but it can be changed to a random arrangement (see [RandomArrangement](dragonfly::RandomArrangement)).
+
+See [Arrangement](dragonfly::Arrangement) for more details on the arrangement of global links.
+
 ```ignore
+// Example with palm-tree arrangement (default)
 Dragonfly{
 	global_ports_per_router: 4,
 	servers_per_router: 4,
 	legend_name: "h=4 dragonfly with palm-tree global arrangement",
 }
+
+// Example with random arrangement
+Dragonfly{
+	global_ports_per_router: 4,
+	servers_per_router: 4,
+	global_arrangement: Random,
+	legend_name: "h=4 dragonfly with random global arrangement",
+}
 ```
+
 
 ## Networks built over finite fields. Only prime fields are currently supported.
 
