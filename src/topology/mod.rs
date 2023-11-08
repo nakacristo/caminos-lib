@@ -108,7 +108,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 	fn ports(&self, router_index: usize) -> usize;
 	//std::vector<std::vector<length> >* nonEdgeDistances()const;
 	//length girth()const;
-	///Iterate over the neighour routers, skipping non-connected ports and ports towards servers.
+	///Iterate over the neighbour routers, skipping non-connected ports and ports towards servers.
 	///You may want to reimplement this when implementing the trait for your type.
 	fn neighbour_router_iter<'a>(&'a self, router_index:usize) -> Box<dyn Iterator<Item=NeighbourRouterIteratorItem> + 'a>
 	{
@@ -127,14 +127,14 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 		Box::new(iterator)
 	}
 	
-	///Specific for some toologies, but must be checkable for anyone
+	///Specific for some topologies, but must be checkable for anyone
 	fn cartesian_data(&self) -> Option<&CartesianData>;
 	///Specific for some topologies, but must be checkable for anyone
 	fn coordinated_routing_record(&self, _coordinates_a:&[usize], _coordinates_b:&[usize], _rng:Option<&mut StdRng>)->Vec<i32>
 	{
 		unimplemented!()
 	}
-	///Specific for some toologies, but must be checkable for anyone
+	///Specific for some topologies, but must be checkable for anyone
 	/// Indicates if going from input_port to output_port implies a direction change. Used for the bubble routing.
 	fn is_direction_change(&self, _router_index:usize, _input_port: usize, _output_port: usize) -> bool { false }
 	///For topologies containing the so called up/down paths. Other topologies should return always `None`.
@@ -159,7 +159,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 		//Adapted from my code for other software.
 		let n=self.num_routers();
 		#[allow(non_snake_case)]
-		let mut R=vec![<usize>::max_value();n];
+		let mut R=vec![<usize>::MAX;n];
 		R[origin]=0;
 		//let mut queue=vec![0;n];
 		let queue_len=match class_weight
@@ -227,7 +227,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 						continue//next neighbour
 					}
 					let x=v[link_class];
-					if x==<usize>::max_value()
+					if x==<usize>::MAX
 					{
 						continue//next neighbour
 					}
@@ -273,7 +273,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 		//printf(">>Graph::computeDistanceMatrix\n");
 		let n=self.num_routers();
 		//Matrix<length>* matrix=new Matrix<length>(n,n);
-		let mut matrix=Matrix::constant(<usize>::max_value()/3,n,n);
+		let mut matrix=Matrix::constant(<usize>::MAX/3,n,n);
 		//vertex_index i,j,k;
 		//length x;
 		//for(i=0;i<n;i++)matrix->get(i,i)=0;
@@ -339,7 +339,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 		//{
 		//	distanceMatrix=new Matrix<length>(n,n);
 		//}
-		let maximum_length=<usize>::max_value()/3;
+		let maximum_length=<usize>::MAX/3;
 		let mut distance_matrix=Matrix::constant(maximum_length,n,n);
 		let mut amount_matrix=Matrix::constant(1,n,n);
 		//amountMinimumPathsMatrix=new Matrix<long>(n,n);
@@ -421,14 +421,14 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 		(distance_matrix,amount_matrix)
 	}
 
-	/// Find the coponents of the subtopology induced via the allowed links.
+	/// Find the components of the subtopology induced via the allowed links.
 	/// Returns vector `ret` with `ret[k]` containing the vertices in the `k`-th component.
 	fn components(&self,allowed_classes:&[bool]) -> Vec<Vec<usize>>
 	{
 		let mut r=vec![];
 		let n=self.num_routers();
 		let mut found=vec![false;n];
-		let weights:Vec<usize>=allowed_classes.iter().map(|a|if *a{1}else {<usize>::max_value()}).collect();
+		let weights:Vec<usize>=allowed_classes.iter().map(|a|if *a{1}else {<usize>::MAX}).collect();
 		for i in 0..n
 		{
 			if ! found[i]
@@ -438,7 +438,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 				let d=self.bfs(i,Some(&weights));
 				for j in 0..n
 				{
-					if i!=j && d[j]!=<usize>::max_value()
+					if i!=j && d[j]!=<usize>::MAX
 					{
 						r[rindex].push(j);
 						found[j]=true;
@@ -617,7 +617,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 		{
 			if bound!=max_link_class+1
 			{
-				println!("WARNING: quering {} link classes when the topology has {}",bound,max_link_class+1);
+				println!("WARNING: querying {} link classes when the topology has {}",bound,max_link_class+1);
 			}
 		}
 	}
@@ -679,7 +679,7 @@ Mesh{
 ```
 
 ### Torus example
-A bidimenstional [torus](Torus) of side 16. All routers have degree 4. Plus another port to connect to the server.
+A bidimensional [torus](Torus) of side 16. All routers have degree 4. Plus another port to connect to the server.
 ```ignore
 Torus{
 	sides: [16,16],
@@ -756,7 +756,10 @@ Projective{
 ```
 
 ### SlimFly.
-The [SlimFly] is the MMS (Mirka--Miller--Siran) graph. For `prime=5` it is the Hogffman--Singleton graph. Has Paley graphs as subgraph, or similar depending on whether the prime is congruent to what modulo 4. has diameter 2. Note the links in the (quasi)-Paley graph (which we can call local links) are used in a slightly different amount to the other links. This slightly reduces the delivered throughput.
+The [SlimFly] is the MMS (Mirka--Miller--Siran) graph. For `prime=5` it is the Hogffman--Singleton graph.
+Has Paley graphs as subgraph, or similar depending on whether the prime is congruent to what modulo 4. has diameter 2.
+Note the links in the (quasi)-Paley graph (which we can call local links) are used in a slightly different amount to the other links.
+This slightly reduces the delivered throughput.
 ```ignore
 SlimFly{
 	prime: 19,
