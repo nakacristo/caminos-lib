@@ -29,7 +29,7 @@ pub trait Eventful
 	///Schedule this component to be executed after `delay` cycles as soon as possible.
 	///This should include waits to synchronize with the component's internal clock.
 	///Call with 0 to schedule as soon as possible, including the current cycle.
-	///Call with 1 to schedule in a future cycle as soon as popssible.
+	///Call with 1 to schedule in a future cycle as soon as possible.
 	///Returns None if the component decides against to be scheduled. For example due to already being scheduled.
 	fn schedule(&mut self, _current_cycle:Time, delay:Time) -> Option<EventGeneration>
 	{
@@ -96,7 +96,7 @@ impl Quantifiable for Event
 }
 
 ///This is used to sort the processing of the events inside a cycle.
-///If some event occurs at Begin then its result will be visible for events at End. Specifically, we ensure that all the phits have arrived before arbitring.
+///If some event occurs at Begin then its result will be visible for events at End. Specifically, we ensure that all the phits have arrived before arbitrating.
 ///Currently at Being: phit movements and clears.
 ///Currently at End: Generics.
 pub enum CyclePosition
@@ -170,7 +170,7 @@ impl EventQueue
 	{
 		//self.event_begin_circle[self.current].clear();
 		//self.event_end_circle[self.current].clear();
-		//Better to drop the old Vec; otherwise their capcity is covering a lot of memory.
+		//Better to drop the old Vec; otherwise their capacity is covering a lot of memory.
 		self.event_begin_circle[self.current]=Vec::new();
 		self.event_end_circle[self.current]=Vec::new();
 		self.current=(self.current+1)%self.event_begin_circle.len();
@@ -240,7 +240,7 @@ impl EventQueue
 **/
 pub fn next_multiple(x:Time, divisor:Time) -> Time
 {
-	// Note `rem_euclid` is different for negative `x`. Depends on whther we use signed integers.
+	// Note `rem_euclid` is different for negative `x`. Depends on whether we use signed integers.
 	x - x.rem_euclid(divisor) + divisor
 }
 

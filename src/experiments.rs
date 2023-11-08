@@ -50,7 +50,7 @@ pub enum Action
 	Pack,
 	///Removes results. Intended to use with `--where` clauses to select the copromised experiments.
 	Discard,
-	///Executes a few cycles of each simulation, to dectect possible runtime failures.
+	///Executes a few cycles of each simulation, to detect possible runtime failures.
 	QuickTest,
 }
 
@@ -418,7 +418,7 @@ sync
 	}
 }
 
-///Options that may modifiy the performed action.
+///Options that may modify the performed action.
 #[non_exhaustive]
 #[derive(Default)]
 pub struct ExperimentOptions
@@ -1527,7 +1527,7 @@ impl<'a> Experiment<'a>
 					let silent = ! self.options.interactive.unwrap_or(true);
 					if is_merged
 					{
-						panic!("What are you doing merging and discardig simultaneously!?");
+						panic!("What are you doing merging and discarding simultaneously!?");
 					}
 					let keyboard = KeyboardInteraction{};
 					if is_packed
