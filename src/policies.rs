@@ -230,7 +230,7 @@ ShiftEntryVC
 Only allows those candidates whose vc is in the allowed list. To be used inside meta-policies.
 
 ```ignore
-AgumentVC
+ArgumentVC
 {
 	allowed: [0, 1]
 }
@@ -278,11 +278,11 @@ VOQ{
 	/// Optionally set a number of VCs to use in this policy. By default it uses a VC per destination node.
 	/// Packets to destination `dest` will use VC number `(dest % num_classes) + start_virtual_channel`.
 	//num_classes: 4,
-	/// Optionally, use the index of the destination switch instead of the destinaton server.
+	/// Optionally, use the index of the destination switch instead of the destination server.
 	switch_level: true,
 	/// Optionally, give specific policies for matching indices instead of just just such index as VC.
 	/// If this example had `num_classes=2`, then it would use the Identity policy for even destinations and the Hops policy for odd destinations.
-	/// It can be though as having a default of infinte array full of ArgumentVC whose argument equal to the array index.
+	/// It can be though as having a default of infinite array full of ArgumentVC whose argument equal to the array index.
 	// policies_override: [Identity,Hops],
 }
 ```
@@ -641,7 +641,7 @@ impl VirtualChannelPolicy for LowestSinghWeight
 		{
 			let mut best=vec![];
 			//let mut best_weight=<usize>::max_value();
-			let mut best_weight=<i32>::max_value();
+			let mut best_weight=<i32>::MAX;
 			//let mut best_weight=::std::f32::MAX;
 			//for i in 0..candidates.len()
 			//for CandidateEgress{port:p,virtual_channel:vc,label,estimated_remaining_hops} in candidates
@@ -989,7 +989,8 @@ impl VirtualChannelPolicy for LowestLabel
 	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, _info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		let mut best=vec![];
-		let mut best_label=<i32>::max_value();
+		let mut best_label=<i32>::MAX;
+
 		//for CandidateEgress{port:p,virtual_channel:vc,label,estimated_remaining_hops} in candidates
 		for candidate in candidates
 		{
@@ -1065,7 +1066,7 @@ impl VirtualChannelPolicy for LabelSaturate
 				|candidate|{
 				let label= candidate.label;
 				//label as usize <= simulation.cycle -1 - self.virtual_ports[port][virtual_channel].last_transmission
-				let new_label = ::std::cmp::max(label,self.value);
+				let new_label = std::cmp::max(label,self.value);
 				CandidateEgress{label:new_label,..candidate}
 			}).collect::<Vec<_>>()
 		}
@@ -1075,7 +1076,7 @@ impl VirtualChannelPolicy for LabelSaturate
 				|candidate|{
 				let label= candidate.label;
 				//label as usize <= simulation.cycle -1 - self.virtual_ports[port][virtual_channel].last_transmission
-				let new_label = ::std::cmp::min(label,self.value);
+				let new_label = std::cmp::min(label,self.value);
 				CandidateEgress{label:new_label,..candidate}
 			}).collect::<Vec<_>>()
 		}
@@ -1118,7 +1119,7 @@ impl LabelSaturate
 }
 
 
-///New label = old_label*multplier+summand.
+///New label = old_label*multiplier+summand.
 ///(multiplier,summand,saturate_bottom,saturate_top,minimum,maximum)
 #[derive(Debug)]
 pub struct LabelTransform
@@ -1962,7 +1963,7 @@ impl MapMessageSize
 		);
 		let policies=policies.expect("There were no policies");
 		let limits=limits.expect("There were no limits");
-		assert!(policies.len()==limits.len()+1,"In MapMessageSize the `policies` array must have one element more than `limits`, as the last range is unbounded.");
+		assert_eq!(policies.len(), limits.len() + 1, "In MapMessageSize the `policies` array must have one element more than `limits`, as the last range is unbounded.");
 		MapMessageSize{
 			policies,
 			limits,
@@ -2040,11 +2041,11 @@ VOQ{
 	/// Optionally set a number of VCs to use in this policy. By default it uses a VC per destination node.
 	/// Packets to destination `dest` will use VC number `(dest % num_classes) + start_virtual_channel`.
 	//num_classes: 4,
-	/// Optionally, use the index of the destination switch instead of the destinaton server.
+	/// Optionally, use the index of the destination switch instead of the destination server.
 	switch_level: true,
 	/// Optionally, give specific policies for matching indices instead of just just such index as VC.
 	/// If this example had `num_classes=2`, then it would use the Identity policy for even destinations and the Hops policy for odd destinations.
-	/// It can be though as having a default of infinte array full of ArgumentVC whose argument equal to the array index.
+	/// It can be though as having a default of infinite array full of ArgumentVC whose argument equal to the array index.
 	// policies_override: [Identity,Hops],
 }
 ```

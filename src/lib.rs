@@ -23,6 +23,8 @@ Alternatively, consider whether the binary crate `caminos` fits your intended us
 * All cycles are now represented by a `Time` alias of `u64`; instead of `usize`.
 * Removed methods `pending_events`, `add_pending_event`, and `clear_pending_events` from the Eventful trait in favor of the `schedule` method.
 * Router methods insert and acknowledge now return `Vec<EventGeneration>` and are responsible for their scheduling.
+* Renamed in Traffic nomenclature servers into tasks. This includes ServerTrafficState renamed into TaskTrafficState, and `server_state` into `task_state`. Old configuration names are still supported.
+* Added method `number_tasks`required for trait Traffic.
 
 ## [0.5.0] to [0.6.0]
 * Removed unnecessary generic parameter TM from routers Basic and InputOutput. They now may select [TransmissionMechanisms](router::TransmissionMechanism) to employ.
@@ -142,7 +144,7 @@ Configuration
 		degree: 10,//Number of router ports reserved to go to other routers
 		legend_name: "random 500-regular graph",//Name used on generated outputs
 	},
-	traffic: HomogeneousTraffic//Select a traffic. e.g., traffic repeating a pattern continously.
+	traffic: HomogeneousTraffic//Select a traffic. e.g., traffic repeating a pattern continuously.
 	{
 		pattern: ![//We can make a simulation for each of several patterns.
 			Uniform { legend_name:"uniform" },
@@ -161,7 +163,7 @@ Configuration
 		//Policies that filter the candidate routes given by the routing algorithm. They may be used to break deadlock or to give preference to some choices.
 		//EnforceFlowControl must be included to actually use flow control restrictions.
 		virtual_channel_policies: [ EnforceFlowControl, WideHops{width:1}, LowestSinghWeight{extra_congestion:0, extra_distance:0, aggregate_buffers:true, use_internal_space:true}, Random ],
-		delay: 0,//not actually implemted in the basic router. In the future it may be removed or actually implemented.
+		delay: 0,//not actually implemented in the basic router. In the future it may be removed or actually implemented.
 		buffer_size: 64,//phits available in each input buffer
 		bubble: false,//to enable bubble mechanism in Cartesian topologies.
 		flit_size: 16,//set to maximum_packet_size to have Virtual Cut-Through.
@@ -203,7 +205,7 @@ Configuration
 
 ## Example output description
 
-An example of output decription `main.od` is
+An example of output description `main.od` is
 ```ignore
 [
 	CSV//To generate a csv with a selection of fields
@@ -295,7 +297,7 @@ Both entries `directory_main` and `file_main` receive a `&Plugs` argument that m
 	#![allow(clippy::single_match)]
 	#![allow(clippy::let_and_return)]
 	#![allow(clippy::len_without_is_empty)]
-	// What is the more appropiate way to iterate a couple arrays of same size, while also using the index itself?
+	// What is the more appropriate way to iterate a couple arrays of same size, while also using the index itself?
 	#![allow(clippy::needless_range_loop)]
 	// I have several cases that seem cleaner without collapsing.
 	#![allow(clippy::collapsible_else_if)]
@@ -387,7 +389,7 @@ pub struct Server
 	stored_packets: VecDeque<PacketRef>,
 	///The phits of a packet being sent.
 	stored_phits: VecDeque<Rc<Phit>>,
-	/// If there is a packet currently being trasmitted, then the virtual channel requested if any.
+	/// If there is a packet currently being transmitted, then the virtual channel requested if any.
 	outcoming_virtual_channel: Option<usize>,
 	///For each message we store the number of consumed phits, until the whole message is consumed.
 	consumed_phits: BTreeMap<*const Message,usize>,
@@ -469,7 +471,7 @@ impl Server
 ///An instantiated network, with all its routers and servers.
 pub struct Network
 {
-	///The topology defining the conectivity.
+	///The topology defining the connectivity.
 	pub topology: Box<dyn Topology>,
 	//XXX The only reason to use Rc instead of Box is to make them insertable on the event queue. Perhaps the Eventful should be Box<MyRouter> instead of directly MyRouter? Or maybe storing some other kind of reference to the RefCell or the Box?
 	///TThe collection of all the routers in the network.
@@ -567,7 +569,7 @@ impl Network
 
 ///Description of common properties of sets of links.
 ///For example, the links to servers could have a different delay.
-///The topologies can set additional classes. For example, a mesh/torus can diffentiate horizontal/vertical links.
+///The topologies can set additional classes. For example, a mesh/torus can differentiate horizontal/vertical links.
 ///And a dragonfly topology can differentiate local from global links.
 #[derive(Debug,Clone)]
 pub struct LinkClass
@@ -606,7 +608,7 @@ pub struct SimulationShared
 {
 	///The current cycle, i.e, the current discrete time.
 	pub cycle:Time,
-	///The instantiated network. It constains the routers and servers connected according to the topology.
+	///The instantiated network. It contains the routers and servers connected according to the topology.
 	pub network: Network,
 	///The traffic being generated/consumed by the servers.
 	pub traffic: Box<dyn Traffic>,
@@ -634,8 +636,8 @@ impl SimulationShared
 		self.cycle % self.link_classes[link_class].frequency_divisor == 0
 	}
 	/**
-		Schedule an event to be executed at the arrival accross a link.
-		Counts both the wait for the tiem slot and the delay.
+		Schedule an event to be executed at the arrival across a link.
+		Counts both the wait for the time slot and the delay.
 	**/
 	pub fn schedule_link_arrival(&self, link_class:usize, event:Event) -> EventGeneration
 	{
@@ -659,7 +661,7 @@ pub struct SimulationMut
 	pub rng: StdRng,
 }
 
-///The object represeting the whole simulation.
+///The object representing the whole simulation.
 pub struct Simulation<'a>
 {
 	///The whole parsed configuration.
@@ -677,7 +679,7 @@ pub struct Simulation<'a>
 	///Cycles of measurement
 	pub measured: Time,
 	///Maximum number of messages for generation to store in each server. Its default value is 20 messages.
-	///Attemps to generate traffic that fails because of the limit are tracked into the `missed_generations` statistic.
+	///Attempts to generate traffic that fails because of the limit are tracked into the `missed_generations` statistic.
 	///Note that packets are not generated until it is the turn for the message to be sent to a router.
 	pub server_queue_size: usize,
 	///The queue of events guiding the simulation.
@@ -797,7 +799,7 @@ impl<'a> Simulation<'a>
 		let num_routers=topology.num_routers();
 		let num_servers=topology.num_servers();
 		//let routers: Vec<Rc<RefCell<dyn Router>>>=(0..num_routers).map(|index|new_router(index,router_cfg,plugs,topology.as_ref(),maximum_packet_size)).collect();
-		let routers: Vec<Rc<RefCell<dyn Router>>>=(0..num_routers).map(|index|new_router(router::RouterBuilderArgument{
+		let routers: Vec<Rc<RefCell<dyn Router>>>=(0..num_routers).map(|index|new_router(RouterBuilderArgument{
 			router_index:index,
 			cv:router_cfg,
 			plugs,
@@ -1754,7 +1756,7 @@ impl Plugs
 
 impl Debug for Plugs
 {
-	fn fmt(&self,f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error>
+	fn fmt(&self,f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error>
 	{
 		write!(f,"{};",self.routers.keys().map(|s|s.to_string()).collect::<Vec<String>>().join(","))?;
 		write!(f,"{};",self.topologies.keys().map(|s|s.to_string()).collect::<Vec<String>>().join(","))?;
@@ -1769,7 +1771,7 @@ impl Debug for Plugs
 
 /// Main when passed a configuration file as path
 /// `file` must be a configuration file with the experiment to simulate.
-/// `plugs` constains the plugged builder functions.
+/// `plugs` contains the plugged builder functions.
 /// `result_file` indicates where to write the results.
 /// `free_args` are free arguments. Those of the form `path=value` are used to override configurations.
 pub fn file_main(file:&mut File, plugs:&Plugs, mut results_file:Option<File>,free_args:&[String]) -> Result<(),Error>
@@ -1851,7 +1853,7 @@ pub fn file_main(file:&mut File, plugs:&Plugs, mut results_file:Option<File>,fre
 
 /// Main when passed a directory as path
 /// `path` must be a directory containing a `main.cfg`.
-/// `plugs` constains the plugged builder functions.
+/// `plugs` contains the plugged builder functions.
 /// `action` is the action to be performed in the experiment. For example running the simulations or drawing graphics.
 /// `options` encapsulate other parameters such as restricting the performed action to a range of simulations.
 //pub fn directory_main(path:&Path, binary:&str, plugs:&Plugs, option_matches:&Matches)
@@ -2089,7 +2091,7 @@ pub fn special_export(args: &str, plugs:&Plugs)
 		}
 		std_rng_seed
 	});
-	let topology = topology::new_topology(topology::TopologyBuilderArgument{cv:&topology_cfg,plugs,rng:&mut rng});
+	let topology = new_topology(TopologyBuilderArgument{cv:&topology_cfg,plugs,rng:&mut rng});
 	let mut topology_file=File::create(&filename).expect("Could not create topology file");
 	topology.write_adjacencies_to_file(&mut topology_file,format).expect("Failed writing topology to file");
 }

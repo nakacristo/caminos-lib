@@ -11,7 +11,7 @@ use crate::event::Time;
 use crate::{error,source_location};
 use crate::error::*;
 
-///Given a list of vectors, `[A1,A2,A3,A4,...]`, `Ai` beging a `Vec<T>` and second vector `b:&Vec<T>=[b1,b2,b3,b4,...]`, each `bi:T`.
+///Given a list of vectors, `[A1,A2,A3,A4,...]`, `Ai` being a `Vec<T>` and second vector `b:&Vec<T>=[b1,b2,b3,b4,...]`, each `bi:T`.
 ///It creates a list of vectors with each combination Ai+bj.
 #[allow(dead_code)]
 fn vec_product<T:Clone>(a:&[Vec<T>],b:&[T]) -> Vec<Vec<T>>
@@ -1756,7 +1756,7 @@ pub fn config_relaxed_cmp(a:&ConfigurationValue, b:&ConfigurationValue) -> bool
 }
 
 
-/// match arms agains the keys of an object
+/// match arms against the keys of an object
 /// first argument, `$cv:expr`, is the ConfigurationValue expected to be the object
 /// second argument, `$name:literal`, is the name the Object should have.
 /// third argument, `$valueid:ident`, is the variable name capturing the value in the object's elements
@@ -1997,7 +1997,7 @@ impl ConfigurationValue
 	}
 	/**
 	A formatter for terminal session.
-	`nesting` is the number of identations or levels through to the current point.
+	`nesting` is the number of indentations or levels through to the current point.
 	**/
 	pub fn format_terminal_nesting(&self, nesting:u32) -> String
 	{
@@ -2087,7 +2087,7 @@ impl ConfigurationValue
 	}
 	/**
 	A formatter for terminal session.
-	`nesting` is the number of identations or levels through to the current point.
+	`nesting` is the number of indentations or levels through to the current point.
 	**/
 	pub fn format_latex_nesting(&self, nesting:u32) -> String
 	{
@@ -2489,7 +2489,7 @@ mod tests {
 		]);
 		assert_eq!(flatten_configuration_value(&original),target);
 	}
-	//FIXME: What is even the intentended behaviour??
+	//FIXME: What is even the intended behaviour??
 	//#[test]
 	//fn flatten_test_nestarray_named_over_anonymous()
 	//{

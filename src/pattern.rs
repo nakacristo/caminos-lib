@@ -1,6 +1,6 @@
 /*!
 
-A Pattern defines the way elements select their destinations.
+A [Pattern] defines the way elements select their destinations.
 
 see [`new_pattern`](fn.new_pattern.html) for documentation on the configuration syntax of predefined patterns.
 
@@ -25,23 +25,23 @@ pub mod prelude
 }
 
 ///A `Pattern` describes how a set of entities decides destinations into another set of entities.
-///The entities are initially servers, but after some operators it may mean router, rows/columns, or other agrupations.
+///The entities are initially servers, but after some operators it may mean router, rows/columns, or other groupings.
 ///The source and target set may be or not be the same. Or even be of different size.
 ///Thus, a `Pattern` is a generalization of the mathematical concept of function.
 pub trait Pattern : Quantifiable + std::fmt::Debug
 {
 	//Indices are either servers or virtual things.
 	///Fix the input and output size, providing the topology and random number generator.
-	///Careful with using toology in sub-patterns. For example, it may be misleading to use the dragonfly topology when
-	///building a pattern among groups or a pattern among the ruters of a single group.
+	///Careful with using topology in sub-patterns. For example, it may be misleading to use the dragonfly topology when
+	///building a pattern among groups or a pattern among the routers of a single group.
 	///Even just a pattern of routers instead of a pattern of servers can lead to mistakes.
 	///Read the documentation of the traffic or meta-pattern using the pattern to know what its their input and output.
 	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng);
-	///Obtain a destination of a source. This will be called repeteadly as the traffic requires destination for its messages.
+	///Obtain a destination of a source. This will be called repeatedly as the traffic requires destination for its messages.
 	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize;
 }
 
-///The argument to a builder funtion of patterns.
+///The argument to a builder function of patterns.
 #[derive(Debug)]
 pub struct PatternBuilderArgument<'a>
 {
@@ -63,7 +63,7 @@ impl<'a> PatternBuilderArgument<'a>
 }
 
 
-/**Build a new pattern. Patterns are maps between two sets which may depend on the RNG. Generally over the whole set of servers, but sometimes among routers or groups. Check the domentation of the parent Traffic/Permutation for its interpretation.
+/**Build a new pattern. Patterns are maps between two sets which may depend on the RNG. Generally over the whole set of servers, but sometimes among routers or groups. Check the documentation of the parent Traffic/Permutation for its interpretation.
 
 ## Roughly uniform patterns
 
@@ -116,7 +116,7 @@ UniformDistance{
 ```
 
 ### RestrictedMiddleUniform
-[RestrictedMiddleUniform] is a pattern in which the destinations are randomly sampled from the destinations for which there are some middle router satisfying some criteria. Note this is only a pattern, the actual packet route does not have to go throught such middle router.
+[RestrictedMiddleUniform] is a pattern in which the destinations are randomly sampled from the destinations for which there are some middle router satisfying some criteria. Note this is only a pattern, the actual packet route does not have to go through such middle router.
 It has the same implicit concentration scaling as UniformDistance, allowing building a pattern over a multiple of the number of switches.
 
 Example configuration:
@@ -160,7 +160,7 @@ RandomInvolution{
 In [FixedRandom] each source has an independent unique destination. By the "birthday paradox" we can expect several sources to share a destination, causing incast contention.
 
 ### FileMap
-With [FileMap] a map is read from a file. Each elment has a unique destination.
+With [FileMap] a map is read from a file. Each element has a unique destination.
 ```ignore
 FileMap{
 	/// Note this is a string literal.
@@ -170,7 +170,7 @@ FileMap{
 ```
 
 ### CartesianTransform
-With [CartesianTransform] the nodes are seen as in a n-dimensional orthohedra. Then it applies several transformations. When mapping directly servers it may be useful to use as `sides[0]` the number of servers per router.
+With [CartesianTransform] the nodes are seen as in a n-dimensional orthohedro. Then it applies several transformations. When mapping directly servers it may be useful to use as `sides[0]` the number of servers per router.
 ```ignore
 CartesianTransform{
 	sides: [4,8,8],
@@ -293,7 +293,7 @@ IndependentRegions{
 Example building a cycle in random order.
 ```ignore
 RemappedNodes{
-	/// The underlaying pattern to be used.
+	/// The underlying pattern to be used.
 	pattern: Circulant{generators:[1]},
 	/// The pattern defining the relabelling.
 	map: RandomPermutation,
@@ -485,7 +485,7 @@ impl RandomPermutation
 ///Build a random involution on initialization, which is then kept constant.
 ///An involution is a permutation that is a pairing/matching; if `a` is the destination of `b` then `b` is the destination of `a`.
 ///It will panic if given an odd size.
-///See `Randompermutation`.
+///See [RandomPermutation].
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct RandomInvolution
@@ -511,8 +511,8 @@ impl Pattern for RandomInvolution
 		//		//Look for a partner
 		//	}
 		//}
-		assert!(source_size%2==0);
-		//Todo: annotate this weird algotihm.
+		assert_eq!(source_size % 2, 0);
+		//Todo: annotate this weird algorithm.
 		let iterations=source_size/2;
 		let mut max=2;
 		for _iteration in 0..iterations
@@ -711,7 +711,7 @@ impl ProductPattern
 }
 
 ///Divide the topology according to some given link classes, considering the graph components if the other links were removed.
-///Then apply the `global_pattern` among the components and select randomly inside the destination comonent.
+///Then apply the `global_pattern` among the components and select randomly inside the destination component.
 ///Note that this uses the topology and will cause problems if used as a sub-pattern.
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -866,7 +866,7 @@ impl Pattern for CartesianTransform
 	{
 		if source_size!=target_size
 		{
-			panic!("In a Cartesiantransform source_size({}) must be equal to target_size({}).",source_size,target_size);
+			panic!("In a CartesianTransform source_size({}) must be equal to target_size({}).",source_size,target_size);
 		}
 		if source_size!=self.cartesian_data.size
 		{
@@ -1232,8 +1232,8 @@ impl Pattern for CartesianTiling
 	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		let factor: usize = self.repetitions.iter().product();
-		assert!(source_size % factor == 0);
-		assert!(target_size % factor == 0);
+		assert_eq!(source_size % factor, 0);
+		assert_eq!(target_size % factor, 0);
 		let base_source_size = source_size / factor;
 		let base_target_size = target_size / factor;
 		self.pattern.initialize(base_source_size,base_target_size,topology,rng);
@@ -1273,7 +1273,7 @@ impl CartesianTiling
 		let sides=sides.expect("There were no sides");
 		let repetitions=repetitions.expect("There were no repetitions");
 		let n=sides.len();
-		assert!(n==repetitions.len());
+		assert_eq!(n, repetitions.len());
 		let final_sides : Vec<_> = (0..n).map(|index|sides[index]*repetitions[index]).collect();
 		CartesianTiling{
 			pattern,
@@ -1285,22 +1285,28 @@ impl CartesianTiling
 }
 
 
-///The pattern resulting of composing a list of patterns.
-///`destination=patterns[len-1]( patterns[len-2] ( ... (patterns[1] ( patterns[0]( origin ) )) ) )`.
+/**
+The pattern resulting of composing a list of patterns.
+`destination=patterns[len-1]( patterns[len-2] ( ... (patterns[1] ( patterns[0]( origin ) )) ) )`.
+The intermediate sizes along the composition can be stated by `middle_sizes`, otherwise they are set equal to the `target_size` of the whole.
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Composition
 {
 	patterns: Vec<Box<dyn Pattern>>,
+	middle_sizes: Vec<usize>,
 }
 
 impl Pattern for Composition
 {
 	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
-		for pattern in self.patterns.iter_mut()
+		for (index,pattern) in self.patterns.iter_mut().enumerate()
 		{
-			pattern.initialize(source_size,target_size,topology,rng);
+			let current_source = if index==0 { source_size } else { *self.middle_sizes.get(index-1).unwrap_or(&target_size) };
+			let current_target = *self.middle_sizes.get(index).unwrap_or(&target_size);
+			pattern.initialize(current_source,current_target,topology,rng);
 		}
 	}
 	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
@@ -1319,13 +1325,18 @@ impl Composition
 	fn new(arg:PatternBuilderArgument) -> Composition
 	{
 		let mut patterns=None;
+		let mut middle_sizes=None;
 		match_object_panic!(arg.cv,"Composition",value,
 			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
 				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+			"middle_sizes" => middle_sizes = Some(value.as_array().expect("bad value for middle_sizes").iter()
+				.map(|v|v.as_usize().expect("bad value for middle_sizes")).collect()),
 		);
 		let patterns=patterns.expect("There were no patterns");
+		let middle_sizes = middle_sizes.unwrap_or_else(||vec![]);
 		Composition{
 			patterns,
+			middle_sizes,
 		}
 	}
 }
@@ -1472,7 +1483,7 @@ impl Pattern for CartesianFactorDimension
 				up_origin[f] = (up_origin[f]+ factor) % self.cartesian_data.sides[f];
 				break;
 			}
-			factor = (factor / self.cartesian_data.sides[f]) as usize;
+			factor = factor / self.cartesian_data.sides[f];
 		}
 		let destination = self.cartesian_data.pack(&up_origin); //.iter().zip(self.factors.iter()).map(|(&coord,&f)|coord as f64 * f).sum::<f64>() as usize;
 
@@ -1802,8 +1813,8 @@ impl Pattern for UniformDistance
 	{
 		let n= if self.switch_level { topology.num_routers() } else { topology.num_servers() };
 		//assert!(n==source_size && n==target_size,"The UniformDistance pattern needs source_size({})==target_size({})==num_routers({})",source_size,target_size,n);
-		assert!(source_size==target_size,"The UniformDistance pattern needs source_size({})==target_size({})",source_size,target_size);
-		assert!(source_size%n == 0,"The UniformDistance pattern needs the number of {}({}) to be a divisor of source_size({})",if self.switch_level { "routers" } else { "servers" },n,source_size);
+		assert_eq!(source_size, target_size, "The UniformDistance pattern needs source_size({})==target_size({})", source_size, target_size);
+		assert_eq!(source_size % n, 0, "The UniformDistance pattern needs the number of {}({}) to be a divisor of source_size({})", if self.switch_level { "routers" } else { "servers" }, n, source_size);
 		self.concentration = source_size/n;
 		self.pool.reserve(n);
 		for i in 0..n
@@ -1856,7 +1867,7 @@ impl UniformDistance
 			distance,
 			switch_level,
 			concentration:0,//to be filled on initialization
-			pool: vec![],//to be filled oninitialization
+			pool: vec![],//to be filled on initialization
 		}
 	}
 }
@@ -1881,7 +1892,7 @@ impl Pattern for FixedRandom
 		let rng= self.opt_rng.as_mut().unwrap_or(rng);
 		for source in 0..source_size
 		{
-			// To avoid selecting self we substract 1 from the total. If the random falls in the latter half we add it again.
+			// To avoid selecting self we subtract 1 from the total. If the random falls in the latter half we add it again.
 			let n = if self.allow_self || target_size<source { target_size } else { target_size -1 };
 			let mut elem = rng.gen_range(0..n);
 			if !self.allow_self && elem>=source
@@ -1910,7 +1921,7 @@ impl FixedRandom
 			"allow_self" => allow_self=value.as_bool().expect("bad value for allow_self"),
 		);
 		FixedRandom{
-			map: vec![],//to be intializated
+			map: vec![],//to be initialized
 			allow_self,
 			opt_rng,
 		}
@@ -1966,7 +1977,7 @@ impl Pattern for IndependentRegions
 {
 	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
-		assert!(source_size==target_size, "source_size and target_size must be equal in IndependentRegions.");
+		assert_eq!(source_size, target_size, "source_size and target_size must be equal in IndependentRegions.");
 		if !self.relative_sizes.is_empty()
 		{
 			assert!(self.sizes.is_empty(),"Cannot set both sizes and relative_sizes in IndependentRegions.");
@@ -1978,7 +1989,7 @@ impl Pattern for IndependentRegions
 			//TODO: Is this guaranteed to sum correctly??
 			self.sizes = proportional_vec_with_sum(&self.relative_sizes,source_size);
 		}
-		assert!(self.sizes.iter().sum::<usize>()==source_size,"IndependentRegions sizes {:?} do not add up to the source_size {}",self.sizes,source_size);
+		assert_eq!(self.sizes.iter().sum::<usize>(), source_size, "IndependentRegions sizes {:?} do not add up to the source_size {}", self.sizes, source_size);
 		for region_index in 0..self.patterns.len()
 		{
 			let size = self.sizes[region_index];
@@ -2022,7 +2033,7 @@ impl IndependentRegions
 		assert!( !matches!(sizes,None) || !matches!(relative_sizes,None), "Must set one of sizes or relative_sizes." );
 		let sizes = sizes.unwrap_or_else(||Vec::new());
 		let relative_sizes = relative_sizes.unwrap_or_else(||Vec::new());
-		assert!(patterns.len()==sizes.len().max(relative_sizes.len()),"Different number of entries in IndependentRegions.");
+		assert_eq!(patterns.len(), sizes.len().max(relative_sizes.len()), "Different number of entries in IndependentRegions.");
 		IndependentRegions{
 			patterns,
 			sizes,
@@ -2035,7 +2046,7 @@ impl IndependentRegions
 
 /**
 A pattern in which the destinations are randomly sampled from the destinations for which there are some middle router satisfying
-some criteria. Note this is only a pattern, the actual packet route does not have to go throught such middle router.
+some criteria. Note this is only a pattern, the actual packet route does not have to go through such middle router.
 It has the same implicit concentration scaling as UniformDistance, allowing building a pattern over a multiple of the number of switches.
 
 Example configuration:
@@ -2080,8 +2091,8 @@ impl Pattern for RestrictedMiddleUniform
 	{
 		let n= if self.switch_level { topology.num_routers() } else { topology.num_servers() };
 		//assert!(n==source_size && n==target_size,"The RestrictedMiddleUniform pattern needs source_size({})==target_size({})==num_routers({})",source_size,target_size,n);
-		assert!(source_size==target_size,"The RestrictedMiddleUniform pattern needs source_size({})==target_size({})",source_size,target_size);
-		assert!(source_size%n == 0,"The RestrictedMiddleUniform pattern needs the number of {}({}) to be a divisor of source_size({})",if self.switch_level { "routers" } else { "servers" },n,source_size);
+		assert_eq!(source_size, target_size, "The RestrictedMiddleUniform pattern needs source_size({})==target_size({})", source_size, target_size);
+		assert_eq!(source_size % n, 0, "The RestrictedMiddleUniform pattern needs the number of {}({}) to be a divisor of source_size({})", if self.switch_level { "routers" } else { "servers" }, n, source_size);
 		self.concentration = source_size/n;
 		self.pool.reserve(n);
 		let middle_min = self.minimum_index.unwrap_or(0);
@@ -2192,7 +2203,7 @@ pub struct Circulant
 	//config:
 	///The generators to be employed.
 	pub generators: Vec<i32>,
-	//intialized:
+	//initialized:
 	///The size of the destinations set, captured at initialization.
 	pub size: i32,
 }
@@ -2271,13 +2282,13 @@ impl RestrictedMiddleUniform
 			else_pattern,
 			switch_level,
 			concentration:0,//to be filled on initialization
-			pool: vec![],//to be filled oninitialization
+			pool: vec![],//to be filled on initialization
 		}
 	}
 }
 
 /**
-Maps from a block into another following the natural embedding, keeping the corrdinates of every node.
+Maps from a block into another following the natural embedding, keeping the coordinates of every node.
 Both block must have the same number of dimensions, and each dimension should be greater at the destination than at the source.
 This is intended to be used to place several small applications in a larger machine.
 It can combined with [CartesianTransform] to be placed at an offset, to set a stride, or others.
@@ -2303,11 +2314,11 @@ impl Pattern for CartesianEmbedding
 	{
 		if source_size!=self.source_cartesian_data.size
 		{
-			panic!("Source sizes do not agree on CartesianEmbedding.");
+			panic!("Source sizes do not agree on CartesianEmbedding. source_size={source_size}, source_sides={sides:?}",source_size=source_size,sides=self.source_cartesian_data.sides);
 		}
 		if target_size!=self.destination_cartesian_data.size
 		{
-			panic!("Detination sizes do not agree on CartesianEmbedding.");
+			panic!("Destination sizes do not agree on CartesianEmbedding. target_size={target_size}, destinations_sides={sides:?}",target_size=target_size,sides=self.destination_cartesian_data.sides);
 		}
 	}
 	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
@@ -2350,7 +2361,7 @@ impl CartesianEmbedding
 }
 
 /**
-Select a block in source/destination sets to send traffic according to a pattern and the remainder according to another. The `uncut_sides` paarmeter define a large block that may be the whole set, otherwise discarding elements from the end. The `cut_sides` paraemeter defines a subblock embedded in the former. This defines two sets of nodes: the ones in the subblock and the rest. A pattern can be provided for each of these two sets. It is possible to specify offsets and strides for the subblock.
+Select a block in source/destination sets to send traffic according to a pattern and the remainder according to another. The `uncut_sides` parameter define a large block that may be the whole set, otherwise discarding elements from the end. The `cut_sides` parameter defines a subblock embedded in the former. This defines two sets of nodes: the ones in the subblock and the rest. A pattern can be provided for each of these two sets. It is possible to specify offsets and strides for the subblock.
 
 For example, in a network with 150 servers we could do the following to see it as a `[3,10,5]` block with an `[3,4,3]` block embedded in it. The small block of 36 server selects destinations randomly inside it. The rest of the network, `150-36=114` servers also send randomly among themselves. No message is send between those two sets. The middle dimension has offset 1, so coordinates `[x,0,z]` are out of the small block. It has also stride 2, so it only includes odd `y` coordinates. More precisely, it includes those `[x,y,z]` with any `x`, `z<3`, and `y=2k+1` for `k<4`.
 ```ignore
@@ -2499,7 +2510,7 @@ impl CartesianCut
 
 /**
 Apply some other [Pattern] over a set of nodes whose indices have been remapped according to a [Pattern]-given permutation.
-A source `x` chooses as destination `map(pattern(invmap(x)))`, where `map` is the given permutation, `invmap` its inverse and `pattern` is the underlaying pattern to apply. In other words, if `pattern(a)=b`, then destination of `map(a)` is set to `map(b)`. It can be seen as a [Composition] that manages building the inverse map.
+A source `x` chooses as destination `map(pattern(invmap(x)))`, where `map` is the given permutation, `invmap` its inverse and `pattern` is the underlying pattern to apply. In other words, if `pattern(a)=b`, then destination of `map(a)` is set to `map(b)`. It can be seen as a [Composition] that manages building the inverse map.
 
 Remapped nodes requires source and destination to be of the same size. The pattern creating the map is called once and must result in a permutation, as to be able to make its inverse.
 
@@ -2508,7 +2519,7 @@ For a similar operation on other types see [RemappedServersTopology](crate::topo
 Example building a cycle in random order.
 ```ignore
 RemappedNodes{
-	/// The underlaying pattern to be used.
+	/// The underlying pattern to be used.
 	pattern: Circulant{generators:[1]},
 	/// The pattern defining the relabelling.
 	map: RandomPermutation,
@@ -2678,7 +2689,7 @@ mod tests {
 			let mut without_self = FixedRandom::new(arg);
 			without_self.initialize(size,size,&*dummy_topology,&mut rng);
 			let count = (0..size).filter( |&origin| origin==without_self.get_destination(origin,&*dummy_topology,&mut rng) ).count();
-			assert!(count==0, "Got {} selfs at size {}.", count, size );
+			assert_eq!(count, 0, "Got {} selfs at size {}.", count, size);
 		}
 	}
 }
