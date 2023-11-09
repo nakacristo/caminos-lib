@@ -332,6 +332,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"CartesianFactorDimension" => Box::new(CartesianFactorDimension::new(arg)),
 			"Hotspots" => Box::new(Hotspots::new(arg)),
 			"RandomMix" => Box::new(RandomMix::new(arg)),
+			"RoundRobinMix" => Box::new(RoundRobinMix::new(arg)),
 			"ConstantShuffle" =>
 			{
 				println!("WARNING: the name ConstantShuffle is deprecated, use GloballyShufflingDestinations");
@@ -1642,6 +1643,65 @@ impl RandomMix
 		}
 	}
 }
+
+
+/// Use either of several patterns, with probability proportional to a weight.
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct RoundRobinMix
+{
+	///The patterns in the pool to be selected.
+	patterns: Vec<Box<dyn Pattern>>,
+	///Pending destinations.
+	pending: RefCell<Vec<usize>>,
+}
+
+impl Pattern for RoundRobinMix
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+
+		if self.patterns.is_empty()
+		{
+			panic!("RoundRobinMix requires at least one pattern (and 2 to be sensible).");
+		}
+		for pat in self.patterns.iter_mut()
+		{
+			pat.initialize(source_size,target_size,topology,rng);
+		}
+	}
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		let mut pending = self.pending.borrow_mut();
+		if pending.is_empty()
+		{
+			for i in 0..self.patterns.len()
+			{
+				pending.push(i);
+			}
+			pending.shuffle(rng);//rand-0.8
+		}
+		self.patterns[pending.pop().unwrap()].get_destination(origin,topology,rng)
+	}
+}
+
+impl RoundRobinMix
+{
+	fn new(arg:PatternBuilderArgument) -> RoundRobinMix
+	{
+		let mut patterns=None;
+		match_object_panic!(arg.cv,"RoundRobinMix",value,
+			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+		);
+		let patterns=patterns.expect("There were no patterns");
+		RoundRobinMix{
+			patterns,
+			pending:RefCell::new(Vec::new()),//to be filled in initialization
+		}
+	}
+}
+
 
 ///It keeps a shuffled list, global for all sources, of destinations to which send. Once all have sent it is rebuilt and shuffled again.
 ///Independently of past requests, decisions or origin.
