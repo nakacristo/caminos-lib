@@ -1645,7 +1645,7 @@ impl RandomMix
 }
 
 
-/// Use either of several patterns, with probability proportional to a weight.
+/// Use either of several patterns, in a RR fashion.
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct RoundRobinMix
