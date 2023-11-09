@@ -1374,12 +1374,12 @@ impl Traffic for MultimodalBurst
 		}
 		0.0
 	}
-	fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+	fn try_consume(&mut self, task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
 	{
 		let message_ptr=message.as_ref() as *const Message;
-		if self.consume[server] > 0 {
+		if self.consume[task] > 0 {
 
-			self.consume[server] = self.consume[server]-1;
+			self.consume[task] = self.consume[task]-1;
 		}
 
 		self.generated_messages.remove(&message_ptr)
@@ -1462,7 +1462,7 @@ impl MultimodalBurst
 			tasks,
 			provenance,
 			pending: vec![each_pending;tasks],
-			consume: vec![first_consuming;servers], //init with consuming the first pattern
+			consume: vec![first_consuming;tasks], //init with consuming the first pattern
 			next_provenance:vec![0;tasks],
 			generated_messages: BTreeSet::new(),
 		}
@@ -1795,94 +1795,6 @@ impl TrafficMap
 			number_tasks,
 			map,
 			generated_messages: BTreeMap::new(),
-		}
-	}
-}
-
-		// Get the origin of the message (the app) from the base map
-		let app_origin = self.from_machine_to_app[origin];
-
-		// generate the message from the application
-		let message = self.application.generate_message(app_origin, cycle, topology, rng);
-
-		// get the destination of the message (the app) from the base map
-		let app_destination = self.map.get_destination(app_origin, topology, rng);
-
-		// get the destination of the message (the machine) from the base map
-		let machine_destination = self.from_app_to_machine[app_destination];
-
-		// build the message
-		let message = Rc::new(Message{
-			origin,
-			destination: machine_destination.expect("There was no destination for the message"),
-			size: message.unwrap().size,
-			creation_cycle: message.unwrap().creation_cycle,
-		});
-
-		Ok(message)
-	}
-
-	fn probability_per_cycle(&self, server: usize) -> f32
-	{
-		// The probability of a server is the same as the probability of the server in the application
-		self.application.probability_per_cycle(server)
-	}
-
-	fn try_consume(&mut self, server: usize, message: Rc<Message>, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool
-	{
-		self.application.try_consume(server, message, cycle, topology, rng)
-	}
-
-	fn is_finished(&self) -> bool
-	{
-		self.application.is_finished()
-	}
-
-	fn server_state(&self, server: usize, cycle: Time) -> ServerTrafficState
-	{
-		self.application.server_state(server, cycle)
-	}
-}
-
-
-impl TrafficMap
-{
-	pub fn new(mut arg:TrafficBuilderArgument) -> TrafficMap
-	{
-		let mut application = None;
-		let mut map = None;
-		match_object_panic!(arg.cv,"TrafficMap",value,
-			"application" => application = Some(new_traffic(TrafficBuilderArgument{cv:value,rng:&mut arg.rng,..arg})),
-			"map" => map = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
-		);
-
-		let application = application.expect("There were no application in configuration of TrafficMap.");
-		let mut map = map.expect("There were no map in configuration of TrafficMap.");
-
-		let n = arg.topology.num_servers();
-
-		map.initialize(n, n, arg.topology, arg.rng);
-
-		let mut from_machine_to_app: Vec<_> = (0..n).map(|inner_origin| {
-			map.get_destination(inner_origin, arg.topology, arg.rng)
-		}).collect();
-
-		let mut from_app_to_machine = vec![None; n];
-		for (origin, &destination) in from_machine_to_app.iter().enumerate()
-		{
-			match from_app_to_machine[destination]
-			{
-				None => from_app_to_machine[destination] = Some(origin),
-				Some(already_mapped) => panic!("Two origins map to the same destination: {} and {}", already_mapped, origin),
-			}
-		}
-
-		TrafficMap
-		{
-			from_machine_to_app,
-			from_app_to_machine,
-			application,
-			map
 		}
 	}
 }
