@@ -35,6 +35,9 @@ pub enum SumRoutingPolicy
 	///At every hop of the first routing give the possibility to use the second routing from the current router towards the target router.
 	///once a hop exclussive to the second routing is given continues that way.
 	EscapeToSecond,
+	///The first routing give the possibility to use the second routing from the current router towards the target router until conditions are met.
+	///once a hop exclussive to the second routing is given continues that way.
+	RestrictedEscapeToSecond,
 }
 
 pub fn new_sum_routing_policy(cv: &ConfigurationValue) -> SumRoutingPolicy
@@ -48,6 +51,7 @@ pub fn new_sum_routing_policy(cv: &ConfigurationValue) -> SumRoutingPolicy
 			"Stubborn" => SumRoutingPolicy::Stubborn,
 			"StubbornWhenSecond" => SumRoutingPolicy::StubbornWhenSecond,
 			"SecondWhenFirstEmpty" => SumRoutingPolicy::SecondWhenFirstEmpty,
+			"RestrictedEscapeToSecond" => SumRoutingPolicy::RestrictedEscapeToSecond,
 			"EscapeToSecond" => SumRoutingPolicy::EscapeToSecond,
 			_ => panic!("Unknown sum routing policy {}",cv_name),
 		}
@@ -76,6 +80,8 @@ pub struct SumRouting
 	enabled_statistics: bool,
 	//when capturing statistics track the hops of each kind.
 	tracked_hops: RefCell<[i64;2]>,
+	//link_restrictions
+	link_restrictions: Vec<usize>,
 }
 
 //routin_info.selections uses
@@ -183,7 +189,7 @@ impl Routing for SumRouting
 		{
 			SumRoutingPolicy::Random => vec![rng.gen_range(0..2)],
 			SumRoutingPolicy::TryBoth | SumRoutingPolicy::Stubborn | SumRoutingPolicy::StubbornWhenSecond
-			| SumRoutingPolicy::SecondWhenFirstEmpty | SumRoutingPolicy::EscapeToSecond => vec![0,1],
+			| SumRoutingPolicy::SecondWhenFirstEmpty | SumRoutingPolicy::EscapeToSecond | SumRoutingPolicy::RestrictedEscapeToSecond => vec![0,1],
 		};
 		let mut bri=routing_info.borrow_mut();
 		//bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
@@ -198,6 +204,7 @@ impl Routing for SumRouting
 	}
 	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
 	{
+		let (_router_location,link_class) = topology.neighbour(current_router, current_port);
 		use SumRoutingPolicy::*;
 		let mut bri=routing_info.borrow_mut();
 		if self.enabled_statistics
@@ -261,6 +268,13 @@ impl Routing for SumRouting
 				};
 			}
 		}
+		// if link class is contained in self.link_restrictions vector, then we remove the second routing option if the policy is RestrictedEscapeToSecond
+		match self.policy
+        {
+			SumRoutingPolicy::RestrictedEscapeToSecond =>  if self.link_restrictions.contains(&link_class) { cs = vec![cs[0]]; } ,
+            _ =>(),
+        }
+
 		bri.selections=Some(cs);
 	}
 	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
@@ -351,6 +365,7 @@ impl SumRouting
 		let mut second_extra_label=0i32;
 		let mut same_port_extra_label= 0i32;
 		let mut enabled_statistics=false;
+		let mut link_restrictions= vec![];
 		match_object_panic!(arg.cv,"Sum",value,
 			"policy" => policy=Some(new_sum_routing_policy(value)),
 			"first_routing" => first_routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
@@ -365,6 +380,8 @@ impl SumRouting
 			"second_extra_label" => second_extra_label = value.as_f64().expect("bad value for second_extra_label") as i32,
 			"same_port_extra_label" => same_port_extra_label = value.as_f64().expect("bad value for second_extra_label") as i32,
 			"enabled_statistics" => enabled_statistics = value.as_bool().expect("bad value for enabled_statistics"),
+			"link_restrictions" => link_restrictions = value.as_array().expect("bad value for link_restrictions").iter()
+                .map(|v|v.as_f64().expect("bad value in link_restrictions") as usize).collect(),
 		);
 		let policy=policy.expect("There were no policy");
 		let first_routing=first_routing.expect("There were no first_routing");
@@ -384,6 +401,7 @@ impl SumRouting
 			extra_label: [first_extra_label, second_extra_label, same_port_extra_label],
 			enabled_statistics,
 			tracked_hops: RefCell::new([0,0]),
+			link_restrictions,
 		}
 	}
 }
