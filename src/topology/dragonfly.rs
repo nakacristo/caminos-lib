@@ -520,6 +520,7 @@ pub fn new_arrangement(arg:ArrangementBuilderArgument) -> Box<dyn Arrangement>
 
 
 use crate::routing::prelude::*;
+use crate::routing::{RoutingAnnotation, SumRoutingPolicy};
 
 /**
 With the switches colored in {0,1} with a global arrangement such that global links connect only switches of the same color, the global link is labelled by that color.
@@ -664,73 +665,6 @@ impl Dragonfly2ColorsRouting
 		// this works for palmtree. It would be better to have generally working code.
 		let x = if switch_local*2 < size.group_size { switch_local } else { size.group_size-1 - switch_local };
 		(x % 2).try_into().unwrap()
-	}
-}
-
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use rand::SeedableRng;
-	#[test]
-	fn palmtree_valid()
-	{
-		let mut palmtree = Palmtree::default();
-		let mut rng = StdRng::seed_from_u64(0);
-		//let size = ArrangementSize { number_of_groups: 10, group_size: 5, number_of_ports: 3 };
-		for (group_size,number_of_ports) in [(5,3), (8,4)]
-		{
-			let size = ArrangementSize { number_of_groups: group_size*number_of_ports+1, group_size, number_of_ports,lag: 1usize };
-			palmtree.initialize(size,&mut rng);
-			assert!( palmtree.is_valid(), "invalid arrangement {:?}", size );
-			let gtdm = palmtree.global_trunking_distribution();
-			assert!( *gtdm.outside_diagonal().min().unwrap() >0 , "some groups not connected {:?}",size);
-		}
-	}
-	/// Checks whether the new definition matches the old one.
-	#[test]
-	fn extended_palmtree()
-	{
-		fn old_map( size:ArrangementSize, input:ArrangementPoint ) -> ArrangementPoint
-		{
-			let target_group_index = (
-				input.group_index
-				+ size.number_of_groups//to ensure being positive
-				- (input.group_offset*size.number_of_ports+input.port_index+1)
-			) % size.number_of_groups;
-			let target_group_offset=(
-				((size.number_of_groups+target_group_index-input.group_index)%size.number_of_groups) - 1
-			) / size.number_of_ports;
-			let target_port = size.number_of_ports-1-input.port_index;
-			ArrangementPoint{
-				group_index: target_group_index,
-				group_offset: target_group_offset,
-				port_index: target_port,
-			}
-		}
-		for h in 1..10
-		{
-			let a = 2*h;
-			let g = a*h+1;
-			let size = ArrangementSize{ number_of_groups:g, group_size:a, number_of_ports:h, lag: 1usize};
-			let palmtree = Palmtree{size};
-			for input_group in 0..g
-			{
-				for input_offset in 0..a
-				{
-					for input_port in 0..h
-					{
-						let input = ArrangementPoint{group_index:input_group,group_offset:input_offset,port_index:input_port};
-						let old_target = old_map(size,input);
-						let target = palmtree.map(input);
-						if target != old_target
-						{
-							panic!("The extended palmtree fails at {:?} for {:?}. old={:?} now={:?}",input,size,old_target,target);
-						}
-					}
-				}
-			}
-		}
 	}
 }
 
@@ -1077,6 +1011,285 @@ impl Valiant4Dragonfly
 	}
 }
 
+
+
+
+
+/**
+This is an adapted Valiant version for the Dragonfly topology, suitable for source adaptive routings, as UGAL.
+It removes switches from source and target groups as intermediate switches.
+```ignore
+PAR{
+
+}
+```
+ **/
+
+
+#[derive(Debug)]
+pub struct PAR
+{
+	first: Box<dyn Routing>,
+	second: Box<dyn Routing>,
+	valiant_extra_label: usize,
+}
+
+impl Routing for PAR
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
+	{
+		/*let (target_location,_link_class)=topology.server_neighbour(target_server);
+		let target_router=match target_location
+		{
+			Location::RouterPort{router_index,router_port:_} =>router_index,
+			_ => panic!("The server is not attached to a router"),
+		};*/
+		let distance=topology.distance(current_router,target_router);
+		if distance==0
+		{
+			let target_server = target_server.expect("target server was not given.");
+			for i in 0..topology.ports(current_router)
+			{
+				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router,i)
+				{
+					if server==target_server
+					{
+						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true});
+					}
+				}
+			}
+			unreachable!();
+		}
+
+		let meta=routing_info.meta.as_ref().unwrap();
+		let hops_since = &routing_info.selections.clone().unwrap()[1..];
+		let r = match routing_info.selections
+		{
+			None =>
+				{
+					unreachable!();
+				}
+			Some(ref s) =>
+				{
+					//let both = if let &SumRoutingPolicy::TryBoth=&self.policy { routing_info.hops==0 } else { false };
+					//if both
+					if s[0] == 0 //Both Valiant or MIN
+					{
+						//let avc0=&self.first_allowed_virtual_channels;
+						//let avc0 = &self.allowed_virtual_channels[0];
+						//let el0=self.first_extra_label;
+						let el0 = self.extra_label[0];
+						//let r0=self.first_routing.next(&meta[0].borrow(),topology,current_router,target_server,avc0.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc0[candidate.virtual_channel],label:candidate.label+el0,annotation:Some(RoutingAnnotation{values:vec![0],meta:vec![candidate.annotation]}),..candidate} );
+						let r0 = self.routing[0].next(&meta[0].borrow(), topology, current_router, target_router, target_server, 1, rng)?.into_iter().map(|candidate| {
+
+							let (_next_location,link_class)=topology.neighbour(current_router,candidate.port);
+							let vc = (link_class..2).rev().fold(0, |x,class| x*1+(hops_since[class] as usize) );
+
+							CandidateEgress { virtual_channel:vc, label: candidate.label + el0, annotation: Some(RoutingAnnotation { values: vec![0], meta: vec![candidate.annotation] }), ..candidate }
+
+						});
+						//let avc1=&self.second_allowed_virtual_channels;
+						//let avc1 = &self.allowed_virtual_channels[1];
+						//let el1=self.second_extra_label;
+						let el1 = self.extra_label[1];
+						//let r1=self.second_routing.next(&meta[1].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
+						let r1 = self.routing[1].next(&meta[1].borrow(), topology, current_router, target_router, target_server, 1, rng)?.into_iter().map(|candidate| {
+							let (_next_location,link_class)=topology.neighbour(current_router,candidate.port);
+							let vc = (link_class..2).rev().fold(0, |x,class| x*1+(hops_since[class] as usize) );
+
+							CandidateEgress { virtual_channel: vc, label: candidate.label + el1, annotation: Some(RoutingAnnotation { values: vec![1], meta: vec![candidate.annotation] }), ..candidate }
+
+						});
+
+
+						r0.chain(r1).collect()
+
+					} else {
+						let (routing,extra_label, annotation) =
+							if s[0] == 1 { (&self.first, 0, 0) } else { (&self.second,self.valiant_extra_label, 1) };
+
+						//let allowed_virtual_channels=if s[0]==0 { &self.first_allowed_virtual_channels } else { &self.second_allowed_virtual_channels };
+						let allowed_virtual_channels = 1;//&self.allowed_virtual_channels[index];
+						//let extra_label = if s[0]==0 { self.first_extra_label } else { self.second_extra_label };
+						let r = routing.next(&meta[1].borrow(), topology, current_router, target_router, target_server, allowed_virtual_channels.len(), rng)?;
+						//r.into_iter().map( |(x,c)| (x,allowed_virtual_channels[c]) ).collect()
+						r.into_iter()
+							//.map( |candidate| CandidateEgress{virtual_channel:allowed_virtual_channels[candidate.virtual_channel],label:candidate.label+extra_label,..candidate} ).collect()
+							// We need to keep the annotation to have a coherent state able to relay the annotation of the subrouting.
+							.map(|candidate| CandidateEgress { virtual_channel: allowed_virtual_channels, label: candidate.label + extra_label,
+								annotation: Some(RoutingAnnotation { values: vec![s[annotation]], meta: vec![candidate.annotation] }), ..candidate }).collect()
+
+						}
+				}
+			};
+
+		//FIXME: we can recover idempotence in some cases.
+		Ok(RoutingNextCandidates{candidates:r,idempotent:false})
+	}
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, _target_server:Option<usize>, rng: &mut StdRng)
+	{
+		let all= vec![0];
+		let mut bri=routing_info.borrow_mut();
+		//bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
+		bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
+		self.first.initialize_routing_info(&bri.meta.as_ref().unwrap()[0],topology,current_router,target_router,None,rng);
+		self.second.initialize_routing_info(&bri.meta.as_ref().unwrap()[1],topology,current_router,target_router,None,rng);
+		bri.selections=Some(all);
+	}
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
+	{
+
+		let (_router_location,link_class) = topology.neighbour(current_router, current_port);
+		//if self.link_restrictions.contains(&link_class) { cs = vec![cs[0]]; };
+
+	}
+	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		self.first.initialize(topology,rng);
+		self.second.initialize(topology,rng);
+	}
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, num_virtual_channels:usize, rng:&mut StdRng)
+	{
+		let mut bri=routing_info.borrow_mut();
+		let middle = bri.selections.as_ref().map(|s| s[0] as usize);
+		let meta=bri.meta.as_mut().unwrap();
+
+		match middle
+		{
+			None =>
+				{
+					//Already towards true destination
+					self.first.performed_request(requested,&meta[1],topology,current_router,target_router,target_server,num_virtual_channels,rng);
+				}
+			Some(_) =>
+				{
+					//Already towards true destination
+					self.second.performed_request(requested,&meta[0],topology,current_router,target_router,target_server,num_virtual_channels,rng);
+				}
+		};
+	}
+}
+
+impl PAR
+{
+	pub fn new(arg: RoutingBuilderArgument) -> PAR
+	{
+		// //let mut order=None;
+		// //let mut servers_per_router=None;
+		// let mut first=None;
+		// let mut second=None;
+		// let mut pattern: Box<dyn Pattern> = Box::new(UniformPattern::uniform_pattern(true)); //pattern to intermideate node
+		// // let mut exclude_h_groups=false;
+		// let mut first_reserved_virtual_channels=vec![];
+		// let mut second_reserved_virtual_channels=vec![];
+		// let mut local_missrouting=false;
+		// let mut intermediate_bypass=None;
+		// let mut dragonfly_bypass=false;
+		match_object_panic!(arg.cv,"PAR",value,
+			// "first" => first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			// "second" => second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			// "pattern" => pattern= Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})).expect("pattern not valid for PAR"),
+			// // "exclude_h_groups"=> exclude_h_groups=value.as_bool().expect("bad value for exclude_h_groups"),
+			// "first_reserved_virtual_channels" => first_reserved_virtual_channels=value.
+			// 	as_array().expect("bad value for first_reserved_virtual_channels").iter()
+			// 	.map(|v|v.as_f64().expect("bad value in first_reserved_virtual_channels") as usize).collect(),
+			// "second_reserved_virtual_channels" => second_reserved_virtual_channels=value.
+			// 	as_array().expect("bad value for second_reserved_virtual_channels").iter()
+			// 	.map(|v|v.as_f64().expect("bad value in second_reserved_virtual_channels") as usize).collect(),
+			// "intermediate_bypass" => intermediate_bypass=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			// "local_missrouting" => local_missrouting=value.as_bool().expect("bad value for local_missrouting"),
+			// "dragonfly_bypass" => dragonfly_bypass=value.as_bool().expect("bad value for dragonfly_bypass"),
+		);
+
+		let first=  ConfigurationValue::Object("WeighedShortest".to_string(),vec![("class_weight".to_string(), ConfigurationValue::array(vec![ConfigurationValue::Number(1f64), ConfigurationValue::Number(100f64)]) )]);
+		let second= ConfigurationValue::Object("Valiant4Dragonfly".to_string(), vec![
+			("first".to_string(), ConfigurationValue::Object("WeighedShortest".to_string(),vec![("class_weight".to_string(), ConfigurationValue::array(vec![ConfigurationValue::Number(1f64), ConfigurationValue::Number(100f64)]) )])),
+			("second".to_string(), ConfigurationValue::Object("WeighedShortest".to_string(),vec![("class_weight".to_string(), ConfigurationValue::array(vec![ConfigurationValue::Number(1f64), ConfigurationValue::Number(100f64)]) )])),
+
+		]);
+
+		let first = new_routing(RoutingBuilderArgument{cv:first,..arg});
+		let second = new_routing(RoutingBuilderArgument{cv:second,..arg});
+
+		PAR{
+			first,
+			second,
+			valiant_extra_label:1,
+		}
+	}
+}
+
+
+
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rand::SeedableRng;
+	#[test]
+	fn palmtree_valid()
+	{
+		let mut palmtree = Palmtree::default();
+		let mut rng = StdRng::seed_from_u64(0);
+		//let size = ArrangementSize { number_of_groups: 10, group_size: 5, number_of_ports: 3 };
+		for (group_size,number_of_ports) in [(5,3), (8,4)]
+		{
+			let size = ArrangementSize { number_of_groups: group_size*number_of_ports+1, group_size, number_of_ports,lag: 1usize };
+			palmtree.initialize(size,&mut rng);
+			assert!( palmtree.is_valid(), "invalid arrangement {:?}", size );
+			let gtdm = palmtree.global_trunking_distribution();
+			assert!( *gtdm.outside_diagonal().min().unwrap() >0 , "some groups not connected {:?}",size);
+		}
+	}
+	/// Checks whether the new definition matches the old one.
+	#[test]
+	fn extended_palmtree()
+	{
+		fn old_map( size:ArrangementSize, input:ArrangementPoint ) -> ArrangementPoint
+		{
+			let target_group_index = (
+				input.group_index
+				+ size.number_of_groups//to ensure being positive
+				- (input.group_offset*size.number_of_ports+input.port_index+1)
+			) % size.number_of_groups;
+			let target_group_offset=(
+				((size.number_of_groups+target_group_index-input.group_index)%size.number_of_groups) - 1
+			) / size.number_of_ports;
+			let target_port = size.number_of_ports-1-input.port_index;
+			ArrangementPoint{
+				group_index: target_group_index,
+				group_offset: target_group_offset,
+				port_index: target_port,
+			}
+		}
+		for h in 1..10
+		{
+			let a = 2*h;
+			let g = a*h+1;
+			let size = ArrangementSize{ number_of_groups:g, group_size:a, number_of_ports:h, lag: 1usize};
+			let palmtree = Palmtree{size};
+			for input_group in 0..g
+			{
+				for input_offset in 0..a
+				{
+					for input_port in 0..h
+					{
+						let input = ArrangementPoint{group_index:input_group,group_offset:input_offset,port_index:input_port};
+						let old_target = old_map(size,input);
+						let target = palmtree.map(input);
+						if target != old_target
+						{
+							panic!("The extended palmtree fails at {:?} for {:?}. old={:?} now={:?}",input,size,old_target,target);
+						}
+					}
+				}
+			}
+		}
+	}
+}
 
 
 
