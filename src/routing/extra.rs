@@ -237,6 +237,11 @@ impl Routing for SumRouting
 					match self.policy
 					{
 						SecondWhenFirstEmpty => t.clone(),
+						RestrictedEscapeToSecond => if t[2] == t[1] {
+							vec![1]
+						}else{
+							vec![0,1]
+						},
 						_ => vec![t[2]],
 						//let s=t[2];
 						//bri.selections=Some(vec![s]);
