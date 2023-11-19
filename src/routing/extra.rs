@@ -251,8 +251,16 @@ impl Routing for SumRouting
 			},
 		};
 
-		if self.policy != RestrictedEscapeToSecond
+		if let RestrictedEscapeToSecond = self.policy
 		{
+			let s = cs[0] as usize;
+			let routing = &self.routing[s];
+			let meta=bri.meta.as_mut().unwrap();
+			meta[s].borrow_mut().hops+=1;
+			routing.update_routing_info(&meta[s],topology,current_router,current_port,target_router,target_server,rng);
+
+		}else{
+
 			for &is in cs.iter().take(2)
 			{
 				let s = is as usize;
@@ -261,12 +269,6 @@ impl Routing for SumRouting
 				meta[s].borrow_mut().hops+=1;
 				routing.update_routing_info(&meta[s],topology,current_router,current_port,target_router,target_server,rng);
 			}
-		}else{
-			let s = cs[0] as usize;
-			let routing = &self.routing[s];
-			let meta=bri.meta.as_mut().unwrap();
-			meta[s].borrow_mut().hops+=1;
-			routing.update_routing_info(&meta[s],topology,current_router,current_port,target_router,target_server,rng);
 		}
 
 		if let EscapeToSecond = self.policy
