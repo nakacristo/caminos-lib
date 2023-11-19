@@ -250,14 +250,25 @@ impl Routing for SumRouting
 				} else { t.clone() }
 			},
 		};
-		for &is in cs.iter().take(2)
+
+		if self.policy != RestrictedEscapeToSecond
 		{
-			let s = is as usize;
+			for &is in cs.iter().take(2)
+			{
+				let s = is as usize;
+				let routing = &self.routing[s];
+				let meta=bri.meta.as_mut().unwrap();
+				meta[s].borrow_mut().hops+=1;
+				routing.update_routing_info(&meta[s],topology,current_router,current_port,target_router,target_server,rng);
+			}
+		}else{
+			let s = cs[0] as usize;
 			let routing = &self.routing[s];
 			let meta=bri.meta.as_mut().unwrap();
 			meta[s].borrow_mut().hops+=1;
 			routing.update_routing_info(&meta[s],topology,current_router,current_port,target_router,target_server,rng);
 		}
+
 		if let EscapeToSecond = self.policy
 		{
 			if cs[0]==0
@@ -276,7 +287,7 @@ impl Routing for SumRouting
 		// if link class is contained in self.link_restrictions vector, then we remove the second routing option if the policy is RestrictedEscapeToSecond
 		match self.policy
         {
-			SumRoutingPolicy::RestrictedEscapeToSecond =>  if self.link_restrictions.contains(&link_class) { cs = vec![cs[0]]; } ,
+			RestrictedEscapeToSecond =>  if self.link_restrictions.contains(&link_class) { cs = vec![cs[0]]; } ,
             _ =>(),
         }
 
