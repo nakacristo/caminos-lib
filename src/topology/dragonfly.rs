@@ -78,6 +78,7 @@ pub struct Dragonfly
 	group_size: usize,
 	/// Number of groups. Denoted by `g` in Dally's paper. In a canonic dragonfly `g = a*h+1`.
 	number_of_groups: usize,
+	/// Link arrangment of the trunking. Wether to group the ports of a switch in LAGs.
 	lag: usize,
 	// cached values:
 	// Cartesian data [switch_index, group_index]

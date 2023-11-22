@@ -790,7 +790,9 @@ impl LowestSinghWeight
 
 ///Transform (l,q) into new label a*l+b*q+c*l*q+d
 ///where l is the label and q is the occupancy.
-///
+/// average_virtual_channels: bool: Whether to average the occupation of the virtual channels or add them.
+/// exclude_minimal_ports: bool: Whether to exclude minimal port from the calculations.
+/// exclude_link_classes: Vec<usize>: A vector with link classes whose ports are excluded from the calculations.
 #[derive(Debug)]
 pub struct AverageOccupancyFunction
 {
@@ -1235,6 +1237,7 @@ impl LabelTransform
 
 ///Transform (l,q) into new label a*l+b*q+c*l*q+d
 ///where l is the label and q is the occupancy.
+/// The virtual_channels field is to specify which VC, if needed
 #[derive(Debug)]
 pub struct OccupancyFunction
 {

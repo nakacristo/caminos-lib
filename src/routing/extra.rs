@@ -35,9 +35,6 @@ pub enum SumRoutingPolicy
 	///At every hop of the first routing give the possibility to use the second routing from the current router towards the target router.
 	///once a hop exclussive to the second routing is given continues that way.
 	EscapeToSecond,
-	///The first routing give the possibility to use the second routing from the current router towards the target router until conditions are met.
-	///once a hop exclussive to the second routing is given continues that way.
-	RestrictedEscapeToSecond,
 }
 
 pub fn new_sum_routing_policy(cv: &ConfigurationValue) -> SumRoutingPolicy
@@ -75,13 +72,11 @@ pub struct SumRouting
 	allowed_virtual_channels: [Vec<usize>;2],
 	//first_extra_label: i32,
 	//second_extra_label: i32,
-	extra_label: [i32;3],
+	extra_label: [i32;2],
 	//
 	enabled_statistics: bool,
 	//when capturing statistics track the hops of each kind.
 	tracked_hops: RefCell<[i64;2]>,
-	//link_restrictions
-	link_restrictions: Vec<usize>,
 }
 
 //routin_info.selections uses
@@ -142,16 +137,6 @@ impl Routing for SumRouting
 					let el1=self.extra_label[1];
 					//let r1=self.second_routing.next(&meta[1].borrow(),topology,current_router,target_server,avc1.len(),rng).into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
 					let r1=self.routing[1].next(&meta[1].borrow(),topology,current_router,target_router,target_server,avc1.len(),rng)?.into_iter().map( |candidate| CandidateEgress{virtual_channel:avc1[candidate.virtual_channel],label:candidate.label+el1,annotation:Some(RoutingAnnotation{values:vec![1],meta:vec![candidate.annotation]}),..candidate} );
-
-					//Check for candidates in both sets
-					let r0_ports=r0.clone().map(|c|c.port).collect::<HashSet<_>>();
-					let r1_ports=r1.clone().map(|c|c.port).collect::<HashSet<_>>();
-					let r0r1_ports=r0_ports.intersection(&r1_ports).collect::<HashSet<_>>();
-					// now map new r0 if the port is in r0r1_ports
-					let r0=r0.map(|c|if r0r1_ports.contains(&c.port) { CandidateEgress{label:c.label+self.extra_label[2],..c} } else { c });
-					let r1=r1.map(|c|if r0r1_ports.contains(&c.port) { CandidateEgress{label:c.label+self.extra_label[2],..c} } else { c });
-
-
 					match self.policy
 					{
 						SumRoutingPolicy::SecondWhenFirstEmpty =>
@@ -189,7 +174,7 @@ impl Routing for SumRouting
 		{
 			SumRoutingPolicy::Random => vec![rng.gen_range(0..2)],
 			SumRoutingPolicy::TryBoth | SumRoutingPolicy::Stubborn | SumRoutingPolicy::StubbornWhenSecond
-			| SumRoutingPolicy::SecondWhenFirstEmpty | SumRoutingPolicy::EscapeToSecond | SumRoutingPolicy::RestrictedEscapeToSecond => vec![0,1],
+			| SumRoutingPolicy::SecondWhenFirstEmpty | SumRoutingPolicy::EscapeToSecond => vec![0,1],
 		};
 		let mut bri=routing_info.borrow_mut();
 		//bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
@@ -204,7 +189,6 @@ impl Routing for SumRouting
 	}
 	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
 	{
-		let (_router_location,link_class) = topology.neighbour(current_router, current_port);
 		use SumRoutingPolicy::*;
 		let mut bri=routing_info.borrow_mut();
 		if self.enabled_statistics
@@ -237,11 +221,6 @@ impl Routing for SumRouting
 					match self.policy
 					{
 						SecondWhenFirstEmpty => t.clone(),
-						RestrictedEscapeToSecond => if t[2] == t[1] {
-							vec![1]
-						}else{
-							vec![0,1]
-						},
 						_ => vec![t[2]],
 						//let s=t[2];
 						//bri.selections=Some(vec![s]);
@@ -250,27 +229,14 @@ impl Routing for SumRouting
 				} else { t.clone() }
 			},
 		};
-
-		if let RestrictedEscapeToSecond = self.policy
+		for &is in cs.iter().take(2)
 		{
-			let s = cs[0] as usize;
+			let s = is as usize;
 			let routing = &self.routing[s];
 			let meta=bri.meta.as_mut().unwrap();
 			meta[s].borrow_mut().hops+=1;
 			routing.update_routing_info(&meta[s],topology,current_router,current_port,target_router,target_server,rng);
-
-		}else{
-
-			for &is in cs.iter().take(2)
-			{
-				let s = is as usize;
-				let routing = &self.routing[s];
-				let meta=bri.meta.as_mut().unwrap();
-				meta[s].borrow_mut().hops+=1;
-				routing.update_routing_info(&meta[s],topology,current_router,current_port,target_router,target_server,rng);
-			}
 		}
-
 		if let EscapeToSecond = self.policy
 		{
 			if cs[0]==0
@@ -286,13 +252,6 @@ impl Routing for SumRouting
 				};
 			}
 		}
-		// if link class is contained in self.link_restrictions vector, then we remove the second routing option if the policy is RestrictedEscapeToSecond
-		match self.policy
-        {
-			RestrictedEscapeToSecond =>  if self.link_restrictions.contains(&link_class) { cs = vec![cs[0]]; } ,
-            _ =>(),
-        }
-
 		bri.selections=Some(cs);
 	}
 	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
@@ -381,9 +340,7 @@ impl SumRouting
 		let mut second_allowed_virtual_channels=None;
 		let mut first_extra_label=0i32;
 		let mut second_extra_label=0i32;
-		let mut same_port_extra_label= 0i32;
 		let mut enabled_statistics=false;
-		let mut link_restrictions= vec![];
 		match_object_panic!(arg.cv,"Sum",value,
 			"policy" => policy=Some(new_sum_routing_policy(value)),
 			"first_routing" => first_routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
@@ -396,10 +353,7 @@ impl SumRouting
 				.map(|v|v.as_f64().expect("bad value in second_allowed_virtual_channels") as usize).collect()),
 			"first_extra_label" => first_extra_label = value.as_f64().expect("bad value for first_extra_label") as i32,
 			"second_extra_label" => second_extra_label = value.as_f64().expect("bad value for second_extra_label") as i32,
-			"same_port_extra_label" => same_port_extra_label = value.as_f64().expect("bad value for second_extra_label") as i32,
 			"enabled_statistics" => enabled_statistics = value.as_bool().expect("bad value for enabled_statistics"),
-			"link_restrictions" => link_restrictions = value.as_array().expect("bad value for link_restrictions").iter()
-                .map(|v|v.as_f64().expect("bad value in link_restrictions") as usize).collect(),
 		);
 		let policy=policy.expect("There were no policy");
 		let first_routing=first_routing.expect("There were no first_routing");
@@ -416,10 +370,9 @@ impl SumRouting
 			allowed_virtual_channels: [first_allowed_virtual_channels, second_allowed_virtual_channels],
 			//first_extra_label,
 			//second_extra_label,
-			extra_label: [first_extra_label, second_extra_label, same_port_extra_label],
+			extra_label: [first_extra_label, second_extra_label],
 			enabled_statistics,
 			tracked_hops: RefCell::new([0,0]),
-			link_restrictions,
 		}
 	}
 }

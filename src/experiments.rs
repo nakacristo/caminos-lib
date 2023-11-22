@@ -1860,7 +1860,7 @@ impl<'a> Experiment<'a>
 					res.csv = Some(csv);
 				}
 			}
-			const MINIMUM_RESULT_COUNT_TO_GENERATE : usize = 1usize;
+			const MINIMUM_RESULT_COUNT_TO_GENERATE : usize = 1usize; //temporal simulations may be only one
 			// I would use 1..MINIMUM_RESULT_COUNT_TO_GENERATE but
 			// exclusive range pattern syntax is experimental
 			// see issue #37854 <https://github.com/rust-lang/rust/issues/37854> for more information
