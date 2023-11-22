@@ -9,7 +9,6 @@ Extra implementations of routing operations
 */
 
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::convert::TryFrom;
 
 use ::rand::{rngs::StdRng,Rng};
@@ -48,7 +47,6 @@ pub fn new_sum_routing_policy(cv: &ConfigurationValue) -> SumRoutingPolicy
 			"Stubborn" => SumRoutingPolicy::Stubborn,
 			"StubbornWhenSecond" => SumRoutingPolicy::StubbornWhenSecond,
 			"SecondWhenFirstEmpty" => SumRoutingPolicy::SecondWhenFirstEmpty,
-			"RestrictedEscapeToSecond" => SumRoutingPolicy::RestrictedEscapeToSecond,
 			"EscapeToSecond" => SumRoutingPolicy::EscapeToSecond,
 			_ => panic!("Unknown sum routing policy {}",cv_name),
 		}
