@@ -2,6 +2,9 @@
 
 ## next, [0.6.3]
 
+### 2023-11-15
+Only check for equality of tasks and servers at Simulation level, i.e., the traffic at the configuration root.
+
 ### 2023-11-07
 New traffic [TrafficMap].
 BREAKING CHANGE: Added method `number_tasks`required for trait Traffic.

@@ -350,12 +350,6 @@ impl Homogeneous
 		let message_size=message_size.expect("There were no message_size");
 		let load=load.expect("There were no load");
 		let mut pattern=pattern.expect("There were no pattern");
-		let topo_servers=arg.topology.num_servers();
-		if tasks != topo_servers
-		{
-			// TODO: move this warning into the simulation.
-			println!("WARNING: Generating traffic over {} tasks when the topology has {} servers.",tasks,topo_servers);
-		}
 		pattern.initialize(tasks, tasks, arg.topology, arg.rng);
 		Homogeneous{
 			tasks,
@@ -1567,12 +1561,6 @@ impl BoundedDifference
 		let bound=bound.expect("There were no bound");
 		let load=load.expect("There were no load");
 		let mut pattern=pattern.expect("There were no pattern");
-		let topo_servers=arg.topology.num_servers();
-		if tasks != topo_servers
-		{
-			// TODO: this check is for the simulation.
-			println!("WARNING: Generating traffic over {} tasks when the topology has {} servers.",tasks,topo_servers);
-		}
 		pattern.initialize(tasks, tasks, arg.topology, arg.rng);
 		BoundedDifference{
 			tasks,

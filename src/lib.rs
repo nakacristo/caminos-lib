@@ -848,6 +848,11 @@ impl<'a> Simulation<'a>
 			topology:topology.as_ref(),
 			rng:&mut rng,
 		});
+		let num_tasks = traffic.number_tasks();
+		if num_tasks != num_servers
+		{
+			println!("WARNING: Generating traffic over {} tasks when the topology has {} servers.",num_tasks,num_servers);
+		}
 		let statistics=Statistics::new(statistics_temporal_step,statistics_server_percentiles,statistics_packet_percentiles,statistics_packet_definitions,topology.as_ref());
 		Simulation{
 			configuration: cv.clone(),
