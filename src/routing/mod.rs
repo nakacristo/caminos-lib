@@ -25,7 +25,7 @@ use ::rand::{rngs::StdRng,Rng,prelude::SliceRandom};
 
 use crate::config_parser::ConfigurationValue;
 use crate::topology::cartesian::{DOR,O1TURN,ValiantDOR,OmniDimensionalDeroute, DimWAR, GENERALTURN, Valiant4Hamming};
-use crate::topology::dragonfly::Valiant4Dragonfly;
+use crate::topology::dragonfly::{PAR, Valiant4Dragonfly};
 use crate::topology::{Topology,Location};
 pub use crate::event::Time;
 use quantifiable_derive::Quantifiable;//the derive macro
@@ -419,6 +419,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"DimWAR" => Box::new(DimWAR::new(arg)),
 			"Valiant4Hamming" => Box::new(Valiant4Hamming::new(arg)),
 			"Valiant4Dragonfly" => Box::new(Valiant4Dragonfly::new(arg)),
+			"PAR" => Box::new(PAR::new(arg)),
 			"Shortest" => Box::new(Shortest::new(arg)),
 			"Valiant" => Box::new(Valiant::new(arg)),
 			"ValiantDOR" => Box::new(ValiantDOR::new(arg)),
