@@ -314,6 +314,139 @@ impl ProjectiveStage
 	}
 }
 
+
+///The stages in a Orthogonal Fat Tree
+#[derive(Quantifiable)]
+#[derive(Debug)]
+struct FMStage
+{
+	k: usize,
+	pods : usize,
+}
+
+impl Stage for FMStage
+{
+	fn compose_requirements_upward(&self,_requirements:LevelRequirements,_bottom_level:usize,_height:usize) -> LevelRequirements
+	{
+		LevelRequirements{
+			group_size: self.pods * (self.pods -1) /2,
+			current_level_minimum_size: self.pods * (self.pods -1) /2,
+		}
+	}
+	fn downward_size(&self,top_size:usize,_bottom_group_size:usize,_bottom_level:usize,_height:usize) -> Result<usize,Error>
+	{
+		let mut index = 0;
+
+		while index*(index-1)/2 < top_size {
+			index+=1;
+		}
+
+		if index*(index-1)/2 == top_size
+		{
+			Ok(index * self.k)
+
+		}else{
+			Err(error!(undetermined))
+		}
+
+	}
+	fn amount_to_above(&self,_below_router:usize, _group_size: usize, _bottom_size:usize) -> usize
+	{
+		self.pods -1
+	}
+	fn amount_to_below(&self,_above_router:usize, _group_size: usize, _bottom_size:usize) -> usize
+	{
+		2*self.k
+	}
+	fn to_above(&self, below_router:usize, index:usize, _group_size:usize, _bottom_size:usize) -> (usize,usize)
+	{
+		let pod = below_router / self.k;
+		if index >= pod
+		{
+			( pod * self.pods - ((pod+1) * pod)/2 + (index - pod), below_router % self.k )
+
+		}else{
+			let pod_2 = pod -1;
+
+			(index * self.pods - ((index+1) * (index))/2 + (pod_2- index), (below_router % self.k) + self.k)
+		}
+	}
+	fn to_below(&self, above_router:usize, index:usize, _group_size:usize, _bottom_size:usize) -> (usize,usize)
+	{
+
+		let mut a_index = 0;
+		let mut count = 0;
+
+		while (count + self.pods - (a_index + 1) )-1 < above_router {
+			a_index += 1;
+			count += self.pods - a_index;
+
+			//print!("index {}", a_index)
+		}
+		//a_index -= 1;
+
+		if index < self.k
+		{
+			(a_index * self.k + index, a_index + above_router - count)	//
+		}
+		else{
+
+			//print!("to_below")
+
+			((a_index +  above_router - count+1) * self.k + index%self.k,  a_index )
+		}
+
+
+	}
+}
+
+
+impl FMStage
+{
+	pub fn new(arg:StageBuilderArgument) -> FMStage
+	{
+		let mut k=None;
+		let mut pods=None;
+
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="FMStage"
+			{
+				panic!("A FMStage must be created from a `FMStage` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				match name.as_ref()
+				{
+					"k" => match value
+					{
+						&ConfigurationValue::Number(f) => k=Some(f as usize),
+						_ => panic!("bad value for k"),
+					},
+					"pods" => match value
+					{
+						&ConfigurationValue::Number(f) => pods=Some(f as usize),
+						_ => panic!("bad value for pods"),
+					},
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in FMStage",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a FMStage from a non-Object");
+		}
+		let k=k.expect("There were no k");
+		let pods=pods.expect("There were no pods");
+		FMStage{
+			k,
+			pods,
+			//lane: FlatGeometryCache::new_prime(prime).unwrap_or_else(|_|panic!("{} is not prime, which is required for the ProjectiveStage",prime)),
+		}
+	}
+}
+
 ///A Stage with a explicitly given list of neighbours for each router. Ignores grouping.
 ///Apt to build random stages.
 #[derive(Quantifiable)]
@@ -581,6 +714,208 @@ impl ExplicitStage
 }
 
 
+///A Stage with a explicitly given list of neighbours for each router. Ignores grouping.
+///Apt to build random stages.
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct ExplicitStageFile
+{
+	///Number of routers in the bottom level.
+	bottom_size: usize,
+	///Number of routers in the top level.
+	top_size: usize,
+	bottom_list: Vec<Vec<(usize,usize)>>,
+	top_list: Vec<Vec<(usize,usize)>>,
+}
+
+impl Stage for ExplicitStageFile
+{
+	//fn below_multiplier(&self) -> usize
+	//{
+	//	todo!()
+	//}
+	//fn above_multiplier(&self) -> usize
+	//{
+	//	todo!()
+	//}
+	//fn verify(&self,below_size:usize,above_size:usize) -> bool
+	//{
+	//	below_size==self.bottom_size && above_size==self.top_size
+	//}
+
+	fn compose_requirements_upward(&self,requirements:LevelRequirements,_bottom_level:usize,_height:usize) -> LevelRequirements
+	{
+		if self.bottom_size % requirements.current_level_minimum_size != 0
+		{
+			panic!("This size cannot be satisfied by the ExplicitStage");
+		}
+		LevelRequirements{
+			group_size: 1,
+			current_level_minimum_size: self.top_size,
+		}
+	}
+	fn downward_size(&self,top_size:usize,_bottom_group_size:usize,_bottom_level:usize,_height:usize) -> Result<usize,Error>
+	{
+		if top_size==self.top_size
+		{
+			Ok(self.bottom_size)
+		}
+		else
+		{
+			Err(error!(undetermined))
+		}
+	}
+	fn amount_to_above(&self,below_router:usize,_group_size:usize, _bottom_size:usize) -> usize
+	{
+		self.bottom_list[below_router].len()
+	}
+	fn amount_to_below(&self,above_router:usize,_group_size:usize, _bottom_size:usize) -> usize
+	{
+		self.top_list[above_router].len()
+	}
+	fn to_above(&self, below_router:usize, index:usize, _group_size:usize, _bottom_size:usize) -> (usize,usize)
+	{
+		self.bottom_list[below_router][index]
+	}
+	fn to_below(&self, above_router:usize, index:usize, _group_size:usize, _bottom_size:usize) -> (usize,usize)
+	{
+		self.top_list[above_router][index]
+	}
+
+}
+
+pub fn file_adj(file:&File, _format:usize) -> (Vec<Vec<usize>>, Vec<Vec<usize>>, usize, usize)
+	{
+		//let mut adj=vec![Vec::with_capacity(degree);routers];
+		let mut adj_down : Vec<Vec<usize>> =vec![];
+		let mut adj_up : Vec<Vec<usize>> =vec![];
+		let mut nodos_up=None;
+		let mut nodos_down=None;
+		let reader = BufReader::new(file);
+		let mut lines=reader.lines();
+		//for rline in reader.lines()
+		while let Some(rline)=lines.next()
+		{
+			let line=rline.expect("Some problem when reading the topology.");
+			//println!("line: {}",line);
+			let mut words=line.split_whitespace();
+			match words.next()
+			{
+				Some("NODOS_0") =>
+				{
+					nodos_down=Some(words.next().unwrap().parse::<usize>().unwrap())
+					//assert!( nodos % 2 == 0); //should be even
+				},
+				Some("GRADO_0") =>
+				{
+					let grado=Some(words.next().unwrap().parse::<usize>().unwrap());
+					if let Some(routers)=nodos_down
+					{
+						assert!( routers % 2 == 0); //should be even
+						if let Some(degree)=grado
+						{
+							adj_up=vec![Vec::with_capacity(degree);routers]; //just half
+						}
+					}
+				},
+
+				Some("NODOS_1") =>
+				{
+					nodos_up=Some(words.next().unwrap().parse::<usize>().unwrap());
+					//assert!( nodos % 2 == 0); //should be even
+				},
+				Some("GRADO_1") =>
+				{
+					let grado=Some(words.next().unwrap().parse::<usize>().unwrap());
+					if let Some(routers)=nodos_up
+					{
+						//assert!( routers % 2 == 0); //should be even
+						if let Some(degree)=grado
+						{
+							adj_down=vec![Vec::with_capacity(degree);routers];
+						}
+					}
+				},
+				Some("N") =>
+				{
+
+					let nodos_down = nodos_down.expect("There should be a number, if not bad format");
+					//let nodos_up = nodos_up.expect("There should be a number, if not bad format");
+					let current=words.next().unwrap().parse::<usize>().unwrap();
+
+					for wneighbour in lines.next().unwrap().unwrap().split_whitespace()
+					{
+						let mut neighbour = wneighbour.parse::<usize>().unwrap();
+
+						if neighbour >= nodos_down{
+							neighbour -= nodos_down; //just to normalize, it should be done in an more efficient way, to avoid bugs also...
+						}
+
+						if current < nodos_down{
+
+							adj_up[current].push(neighbour);
+
+						}else{
+							let new_index = current - nodos_down;
+							adj_down[new_index].push(neighbour);
+
+						}
+					}
+				},
+				_ => panic!("Illegal word"),
+			};
+		}
+
+		(adj_up ,adj_down, nodos_down.expect("There should be a number, if not bad format"), nodos_up.expect("There should be a number, if not bad format"))
+	}
+
+
+
+impl ExplicitStageFile
+{
+	pub fn new(arg:StageBuilderArgument) -> ExplicitStageFile
+	{
+		let mut filename=None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="ExplicitStageFile"
+			{
+				panic!("A ExplicitStageFile must be created from a `ExplicitStageFile` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				match name.as_ref()
+				{
+					"filename" => match value
+					{
+						&ConfigurationValue::Literal(ref s) => filename=Some(s.to_string()),
+						_ => panic!("bad value for filename"),
+					},
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in RandomRegular",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a RandomRegular from a non-Object");
+		}
+		let format = 0;
+		let filename=filename.expect("There were no filename");
+		let file=File::open(&filename).expect("could not open topology file.");
+		let (upwards,downwards,size_down, size_up) = file_adj(&file,format);
+		let (bottom_list,top_list) = ExplicitStage::add_reverse_indices(&upwards,&downwards);
+
+		ExplicitStageFile{
+			bottom_size: size_down,
+			top_size: size_up,
+			bottom_list,
+			top_list,
+		}
+	}
+}
+
+
 
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -669,6 +1004,129 @@ impl WidenedStage
 		WidenedStage{
 			base,
 			multiplier,
+		}
+	}
+}
+
+
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct FaultToleranceStage
+{
+	base: Box<dyn Stage>,
+	redundancy: usize,
+}
+
+impl Stage for FaultToleranceStage
+{
+	fn compose_requirements_upward(&self,requirements:LevelRequirements,bottom_level:usize,height:usize) -> LevelRequirements
+	{
+
+		let mut req = self.base.compose_requirements_upward(requirements,bottom_level,height);
+		//println!("requirements {},{} bottom_level {} height {}",req.current_level_minimum_size,req.group_size,bottom_level, height);
+		req.current_level_minimum_size = req.current_level_minimum_size * self.redundancy;
+		req.group_size = req.group_size * self.redundancy;
+		return req;
+	}
+	fn downward_size(&self,top_size:usize,bottom_group_size:usize,bottom_level:usize,height:usize) -> Result<usize,Error>
+	{
+		let base_downward_size = self.base.downward_size(top_size/self.redundancy,bottom_group_size,bottom_level,height)?;
+		//println!("downward_size {} top_size {} bottom_group_size {} bottom_level {} height {}", base_downward_size, top_size, bottom_group_size,bottom_level, height);
+
+		Ok(base_downward_size * self.redundancy) //* self.multiplier
+	}
+
+	fn amount_to_above(&self,below_router:usize, group_size: usize, bottom_size: usize) -> usize
+	{
+		let base_bottom_size = bottom_size / self.redundancy; // / self.multiplier
+		let base_below_router = below_router % base_bottom_size;
+		//println!("amount_to_above {}", self.base.amount_to_above(base_below_router, group_size, base_bottom_size));
+		self.base.amount_to_above(base_below_router, group_size, base_bottom_size) * self.redundancy
+	}
+	fn amount_to_below(&self,above_router:usize, group_size: usize, bottom_size: usize) -> usize
+	{
+		let base_bottom_size = bottom_size / self.redundancy; // / self.multiplier
+		let base_above_router = above_router % base_bottom_size;
+		let base_deg = self.base.amount_to_below(base_above_router,group_size,base_bottom_size);
+		//println!("amount_to_below {}", base_deg);
+		base_deg * self.redundancy
+	}
+	fn to_above(&self, below_router:usize, index:usize, group_size:usize, bottom_size: usize) -> (usize,usize)
+	{
+		let base_bottom_size = bottom_size / self.redundancy;
+		let base_below_router = below_router % base_bottom_size;
+		let below_quotient = below_router / base_bottom_size;
+
+		let base_deg = self.base.amount_to_above(base_below_router,group_size,base_bottom_size);
+
+
+		let index_quotient = index / base_deg;
+		let index_remainder = index % base_deg;
+
+		let (neighbour,rev_index) = self.base.to_above(base_below_router, index_remainder, group_size, base_bottom_size);
+
+		let below_quotient_2 = (below_quotient + index_quotient) % self.redundancy;
+
+		//(neighbour + base_bottom_size*index_quotient, rev_index + below_quotient_2*base_deg)
+		(neighbour + base_bottom_size*below_quotient_2, rev_index + index_quotient*base_deg)
+	}
+	fn to_below(&self, above_router:usize, index:usize, group_size:usize, bottom_size: usize) -> (usize,usize)
+	{
+
+		let base_bottom_size = bottom_size/self.redundancy;
+		let base_above_router = above_router % base_bottom_size;
+		let above_quotient = above_router/base_bottom_size;
+
+		let base_deg = self.base.amount_to_below(base_above_router,group_size,base_bottom_size);
+
+		let index_quotient = index / base_deg;
+		let index_remainder = index % base_deg;
+
+		let (neighbour,rev_index) = self.base.to_below(base_above_router, index_remainder, group_size, base_bottom_size);
+
+
+		let above_quotient_2 = (above_quotient + index_quotient) % self.redundancy;
+		//(neighbour + base_bottom_size*index_quotient, rev_index + above_quotient_2*base_deg)
+		(neighbour + base_bottom_size*above_quotient_2, rev_index + index_quotient*base_deg)
+	}
+}
+
+impl FaultToleranceStage
+{
+	pub fn new(mut arg:StageBuilderArgument) -> FaultToleranceStage
+	{
+		let mut base=None;
+		let mut redundancy=None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="Redundant"
+			{
+				panic!("A Redundant must be created from a `Redundant` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				match name.as_ref()
+				{
+					"base" => base=Some(new_stage(StageBuilderArgument{cv:value, rng:&mut arg.rng,..arg})),
+					"redundancy" => match value
+					{
+						&ConfigurationValue::Number(f) => redundancy=Some(f as usize),
+						_ => panic!("bad value for redundancy"),
+					},
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in Redundant",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a Widened from a non-Object");
+		}
+		let base=base.expect("There were no base");
+		let redundancy=redundancy.expect("There were no redundancy");
+		FaultToleranceStage{
+			base,
+			redundancy,
 		}
 	}
 }
@@ -1081,6 +1539,7 @@ impl MultiStage
 					let mut height=None;
 					let mut prime=None;
 					let mut double_topmost_level = true;
+					let mut redundant = None;
 					for &(ref name,ref value) in cv_pairs
 					{
 						match name.as_ref()
@@ -1106,25 +1565,98 @@ impl MultiStage
 								&ConfigurationValue::False => double_topmost_level=false,
 								_ => panic!("bad value for double_topmost_level"),
 							},
+							"redundant" => match value
+							{
+								&ConfigurationValue::Number(f) => redundant=Some(f as usize),
+								_ => panic!("bad value for redundant"),
+							},
 							"legend_name" => (),
 							_ => panic!("Nothing to do with field {} in OFT",name),
 						}
 					}
 					let height=height.expect("There were no height");
 					let prime=prime.expect("There were no prime");
+					let redundant = redundant.expect("There was no redundant");
+
 					stages=(0..height).map(|index|{
 						let stage=ProjectiveStage{
 							//This is somewhat repetitive...
 							plane:FlatGeometryCache::new_prime(prime).unwrap_or_else(|_|panic!("{} is not prime, which is required for the OFT topology",prime)),
 						};
-						if double_topmost_level && index+1==height
+						if double_topmost_level && index+1==height && redundant == 1
 						{
 							Box::new(WidenedStage{ base:Box::new(stage), multiplier:2 }) as Box<dyn Stage>
+
+						} else if redundant > 1 {
+
+							Box::new(FaultToleranceStage{ base:Box::new(stage), redundancy:redundant }) as Box<dyn Stage>
+
 						} else {
 							Box::new(stage) as Box<dyn Stage>
 						}
 						//Box::new(stage) as Box<dyn Stage>
 					}).collect();
+				}
+				"MLFM" =>
+				{
+
+					let mut k=None;
+					let mut pods=None;
+					//let mut servers_per_leaf=None;
+
+					for &(ref name,ref value) in cv_pairs
+					{
+						match name.as_ref()
+						{
+							"k" => match value
+							{
+								&ConfigurationValue::Number(f) => k=Some(f as usize),
+								_ => panic!("bad value for k"),
+							},
+							"pods" => match value
+							{
+								&ConfigurationValue::Number(f) => pods=Some(f as usize),
+								_ => panic!("bad value for pods"),
+							},
+							"servers_per_leaf" => match value
+							{
+								&ConfigurationValue::Number(f) => servers_per_leaf=Some(f as usize),
+								_ => panic!("bad value for servers_per_leaf"),
+							},
+							"legend_name" => (),
+							_ => panic!("Nothing to do with field {} in MLFM",name),
+						}
+					}
+
+					let k=k.expect("There were no k");
+					let pods=pods.expect("There were no pods");
+					//let servers_per_leaf=servers_per_leaf.expect("Not working");
+
+					let stage = FMStage{
+						k,
+						pods,
+					};
+					stages = vec![Box::new(stage) as Box<dyn Stage>];
+					//stages=
+					/*
+					(0..height).map(|index|{
+						let stage=ProjectiveStage{
+							//This is somewhat repetitive...
+							plane:FlatGeometryCache::new_prime(prime).unwrap_or_else(|_|panic!("{} is not prime, which is required for the OFT topology",prime)),
+						};
+						if double_topmost_level && index+1==height && redundant == 1
+						{
+							Box::new(WidenedStage{ base:Box::new(stage), multiplier:2 }) as Box<dyn Stage>
+
+						} else if redundant > 1 {
+
+							Box::new(FaultToleranceStage{ base:Box::new(stage), redundancy:redundant }) as Box<dyn Stage>
+
+						} else {
+							Box::new(stage) as Box<dyn Stage>
+						}
+						//Box::new(stage) as Box<dyn Stage>
+					}).collect();*/
 				}
 				"RFC" =>
 				{
@@ -1289,7 +1821,10 @@ pub fn new_stage(arg:StageBuilderArgument) -> Box<dyn Stage>
 			"Fat" => Box::new(FatStage::new(arg)),
 			"Projective" => Box::new(ProjectiveStage::new(arg)),
 			"RandomRegular" => Box::new(ExplicitStage::new(arg)),
+			"ExplicitStageFile" => Box::new(ExplicitStageFile::new(arg)),
 			"Widened" => Box::new(WidenedStage::new(arg)),
+			"FaultToleranceStage" => Box::new(FaultToleranceStage::new(arg)),
+			"FMStage" => Box::new(FMStage::new(arg)),
 			_ => panic!("Unknown stage {}",cv_name),
 		}
 	}
@@ -1302,3 +1837,253 @@ pub fn new_stage(arg:StageBuilderArgument) -> Box<dyn Stage>
 
 
 
+/// Routing part of the Omni-dimensional Weighted Adaptive Routing of Nic McDonald et al.
+/// Stores `RoutingInfo.selections=Some(vec![available_deroutes])`.
+/// Only paths of currently unaligned dimensions are valid. Otherwise dimensions are ignored.
+#[derive(Debug)]
+pub struct OmniDerouteForMultiStages
+{
+	///Maximum number of non-shortest (deroutes) hops to make.
+	allowed_deroutes: usize,
+	//To mark non-shortest options with label=1.
+	//include_labels: bool,
+}
+
+impl Routing for OmniDerouteForMultiStages
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
+	{
+		/*let (target_location,_link_class)=topology.server_neighbour(target_server);
+		let target_router=match target_location
+		{
+			Location::RouterPort{router_index,router_port:_} =>router_index,
+			_ => panic!("The server is not attached to a router"),
+		};*/
+		let distance=topology.distance(current_router,target_router);
+		if distance==0
+		{
+			for i in 0..topology.ports(current_router)
+			{
+				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router,i)
+				{
+					if server==target_server.expect("Expect a server")
+					{
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
+					}
+				}
+			}
+			unreachable!();
+		}
+
+
+		let visited_routers = routing_info.visited_routers.as_ref().unwrap();
+		let mut last_router = visited_routers[visited_routers.len() - 1];
+		if visited_routers.len() > 1
+		{
+			last_router = visited_routers[visited_routers.len() - 2]; //current router is the last one....
+		}
+
+		let avaliable_hops = 5 - visited_routers.len(); //need to fix this in the future
+
+		let num_ports=topology.ports(current_router);
+		let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
+		//let available_deroutes=routing_info.selections.as_ref().unwrap()[0] as usize;
+
+		//let multistage_data = topology.multistage_data().expect("To run OmniDerouteForMultiStages you need a multistage topology!");
+		//let (current_level_index, _offset) = multistage_data.unpack(current_router);
+
+		if avaliable_hops == distance
+		{
+			//Go minimally.
+			for i in 0..num_ports
+			{
+				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+				if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,i)
+				{
+					if distance-1==topology.distance(router_index,target_router) && router_index != last_router
+					{
+						r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+					}
+				}
+			}
+		}
+		else
+		{
+
+			if distance == 1 //only a down stage, in an oft u cannot missroute again, but in a rfc u can.
+			{
+				//Include any unaligned.
+				for i in 0..num_ports
+				{
+					//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+					if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,i)
+					{
+						if router_index == target_router
+						{
+							r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+
+						}else if  topology.distance(router_index,target_router) <= (avaliable_hops-1)
+							&& topology.amount_shortest_paths(router_index, target_router) > 1 //false in an oft
+							&& router_index != last_router {
+
+							r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:i,virtual_channel:vc,label:1,..Default::default()}));
+
+						}
+					}
+				}
+
+			}else{ // you can missroute
+
+				for i in 0..num_ports
+				{
+					//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+					if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,i)
+					{
+							if  router_index != last_router && topology.distance(router_index,target_router) <= (avaliable_hops -1)
+							{
+								////r.extend((0..num_virtual_channels).map(|vc|(i,vc)));
+								if topology.distance(router_index,target_router) >= distance
+								{
+									if topology.amount_shortest_paths(router_index, target_router) > 1
+									{
+										r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:i,virtual_channel:vc,label:1,..Default::default()}));
+									}
+									//r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+								}
+								else
+								{
+									r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+									//r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:i,virtual_channel:vc,label:-1,..Default::default()}));
+
+								}
+							}
+
+					}
+				}
+			}
+		}
+		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
+	}
+
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, current_router:usize, _target_touter:usize, _target_server:Option<usize>, _rng: &mut StdRng)
+	{
+		routing_info.borrow_mut().selections=Some(vec![self.allowed_deroutes as i32]);
+		routing_info.borrow_mut().visited_routers=Some(vec![current_router]);
+	}
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, _target_server:Option<usize>,_rng: &mut StdRng)
+	{
+
+		if let (Location::RouterPort{router_index: previous_router,router_port:_},_link_class)=topology.neighbour(current_router,current_port)
+		{
+			let multistage_data = topology.multistage_data().expect("To run OmniDerouteForMultiStages you need a multistage topology!");
+			//let max_height = multistage_data.height();
+			let (current_height,_)= multistage_data.unpack(current_router);
+
+			/*let (target_location,_link_class)=topology.server_neighbour(target_server);
+			let target_router=match target_location
+			{
+				Location::RouterPort{router_index,router_port:_} =>router_index,
+				_ => panic!("The server is not attached to a router"),
+			};*/
+
+			//current_height == max_height-1 ||
+			if current_height == 0 && routing_info.borrow_mut().visited_routers.as_ref().expect("visited_routers should be initialized").len() > 1 //topology.amount_shortest_paths(current_router, target_router) == 1 //we are at the common ancestor!
+			{
+				match routing_info.borrow_mut().selections
+				{
+					Some(ref mut v) =>
+					{
+						v[0]= 0; //no more deroutes :(
+					}
+					None => panic!("available deroutes not initialized"),
+				};
+			}
+			else if topology.distance(previous_router,target_router) != 1+topology.distance(current_router,target_router)
+			{
+				match routing_info.borrow_mut().selections
+				{
+					Some(ref mut v) =>
+					{
+						let available_deroutes=v[0];
+						if available_deroutes==0
+						{
+							panic!("We should have not done this deroute.");
+						}
+						v[0]=available_deroutes-1;
+					}
+					None => panic!("available deroutes not initialized"),
+				};
+			}
+
+			match routing_info.borrow_mut().visited_routers
+			{
+				Some(ref mut v) =>
+				{
+					v.push(current_router);
+				}
+				None => panic!("visited_routers not initialized"),
+			};
+
+		}
+	}
+	fn initialize(&mut self, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+	}
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
+	{
+	}
+	fn statistics(&self, _cycle:Time) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:Time)
+	{
+	}
+}
+
+impl OmniDerouteForMultiStages
+{
+	pub fn new(arg:RoutingBuilderArgument) -> OmniDerouteForMultiStages
+	{
+		let mut allowed_deroutes=None;
+		//let mut include_labels=None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="OmniDerouteForMultiStages"
+			{
+				panic!("A OmniDerouteForMultiStages must be created from a `OmniDerouteForMultiStages` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"allowed_deroutes" => match value
+					{
+						&ConfigurationValue::Number(f) => allowed_deroutes=Some(f as usize),
+						_ => panic!("bad value for allowed_deroutes"),
+					}
+					/*"include_labels" => match value
+					{
+						&ConfigurationValue::True => include_labels=Some(true),
+						&ConfigurationValue::False => include_labels=Some(false),
+						_ => panic!("bad value for include_labels"),
+					}*/
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in OmniDerouteForMultiStages",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a OmniDerouteForMultiStages from a non-Object");
+		}
+		let allowed_deroutes=allowed_deroutes.expect("There were no allowed_deroutes");
+		//let include_labels=include_labels.expect("There were no include_labels");
+		OmniDerouteForMultiStages{
+			allowed_deroutes,
+			//include_labels,
+		}
+	}
+}
