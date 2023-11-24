@@ -27,7 +27,7 @@ impl Routing for UpDown
 	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
 		//let (target_location,_link_class)=topology.server_neighbour(target_server);
-		//let target_router=match target_location
+		//let target_router=match target_locatiself.vcs[vc_index]on
 		//{
 		//	Location::RouterPort{router_index,router_port:_} =>router_index,
 		//	_ => panic!("The server is not attached to a router"),

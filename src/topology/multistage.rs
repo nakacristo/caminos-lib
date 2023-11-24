@@ -1846,6 +1846,7 @@ pub struct UpDownDerouting
 {
 	///Maximum number of non-shortest (deroutes) hops to make.
 	allowed_updowns: usize,
+	virtual_channels: Vec<Vec<usize>>,
 }
 
 impl Routing for UpDownDerouting
@@ -1881,6 +1882,7 @@ impl Routing for UpDownDerouting
 		let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
 		let binding = routing_info.auxiliar.borrow();
 		let aux = binding.as_ref().unwrap().downcast_ref::<Vec<usize>>().unwrap(); // To know when to change of virtual channel
+		let vc_index= self.allowed_updowns - avaliable_updown_deroutes;
 
 		if avaliable_updown_deroutes == 0 // just go minimal!
 		{
@@ -1890,14 +1892,14 @@ impl Routing for UpDownDerouting
 				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
 				if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,i)
 				{
-					if distance-1==topology.distance(router_index,target_router) && router_index != last_router
+					if distance-1==topology.distance(router_index,target_router)
 					{
-						r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+						r.extend(self.virtual_channels[vc_index].iter().map(|&vc|CandidateEgress::new(i,vc)));
 					}
 				}
 			}
 
-		}else if avaliable_updown_deroutes == 1{ //only a down stage, in an oft u cannot missroute again, but in a rfc u can.
+		}else{
 
 			for NeighbourRouterIteratorItem{link_class: next_link_class,port_index,neighbour_router:neighbour_router_index,..} in topology.neighbour_router_iter(current_router)
 			{
@@ -1906,50 +1908,33 @@ impl Routing for UpDownDerouting
 				{
 					if distance-1==topology.distance(neighbour_router_index,target_router) //&& neighbour_router_index != last_router
 					{
-						r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(port_index,vc)));
+						r.extend(self.virtual_channels[vc_index].iter().map(|&vc|CandidateEgress::new(port_index,vc)));
 					}else{
-						r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:port_index,virtual_channel:vc,label:1,..Default::default()}));
+						r.extend(self.virtual_channels[vc_index].iter().map(|&vc|CandidateEgress{port:port_index,virtual_channel:vc,label:1,..Default::default()}));
 
 					}
+
 				}else{
 
-					if aux[1] != 0 //only minimal!
+					if aux[1] != 0
 					{
 						if distance - 1 == topology.distance(neighbour_router_index, target_router) //&& neighbour_router_index != last_router
 						{
-							r.extend((0..num_virtual_channels).map(|vc| CandidateEgress::new(port_index, vc)));
+							r.extend(self.virtual_channels[vc_index + 1].iter().map(|&vc| CandidateEgress::new(port_index, vc)));
+						}
+
+						if avaliable_updown_deroutes > 1 { //check if we can do non-minimal routes
+							r.extend(self.virtual_channels[vc_index + 1].iter().into_iter().map(|&vc|CandidateEgress{port:port_index,virtual_channel:vc,label:1,..Default::default()}));
 						}
 					}else{ //whatever
+
 						if distance-1==topology.distance(neighbour_router_index,target_router) //&& neighbour_router_index != last_router
 						{
-							r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(port_index,vc)));
+							r.extend(self.virtual_channels[vc_index].iter().map(|&vc|CandidateEgress::new(port_index,vc)));
 						}else{
-							r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:port_index,virtual_channel:vc,label:1,..Default::default()}));
+							r.extend(self.virtual_channels[vc_index].iter().map(|&vc|CandidateEgress{port:port_index,virtual_channel:vc,label:1,..Default::default()}));
 
 						}
-					}
-				}
-			}
-
-		}else{
-			for NeighbourRouterIteratorItem{link_class: next_link_class,port_index,neighbour_router:neighbour_router_index,..} in topology.neighbour_router_iter(current_router)
-			{
-				if  neighbour_router_index != last_router
-				{
-					////r.extend((0..num_virtual_channels).map(|vc|(i,vc)));
-					if topology.distance(neighbour_router_index,target_router) >= distance
-					{
-						if topology.amount_shortest_paths(neighbour_router_index, target_router) > 1
-						{
-							r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:port_index,virtual_channel:vc,label:1,..Default::default()}));
-						}
-						//r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
-					}
-					else
-					{
-						r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(port_index,vc)));
-						//r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:i,virtual_channel:vc,label:-1,..Default::default()}));
-
 					}
 				}
 			}
@@ -2076,10 +2061,12 @@ impl UpDownDerouting
 			panic!("Trying to create a UpDownDerouting from a non-Object");
 		}
 		let allowed_updowns= allowed_updowns.expect("There were no allowed_deroutes");
+		let vcs= vec![0;allowed_updowns+1];
+		let vcs = vcs.iter().enumerate().map(|(i,vc)|vec![i]).collect::<Vec<Vec<usize>>>();
 		//let include_labels=include_labels.expect("There were no include_labels");
 		UpDownDerouting {
 			allowed_updowns,
-			//include_labels,
+			virtual_channels: vcs,
 		}
 	}
 }
