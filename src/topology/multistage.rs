@@ -3,11 +3,12 @@ use std::collections::BTreeSet;
 
 use ::rand::{Rng,rngs::StdRng};
 use quantifiable_derive::Quantifiable;//the derive macro
+use std::fs::File;
+use std::io::{BufRead,BufReader};
+use std::cell::RefCell;
+use crate::Time;
 
-use super::{Topology,Location,TopologyBuilderArgument,
-	cartesian::CartesianData,
-	projective::FlatGeometryCache,
-};
+use super::{Topology, Location, TopologyBuilderArgument, cartesian::CartesianData, projective::FlatGeometryCache, NeighbourRouterIteratorItem};
 
 use crate::{
 	Plugs,error,source_location,
@@ -15,6 +16,8 @@ use crate::{
 	error::{Error,SourceLocation},
 	};
 use crate::quantify::Quantifiable;
+
+use crate::routing::{RoutingInfo,Routing,CandidateEgress,RoutingBuilderArgument,RoutingNextCandidates};
 
 ///Requirements on each level. They are combined by the multiple stages of a MultiStage topology aiming to get values compatible with all of them.
 #[derive(Debug,Clone,Copy)]
@@ -1290,6 +1293,7 @@ impl Topology for MultiStage
 	}
 	fn cartesian_data(&self) -> Option<&CartesianData>
 	{
+
 		None
 	}
 	fn coordinated_routing_record(&self, _coordinates_a:&[usize], _coordinates_b:&[usize], _rng: Option<&mut StdRng>)->Vec<i32>
@@ -1837,28 +1841,17 @@ pub fn new_stage(arg:StageBuilderArgument) -> Box<dyn Stage>
 
 
 
-/// Routing part of the Omni-dimensional Weighted Adaptive Routing of Nic McDonald et al.
-/// Stores `RoutingInfo.selections=Some(vec![available_deroutes])`.
-/// Only paths of currently unaligned dimensions are valid. Otherwise dimensions are ignored.
 #[derive(Debug)]
-pub struct OmniDerouteForMultiStages
+pub struct UpDownDerouting
 {
 	///Maximum number of non-shortest (deroutes) hops to make.
-	allowed_deroutes: usize,
-	//To mark non-shortest options with label=1.
-	//include_labels: bool,
+	allowed_updowns: usize,
 }
 
-impl Routing for OmniDerouteForMultiStages
+impl Routing for UpDownDerouting
 {
 	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
-		/*let (target_location,_link_class)=topology.server_neighbour(target_server);
-		let target_router=match target_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};*/
 		let distance=topology.distance(current_router,target_router);
 		if distance==0
 		{
@@ -1876,24 +1869,20 @@ impl Routing for OmniDerouteForMultiStages
 			unreachable!();
 		}
 
-
 		let visited_routers = routing_info.visited_routers.as_ref().unwrap();
 		let mut last_router = visited_routers[visited_routers.len() - 1];
 		if visited_routers.len() > 1
 		{
 			last_router = visited_routers[visited_routers.len() - 2]; //current router is the last one....
 		}
-
-		let avaliable_hops = 5 - visited_routers.len(); //need to fix this in the future
+		let avaliable_updown_deroutes = routing_info.selections.as_ref().unwrap()[0] as usize;
 
 		let num_ports=topology.ports(current_router);
 		let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
-		//let available_deroutes=routing_info.selections.as_ref().unwrap()[0] as usize;
+		let binding = routing_info.auxiliar.borrow();
+		let aux = binding.as_ref().unwrap().downcast_ref::<Vec<usize>>().unwrap(); // To know when to change of virtual channel
 
-		//let multistage_data = topology.multistage_data().expect("To run OmniDerouteForMultiStages you need a multistage topology!");
-		//let (current_level_index, _offset) = multistage_data.unpack(current_router);
-
-		if avaliable_hops == distance
+		if avaliable_updown_deroutes == 0 // just go minimal!
 		{
 			//Go minimally.
 			for i in 0..num_ports
@@ -1907,57 +1896,59 @@ impl Routing for OmniDerouteForMultiStages
 					}
 				}
 			}
-		}
-		else
-		{
 
-			if distance == 1 //only a down stage, in an oft u cannot missroute again, but in a rfc u can.
+		}else if avaliable_updown_deroutes == 1{ //only a down stage, in an oft u cannot missroute again, but in a rfc u can.
+
+			for NeighbourRouterIteratorItem{link_class: next_link_class,port_index,neighbour_router:neighbour_router_index,..} in topology.neighbour_router_iter(current_router)
 			{
-				//Include any unaligned.
-				for i in 0..num_ports
+
+				if next_link_class == 1 // Down stages have never been an issue
 				{
-					//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
-					if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,i)
+					if distance-1==topology.distance(neighbour_router_index,target_router) //&& neighbour_router_index != last_router
 					{
-						if router_index == target_router
+						r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(port_index,vc)));
+					}else{
+						r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:port_index,virtual_channel:vc,label:1,..Default::default()}));
+
+					}
+				}else{
+
+					if aux[1] != 0 //only minimal!
+					{
+						if distance - 1 == topology.distance(neighbour_router_index, target_router) //&& neighbour_router_index != last_router
 						{
-							r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
-
-						}else if  topology.distance(router_index,target_router) <= (avaliable_hops-1)
-							&& topology.amount_shortest_paths(router_index, target_router) > 1 //false in an oft
-							&& router_index != last_router {
-
-							r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:i,virtual_channel:vc,label:1,..Default::default()}));
+							r.extend((0..num_virtual_channels).map(|vc| CandidateEgress::new(port_index, vc)));
+						}
+					}else{ //whatever
+						if distance-1==topology.distance(neighbour_router_index,target_router) //&& neighbour_router_index != last_router
+						{
+							r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(port_index,vc)));
+						}else{
+							r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:port_index,virtual_channel:vc,label:1,..Default::default()}));
 
 						}
 					}
 				}
+			}
 
-			}else{ // you can missroute
-
-				for i in 0..num_ports
+		}else{
+			for NeighbourRouterIteratorItem{link_class: next_link_class,port_index,neighbour_router:neighbour_router_index,..} in topology.neighbour_router_iter(current_router)
+			{
+				if  neighbour_router_index != last_router
 				{
-					//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
-					if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,i)
+					////r.extend((0..num_virtual_channels).map(|vc|(i,vc)));
+					if topology.distance(neighbour_router_index,target_router) >= distance
 					{
-							if  router_index != last_router && topology.distance(router_index,target_router) <= (avaliable_hops -1)
-							{
-								////r.extend((0..num_virtual_channels).map(|vc|(i,vc)));
-								if topology.distance(router_index,target_router) >= distance
-								{
-									if topology.amount_shortest_paths(router_index, target_router) > 1
-									{
-										r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:i,virtual_channel:vc,label:1,..Default::default()}));
-									}
-									//r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
-								}
-								else
-								{
-									r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
-									//r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:i,virtual_channel:vc,label:-1,..Default::default()}));
-
-								}
-							}
+						if topology.amount_shortest_paths(neighbour_router_index, target_router) > 1
+						{
+							r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:port_index,virtual_channel:vc,label:1,..Default::default()}));
+						}
+						//r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+					}
+					else
+					{
+						r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(port_index,vc)));
+						//r.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:i,virtual_channel:vc,label:-1,..Default::default()}));
 
 					}
 				}
@@ -1968,53 +1959,58 @@ impl Routing for OmniDerouteForMultiStages
 
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, current_router:usize, _target_touter:usize, _target_server:Option<usize>, _rng: &mut StdRng)
 	{
-		routing_info.borrow_mut().selections=Some(vec![self.allowed_deroutes as i32]);
+		routing_info.borrow_mut().selections=Some(vec![self.allowed_updowns as i32]);
 		routing_info.borrow_mut().visited_routers=Some(vec![current_router]);
 	}
 	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, _target_server:Option<usize>,_rng: &mut StdRng)
 	{
 
-		if let (Location::RouterPort{router_index: previous_router,router_port:_},_link_class)=topology.neighbour(current_router,current_port)
+		if let (Location::RouterPort{router_index: previous_router,router_port:_},link_class)=topology.neighbour(current_router,current_port)
 		{
-			let multistage_data = topology.multistage_data().expect("To run OmniDerouteForMultiStages you need a multistage topology!");
+			//let multistage_data = topology.cartesian_data().expect("To run UpDownDerouting you need a multistage topology!");
 			//let max_height = multistage_data.height();
-			let (current_height,_)= multistage_data.unpack(current_router);
+			//let current_height= multistage_data.unpack(current_router)[0];
 
-			/*let (target_location,_link_class)=topology.server_neighbour(target_server);
-			let target_router=match target_location
-			{
-				Location::RouterPort{router_index,router_port:_} =>router_index,
-				_ => panic!("The server is not attached to a router"),
-			};*/
-
-			//current_height == max_height-1 ||
-			if current_height == 0 && routing_info.borrow_mut().visited_routers.as_ref().expect("visited_routers should be initialized").len() > 1 //topology.amount_shortest_paths(current_router, target_router) == 1 //we are at the common ancestor!
-			{
-				match routing_info.borrow_mut().selections
-				{
-					Some(ref mut v) =>
+			let mut bri=routing_info.borrow_mut();
+			let mut aux = bri.auxiliar.borrow_mut().take().unwrap();
+			let saltos = match aux.downcast_ref::<Vec<usize>>(){
+				Some(x) => {
+					if link_class == 0
 					{
-						v[0]= 0; //no more deroutes :(
-					}
-					None => panic!("available deroutes not initialized"),
-				};
-			}
-			else if topology.distance(previous_router,target_router) != 1+topology.distance(current_router,target_router)
-			{
-				match routing_info.borrow_mut().selections
-				{
-					Some(ref mut v) =>
-					{
-						let available_deroutes=v[0];
-						if available_deroutes==0
+						if x[1] != 0
 						{
-							panic!("We should have not done this deroute.");
+							match bri.selections
+							{
+								Some(ref mut v) =>
+									{
+										let available_updown_deroutes=v[0];
+										if available_updown_deroutes==0
+										{
+											panic!("We should have not done this deroute.");
+										}
+										v[0]= available_updown_deroutes-1;
+									}
+								None => panic!("selections not initialized"),
+							};
+
+							vec![1usize, 0usize] //Another up stage
+
+						}else{
+							vec![x[0]+1usize, 0usize]
 						}
-						v[0]=available_deroutes-1;
+
+					} else if link_class == 1{
+						vec![x[0], x[1]+1usize]
+
+					}else{
+						panic!("Auxiliar not big enough");
+						vec![x[0], x[1]]
 					}
-					None => panic!("available deroutes not initialized"),
-				};
-			}
+				},
+				None => panic!("auxiliar not initialized"),
+			};
+
+			bri.auxiliar.replace(Some(Box::new(saltos)));
 
 			match routing_info.borrow_mut().visited_routers
 			{
@@ -2042,26 +2038,26 @@ impl Routing for OmniDerouteForMultiStages
 	}
 }
 
-impl OmniDerouteForMultiStages
+impl UpDownDerouting
 {
-	pub fn new(arg:RoutingBuilderArgument) -> OmniDerouteForMultiStages
+	pub fn new(arg:RoutingBuilderArgument) -> UpDownDerouting
 	{
-		let mut allowed_deroutes=None;
+		let mut allowed_updowns =None;
 		//let mut include_labels=None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
 		{
-			if cv_name!="OmniDerouteForMultiStages"
+			if cv_name!="UpDownDerouting"
 			{
-				panic!("A OmniDerouteForMultiStages must be created from a `OmniDerouteForMultiStages` object not `{}`",cv_name);
+				panic!("A UpDownDerouting must be created from a `UpDownDerouting` object not `{}`",cv_name);
 			}
 			for &(ref name,ref value) in cv_pairs
 			{
 				//match name.as_ref()
 				match AsRef::<str>::as_ref(&name)
 				{
-					"allowed_deroutes" => match value
+					"allowed_updowns" => match value
 					{
-						&ConfigurationValue::Number(f) => allowed_deroutes=Some(f as usize),
+						&ConfigurationValue::Number(f) => allowed_updowns =Some(f as usize),
 						_ => panic!("bad value for allowed_deroutes"),
 					}
 					/*"include_labels" => match value
@@ -2071,18 +2067,18 @@ impl OmniDerouteForMultiStages
 						_ => panic!("bad value for include_labels"),
 					}*/
 					"legend_name" => (),
-					_ => panic!("Nothing to do with field {} in OmniDerouteForMultiStages",name),
+					_ => panic!("Nothing to do with field {} in UpDownDerouting",name),
 				}
 			}
 		}
 		else
 		{
-			panic!("Trying to create a OmniDerouteForMultiStages from a non-Object");
+			panic!("Trying to create a UpDownDerouting from a non-Object");
 		}
-		let allowed_deroutes=allowed_deroutes.expect("There were no allowed_deroutes");
+		let allowed_updowns= allowed_updowns.expect("There were no allowed_deroutes");
 		//let include_labels=include_labels.expect("There were no include_labels");
-		OmniDerouteForMultiStages{
-			allowed_deroutes,
+		UpDownDerouting {
+			allowed_updowns,
 			//include_labels,
 		}
 	}
