@@ -1847,10 +1847,11 @@ pub fn new_stage(arg:StageBuilderArgument) -> Box<dyn Stage>
 pub struct UpDownDerouting
 {
 	///Maximum number of non-shortest (deroutes) hops to make.
-	allowed_updowns: usize,
-	/// (Optional): VC to take in each UpDown stage.
+	allowed_missrouting_updowns: usize,
+	/// (Optional): VC to take in each UpDown stage. By default one different VC per UpDown path.
 	virtual_channels: Vec<Vec<usize>>,
-	/// Stages in the tree, need to be added
+	/// Stages in the multistage, by the default 1.
+	stages: usize,
 }
 
 impl Routing for UpDownDerouting
@@ -1886,7 +1887,7 @@ impl Routing for UpDownDerouting
 		let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
 		let binding = routing_info.auxiliar.borrow();
 		let aux = binding.as_ref().unwrap().downcast_ref::<Vec<usize>>().unwrap(); // To know when to change of virtual channel
-		let vc_index= self.allowed_updowns - avaliable_updown_deroutes;
+		let vc_index= self.allowed_missrouting_updowns - avaliable_updown_deroutes;
 
 		if avaliable_updown_deroutes == 0 // just go minimal!
 		{
@@ -1923,9 +1924,9 @@ impl Routing for UpDownDerouting
 
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, current_router:usize, _target_touter:usize, _target_server:Option<usize>, _rng: &mut StdRng)
 	{
-		routing_info.borrow_mut().selections=Some(vec![self.allowed_updowns as i32]);
+		routing_info.borrow_mut().selections=Some(vec![self.allowed_missrouting_updowns as i32]);
 		routing_info.borrow_mut().visited_routers=Some(vec![current_router]);
-		routing_info.borrow_mut().auxiliar= RefCell::new(Some(Box::new(vec![0usize])));
+		routing_info.borrow_mut().auxiliar= RefCell::new(Some(Box::new(vec![0usize;self.stages])));
 
 	}
 	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, _target_server:Option<usize>,_rng: &mut StdRng)
@@ -1995,7 +1996,10 @@ impl UpDownDerouting
 {
 	pub fn new(arg:RoutingBuilderArgument) -> UpDownDerouting
 	{
-		let mut allowed_updowns =None;
+		let mut allowed_missrouting_updowns =None;
+		let mut stages = 1usize;
+		let mut virtual_channels = None;
+
 		//let mut include_labels=None;
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
 		{
@@ -2008,10 +2012,18 @@ impl UpDownDerouting
 				//match name.as_ref()
 				match AsRef::<str>::as_ref(&name)
 				{
-					"allowed_updowns" => match value
+					"allowed_missrouting_updowns" => match value
 					{
-						&ConfigurationValue::Number(f) => allowed_updowns =Some(f as usize),
+						&ConfigurationValue::Number(f) => allowed_missrouting_updowns =Some(f as usize),
 						_ => panic!("bad value for allowed_deroutes"),
+					}
+					"stages" => match value {
+						&ConfigurationValue::Number(f) => stages = f as usize,
+						_ => (),
+					}
+					"virtual_channels" => match value {
+						ConfigurationValue::Array(f) => virtual_channels = Some(f.into_iter().map(| a | a.as_array().unwrap().into_iter().map(|b| b.as_usize().unwrap()).collect() ).collect()),
+						_ => (),
 					}
 					/*"include_labels" => match value
 					{
@@ -2028,13 +2040,22 @@ impl UpDownDerouting
 		{
 			panic!("Trying to create a UpDownDerouting from a non-Object");
 		}
-		let allowed_updowns= allowed_updowns.expect("There were no allowed_deroutes");
-		let vcs= vec![0;allowed_updowns+1];
-		let vcs = vcs.iter().enumerate().map(|(i,vc)|vec![i]).collect::<Vec<Vec<usize>>>();
+		let allowed_missrouting_updowns= allowed_missrouting_updowns.expect("There were no allowed_deroutes");
+
+		let virtual_channels = match virtual_channels {
+			Some( v) => v,
+			None => {
+				let a= vec![0;allowed_missrouting_updowns+1];
+				a.iter().enumerate().map(|(i,vc)|vec![i]).collect::<Vec<Vec<usize>>>()
+			}
+		};
+
+
 		//let include_labels=include_labels.expect("There were no include_labels");
 		UpDownDerouting {
-			allowed_updowns,
-			virtual_channels: vcs,
+			allowed_missrouting_updowns,
+			virtual_channels,
+			stages
 		}
 	}
 }
