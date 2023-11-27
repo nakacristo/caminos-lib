@@ -1848,7 +1848,7 @@ pub fn new_stage(arg:StageBuilderArgument) -> Box<dyn Stage>
 pub struct UpDownDerouting
 {
 	///Maximum number of non-shortest (deroutes) hops to make.
-	allowed_missrouting_updowns: usize,
+	allowed_updowns: usize,
 	/// (Optional): VC to take in each UpDown stage. By default one different VC per UpDown path.
 	virtual_channels: Vec<Vec<usize>>,
 	/// Stages in the multistage, by the default 1.
@@ -1876,48 +1876,30 @@ impl Routing for UpDownDerouting
 			unreachable!();
 		}
 
-		let visited_routers = routing_info.visited_routers.as_ref().unwrap();
-		let mut last_router = visited_routers[visited_routers.len() - 1];
-		if visited_routers.len() > 1
-		{
-			last_router = visited_routers[visited_routers.len() - 2]; //current router is the last one....
-		}
+		// let visited_routers = routing_info.visited_routers.as_ref().unwrap();
+		// let mut last_router = visited_routers[visited_routers.len() - 1];
+		// if visited_routers.len() > 1
+		// {
+		// 	last_router = visited_routers[visited_routers.len() - 2]; //current router is the last one....
+		// }
 		let avaliable_updown_deroutes = routing_info.selections.as_ref().unwrap()[0] as usize;
 
 		let num_ports=topology.ports(current_router);
 		let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
-		let binding = routing_info.auxiliar.borrow();
-		let aux = binding.as_ref().unwrap().downcast_ref::<Vec<usize>>().unwrap(); // To know when to change of virtual channel
-		let vc_index= self.allowed_missrouting_updowns - avaliable_updown_deroutes;
+		// let binding = routing_info.auxiliar.borrow();
+		// let aux = binding.as_ref().unwrap().downcast_ref::<Vec<usize>>().unwrap(); // To know when to change of virtual channel
+		let vc_index= self.allowed_updowns - avaliable_updown_deroutes;
 
-		if avaliable_updown_deroutes == 0 // just go minimal!
+		for NeighbourRouterIteratorItem{link_class: _next_link_class,port_index,neighbour_router:neighbour_router_index,..} in topology.neighbour_router_iter(current_router)
 		{
-			//Go minimally.
-			for i in 0..num_ports
+			if distance-1 == topology.distance(neighbour_router_index,target_router) //&& neighbour_router_index != last_router
 			{
-				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
-				if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,i)
-				{
-					if distance-1==topology.distance(router_index,target_router)
-					{
-						r.extend(self.virtual_channels[vc_index].iter().map(|&vc|CandidateEgress::new(i,vc)));
-					}
-				}
-			}
+				r.extend(self.virtual_channels[vc_index].iter().map(|&vc|CandidateEgress::new(port_index,vc)));
 
-		}else{
+			}else if avaliable_updown_deroutes > 1{ // a non-minimal route shouldnt be allowed if we only have 1 updown deroute left. We asume that there's an updown path to destination.
 
-			for NeighbourRouterIteratorItem{link_class: next_link_class,port_index,neighbour_router:neighbour_router_index,..} in topology.neighbour_router_iter(current_router)
-			{
+				r.extend(self.virtual_channels[vc_index].iter().map(|&vc|CandidateEgress{port:port_index,virtual_channel:vc,label:1,..Default::default()}));
 
-				let minimal = distance-1 == topology.distance(neighbour_router_index,target_router);
-				if minimal //&& neighbour_router_index != last_router
-				{
-					r.extend(self.virtual_channels[vc_index].iter().map(|&vc|CandidateEgress::new(port_index,vc)));
-				}else{
-					r.extend(self.virtual_channels[vc_index].iter().map(|&vc|CandidateEgress{port:port_index,virtual_channel:vc,label:1,..Default::default()}));
-
-				}
 			}
 		}
 		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
@@ -1925,7 +1907,7 @@ impl Routing for UpDownDerouting
 
 	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, current_router:usize, _target_touter:usize, _target_server:Option<usize>, _rng: &mut StdRng)
 	{
-		routing_info.borrow_mut().selections=Some(vec![self.allowed_missrouting_updowns as i32]);
+		routing_info.borrow_mut().selections=Some(vec![self.allowed_updowns as i32]);
 		routing_info.borrow_mut().visited_routers=Some(vec![current_router]);
 		routing_info.borrow_mut().auxiliar= RefCell::new(Some(Box::new(vec![0usize;self.stages])));
 
@@ -1933,14 +1915,14 @@ impl Routing for UpDownDerouting
 	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, _target_server:Option<usize>,_rng: &mut StdRng)
 	{
 
-		if let (Location::RouterPort{router_index: previous_router,router_port:_},link_class)=topology.neighbour(current_router,current_port)
+		if let (Location::RouterPort{router_index: _previous_router,router_port:_},link_class)=topology.neighbour(current_router,current_port)
 		{
 			//let multistage_data = topology.cartesian_data().expect("To run UpDownDerouting you need a multistage topology!");
 			//let max_height = multistage_data.height();
 			//let current_height= multistage_data.unpack(current_router)[0];
 
 			let mut bri=routing_info.borrow_mut();
-			let mut aux = bri.auxiliar.borrow_mut().take().unwrap();
+			let aux = bri.auxiliar.borrow_mut().take().unwrap();
 			let mut saltos =  aux.downcast_ref::<Vec<usize>>().unwrap().clone();
 			if saltos[link_class] != 0
 			{
@@ -1997,7 +1979,7 @@ impl UpDownDerouting
 {
 	pub fn new(arg:RoutingBuilderArgument) -> UpDownDerouting
 	{
-		let mut allowed_missrouting_updowns =None;
+		let mut allowed_updowns=None;
 		let mut stages = 1usize;
 		let mut virtual_channels = None;
 
@@ -2013,9 +1995,9 @@ impl UpDownDerouting
 				//match name.as_ref()
 				match AsRef::<str>::as_ref(&name)
 				{
-					"allowed_missrouting_updowns" => match value
+					"allowed_updowns" => match value
 					{
-						&ConfigurationValue::Number(f) => allowed_missrouting_updowns =Some(f as usize),
+						&ConfigurationValue::Number(f) => allowed_updowns =Some(f as usize),
 						_ => panic!("bad value for allowed_deroutes"),
 					}
 					"stages" => match value {
@@ -2041,20 +2023,20 @@ impl UpDownDerouting
 		{
 			panic!("Trying to create a UpDownDerouting from a non-Object");
 		}
-		let allowed_missrouting_updowns= allowed_missrouting_updowns.expect("There were no allowed_deroutes");
+		let allowed_updowns= allowed_updowns.expect("There were no allowed_deroutes");
 
 		let virtual_channels = match virtual_channels {
 			Some( v) => v,
 			None => {
-				let a= vec![0;allowed_missrouting_updowns+1];
-				a.iter().enumerate().map(|(i,vc)|vec![i]).collect::<Vec<Vec<usize>>>()
+				let a= vec![0;allowed_updowns];
+				a.iter().enumerate().map(|(i,_vc)|vec![i]).collect::<Vec<Vec<usize>>>()
 			}
 		};
 
 
 		//let include_labels=include_labels.expect("There were no include_labels");
 		UpDownDerouting {
-			allowed_missrouting_updowns,
+			allowed_updowns,
 			virtual_channels,
 			stages
 		}
