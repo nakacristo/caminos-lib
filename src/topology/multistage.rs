@@ -319,6 +319,7 @@ impl ProjectiveStage
 
 
 ///MLFM stage from Fujitsu.
+/// More details in: https://www.fujitsu.com/global/about/resources/news/press-releases/2014/0715-02.html
 #[derive(Quantifiable)]
 #[derive(Debug)]
 struct FMStage
