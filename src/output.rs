@@ -41,6 +41,8 @@ CSV
 
 ### Plots of data
 
+See the reference of [Plotkind] for detailed information.
+
 ```ignore
 Plots
 {
@@ -48,8 +50,7 @@ Plots
 	//In this example each traffic pattern get its own figure.
 	selector: =configuration.traffic.pattern.legend_name,
 	//A list of [Plotkind]s with the information of what to draw in each figure.
-	//See the reference of [Plotkind] for detailed information.
-	//This example cotains a simple chart plot, with a point for each value of `offered_load`, using that same value as abscissas (a.k.a. x axis) and the value of `accepted_load` in ordinates (a.k.a. y axis). These values are averaged respect to the other parameters, such as `seed`.
+	//This example contains a simple chart plot, with a point for each value of `offered_load`, using that same value as abscissas (a.k.a. x axis) and the value of `accepted_load` in ordinates (a.k.a. y axis). These values are averaged respect to the other parameters, such as `random_seed`.
 	kind: [Plotkind{
 		parameter: =configuration.traffic.load,
 		abscissas: =configuration.traffic.load,
@@ -77,7 +78,9 @@ Plots
 
 ### Preprocessing of data
 
-A `PreprocessArgMax` process the results and creates a file containing an array with the maximum values of some expression together the value of an auxiliary expression. The generated file is binary file containing a [ConfigurationValue::Array] with as many elements as experiments and in the `i`th entry contains `PreprocessedArgMax{argument:computed_argument_value,maximum_value:computed_maximum_value}`.
+A `PreprocessArgMax` process the results and creates a file containing an array with the maximum
+values of some expression together the value of an auxiliary expression.
+The generated file is binary file containing a [ConfigurationValue::Array] with as many elements as experiments and in the `i`th entry contains `PreprocessedArgMax{argument:computed_argument_value,maximum_value:computed_maximum_value}`.
 
 ```ignore
 //This example find where accepted load is maximum.
@@ -94,7 +97,10 @@ PreprocessArgMax
 },
 ```
 
-The generated file can be used by following output description. The expression [FileExpression][evaluate] evaluates an expression into a file and with `at{container:file_data,position:index}` we access the corresponding record, as `index` is a variable with the experiment number.
+The generated file can be used by following output description.
+The expression [FileExpression][evaluate] evaluates an expression into a file
+and with `at{container:file_data,position:index}` we access the corresponding record,
+as `index` is a variable with the experiment number.
 
 For example, to use this `peak.cfg`.
 ```ignore
@@ -108,7 +114,14 @@ Plots
 		// --- get greatest worst server with average close to peak.
 		// we read the stored value and compare it with the accepted load plus an epsilon.
 		ordinates: =if{
-			condition: lt{first:FileExpression{filename:"peak.cfg",expression:at{container:file_data,position:index}}.maximum_value,second:add{first:result.accepted_load,second:0.02}},
+			condition: lt{
+				first:FileExpression
+				{
+					filename: "peak.cfg",
+					expression:at{container:file_data,position:index}
+				}.maximum_value,
+				second:add{first:result.accepted_load, second:0.02}
+			},
 			true_expression: result.server_percentile0.accepted_load,
 			false_expression: 0,
 		},
@@ -125,7 +138,7 @@ Plots
 },
 ```
 
-**/
+*/
 pub fn create_output(description: &ConfigurationValue, environment: &mut OutputEnvironment)
 	-> Result<(),Error>
 {
@@ -427,9 +440,65 @@ struct AveragedRecord
 	version_set: HashSet<String>,
 }
 
-///A description of how to build a plot.
+/**
+	A description of a specific plot (axis and data).
+
+	## Chart plot
+
+	```ignore
+	Plotkind{
+		//A point will be generated for each value of parameter.
+		parameter: =configuration.traffic.load,
+		//The averaged value of abscissas is used as the x coordinate.
+		abscissas: =configuration.traffic.load,
+		//A text to use as label of the x axix.
+		label_abscissas: "offered load",
+		//The averaged value of ordinates is used as the y coordinate.
+		ordinates: =result.accepted_load,
+		//A text to use as label of the y axix.
+		label_ordinates: "accepted load",
+		//To enforce a minimum value of the y axis.
+		min_ordinate: 0.0,
+		//To enforce a maximum value of the y axis.
+		max_ordinate: 1.0,
+		//To enforce a minimum value of the x axis.
+		//min_abscissa
+		//To enforce a maximum value of the x axis.
+		//max_abscissa
+	}
+	```
+
+	The options `ordinate` or `histogram` can be used instead of the `ordinates` to use an [ConfigurationValue::Expression] that evaluates to an array. The abscissas will be the first naturals in such case.
+
+	## Bar plot
+	Just add `bar: true` to make the plot to have bars instead of lines with marks.
+
+	## Whisker and box plots
+	A Box plot with whiskers can be built by defining the value `upper_box_limit` and the related ones.
+
+	```ignore
+	//This example assumes `statistics_server_percentiles: [0,25,50,75,100],` to be included in the `main.cfg`.
+	Plotkind{
+		parameter: =configuration.traffic.pattern.legend_name,
+		abscissas: =configuration.traffic.pattern.legend_name,
+		label_abscissas: "traffic pattern",
+		ordinates: =result.accepted_load,
+		label_ordinates: "throughput",
+		//Example with the upper whisker representing the greatest value of accepted among all servers.
+		upper_whisker: =result.server_percentile100.accepted_load,
+		//Similarly the whisker downwards uses the minimum value of the accepted load among the servers.
+		bottom_whisker: =result.server_percentile0.accepted_load,
+		//For the box limits it is common to use Q1 and Q3 quartiles.
+		upper_box_limit: =result.server_percentile75.accepted_load,
+		bottom_box_limit: =result.server_percentile25.accepted_load,
+		//The middle line commonly represents the median value.
+		box_middle: =result.server_percentile50.accepted_load,
+		min_ordinate: 0.0,
+	}
+	```
+**/
 #[derive(Debug)]
-struct Plotkind<'a>
+pub struct Plotkind<'a>
 {
 	parameter: Option<&'a ConfigurationValue>,
 	abscissas: Option<&'a ConfigurationValue>,
@@ -482,66 +551,7 @@ impl PlotData
 	}
 }
 
-/**
-A description of a specific plot (axis and data).
 
-## Chart plot
-
-```ignore
-Plotkind{
-	//A point will be generated for each value of parameter.
-	parameter: =configuration.traffic.load,
-	//The averaged value of abscissas is used as the x coordinate.
-	abscissas: =configuration.traffic.load,
-	//A text to use as label of the x axix.
-	label_abscissas: "offered load",
-	//The averaged value of ordinates is used as the y coordinate.
-	ordinates: =result.accepted_load,
-	//A text to use as label of the y axix.
-	label_ordinates: "accepted load",
-	//To enforce a minimum value of the y axis.
-	min_ordinate: 0.0,
-	//To enforce a maximum value of the y axis.
-	max_ordinate: 1.0,
-	//To enforce a minimum value of the x axis.
-	//min_abscissa
-	//To enforce a maximum value of the x axis.
-	//max_abscissa
-}
-```
-
-The options `ordinate` or `histogram` can be used instead of the `ordinates` to use an [Expression] that evaluates to an array. The abscissas will be the first naturals in such case.
-
-## Bar plot
-
-Just add `bar: true` to make the plot to have bars instead of lines with marks.
-
-## Whisker and box plots
-
-A Box plot with whiskers can be built by defining the value `upper_box_limit` and the related ones.
-
-```ignore
-//This example assumes `statistics_server_percentiles: [0,25,50,75,100],` to be included in the `main.cfg`.
-Plotkind{
-	parameter: =configuration.traffic.pattern.legend_name,
-	abscissas: =configuration.traffic.pattern.legend_name,
-	label_abscissas: "traffic pattern",
-	ordinates: =result.accepted_load,
-	label_ordinates: "throughput",
-	//Example with the upper whisker representing the greatest value of accepted among all servers.
-	upper_whisker: =result.server_percentile100.accepted_load,
-	//Similarly the whisker downwards uses the minimum value of the accepted load among the servers.
-	bottom_whisker: =result.server_percentile0.accepted_load,
-	//For the box limits it is common to use Q1 and Q3 quartiles.
-	upper_box_limit: =result.server_percentile75.accepted_load,
-	bottom_box_limit: =result.server_percentile25.accepted_load,
-	//The middle line commonly represents the median value.
-	box_middle: =result.server_percentile50.accepted_load,
-	min_ordinate: 0.0,
-}
-```
-
-**/
 impl<'a> Plotkind<'a>
 {
 	fn new(description: &'a ConfigurationValue)->Plotkind<'a>
@@ -1828,7 +1838,7 @@ PreprocessArgMax{
 	target: =results.accepted_load,
 	argument: =configuration.traffic.load,
 }
-*/
+**/
 fn create_preprocess_arg_max(description: &ConfigurationValue, environment:&mut OutputEnvironment) -> Result<(),Error>
 {
 	//File to be crated, inside "path/".
