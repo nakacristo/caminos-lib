@@ -318,7 +318,7 @@ impl ProjectiveStage
 }
 
 
-///The stages in a Orthogonal Fat Tree
+///MLFM stage from Fujitsu.
 #[derive(Quantifiable)]
 #[derive(Debug)]
 struct FMStage
@@ -1012,6 +1012,7 @@ impl WidenedStage
 }
 
 
+///OFT fault tolerance stage, with paralell links.
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct FaultToleranceStage
@@ -1840,9 +1841,8 @@ pub fn new_stage(arg:StageBuilderArgument) -> Box<dyn Stage>
 
 
 
-/*
-	Routing for indirect networks which follows up-down routes adaptively.
- */
+
+///Routing for indirect networks which follows up-down routes adaptively.
 #[derive(Debug)]
 pub struct UpDownDerouting
 {
