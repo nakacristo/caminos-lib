@@ -187,6 +187,8 @@ pub struct OutputEnvironment<'a>
 	files: &'a ExperimentFiles,
 	selector_map: EnumeratedMap<ConfigurationValue>,
 	legend_map: EnumeratedMap<ConfigurationValue>,
+	/// When not None, only generate targets in the list.
+	pub targets: &'a Option<Vec<String>>,
 }
 
 #[derive(Debug)]
@@ -248,7 +250,7 @@ impl OutputEnvironmentEntry
 
 impl<'a> OutputEnvironment<'a>
 {
-	pub fn new(results: Vec<OutputEnvironmentEntry>, total_experiments: usize, files: &'a ExperimentFiles) -> OutputEnvironment<'a>
+	pub fn new(results: Vec<OutputEnvironmentEntry>, total_experiments: usize, files: &'a ExperimentFiles, targets:&'a Option<Vec<String>>) -> OutputEnvironment<'a>
 	{
 		OutputEnvironment{
 			results,
@@ -256,6 +258,7 @@ impl<'a> OutputEnvironment<'a>
 			files,
 			selector_map: EnumeratedMap::default(),
 			legend_map: EnumeratedMap::default(),
+			targets,
 		}
 	}
 	///Iterate over `ConfigurationValue`s with the context of each result.
@@ -354,6 +357,12 @@ fn create_csv(description: &ConfigurationValue, environment:&mut OutputEnvironme
 	);
 	let fields=fields.expect("There were no fields");
 	let filename=filename.expect("There were no filename");
+	if let Some(targets) = environment.targets {
+		if !targets.contains(&filename) {
+			//TODO: perhaps we need a success type.
+			return Ok(());
+		}
+	};
 	println!("Creating CSV with name \"{}\"",filename);
 	let path = environment.files.get_outputs_path();
 	let output_path=path.join(filename);
@@ -1015,6 +1024,12 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 	);
 	let tex_filename=tex_filename.ok_or_else(||backend.ill("There were no tex_filename"))?;
 	let pdf_filename=pdf_filename.ok_or_else(||backend.ill("There were no pdf_filename"))?;
+	if let Some(targets) = environment.targets {
+		if !targets.contains(&tex_filename) && !targets.contains(&pdf_filename) {
+			//TODO: perhaps we need a success type.
+			return Ok(());
+		}
+	};
 	let outputs_path = environment.files.get_outputs_path();
 	let root = environment.files.root.clone().unwrap();
 	let tex_path=&outputs_path.join(tex_filename);
@@ -1861,6 +1876,12 @@ fn create_preprocess_arg_max(description: &ConfigurationValue, environment:&mut 
 		"argument" => argument=Some(value),
 	);
 	let filename = filename.ok_or_else(||description.ill("There were no filename"))?;
+	if let Some(targets) = environment.targets {
+		if !targets.contains(&filename) {
+			//TODO: perhaps we need a success type.
+			return Ok(());
+		}
+	};
 	let selector = selector.ok_or_else(||description.ill("There were no selector"))?;
 	let target = target.ok_or_else(||description.ill("There were no target"))?;
 	let argument = argument.ok_or_else(||description.ill("There were no argument"))?;

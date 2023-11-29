@@ -439,6 +439,8 @@ pub struct ExperimentOptions
 	pub foreign: bool,
 	/// Optional CSV to include as a source for the output generation.
 	pub use_csv: Option<PathBuf>,
+	/// When not None, only generate targets in the list.
+	pub targets: Option<Vec<String>>,
 }
 
 ///An `Experiment` object encapsulates the operations that are performed over a folder containing an experiment.
@@ -1882,6 +1884,7 @@ impl<'a> Experiment<'a>
 						results,
 						total,
 						&self.files,
+						&self.options.targets,
 					);
 					match config_parser::parse(&od_contents)
 					{
