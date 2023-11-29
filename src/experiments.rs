@@ -189,7 +189,7 @@ impl SlurmOptions
 			);
 		}
 		Ok(SlurmOptions{
-			time: time.map(|x|x.to_string()).unwrap_or_else(||"0-24:00:00".to_string()),
+			time: time.map(|x|x.to_string()).unwrap_or_else(||"2-24:00:00".to_string()),
 			mem: mem.map(|x|x.to_string()),
 			maximum_jobs,
 			job_pack_size,
