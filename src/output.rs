@@ -1458,7 +1458,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 	]
 {pre_plots}{plots_string}	\end{{axis}}
 	%\pgfresetboundingbox\useasboundingbox (y label.north west) (current axis.north east) ($(current axis.outer north west)!(current axis.north east)!(current axis.outer north east)$);
-	\end{{tikzpicture}}%{selectorname} - {kind_index}"#,tikzname=tikzname,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},axis=axis,extra=extra,ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xmin_string=xmin[kind_index],xmax_string=xmax[kind_index],xlabel_string=latex_protect_text(&kd.label_abscissas),ylabel_string=latex_protect_text(&kd.label_ordinates),pre_plots=pre_plots,plots_string=raw_plots,legend_to_name=if kind_index==0{format!("legend to name=legend-{}-{}-{}",folder_id,prefix,selectorname)}else{"".to_string()}));
+	\end{{tikzpicture}}
+
+	%{selectorname} - {kind_index}"#,tikzname=tikzname,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},axis=axis,extra=extra,ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xmin_string=xmin[kind_index],xmax_string=xmax[kind_index],xlabel_string=latex_protect_text(&kd.label_abscissas),ylabel_string=latex_protect_text(&kd.label_ordinates),pre_plots=pre_plots,plots_string=raw_plots,legend_to_name=if kind_index==0{format!("legend to name=legend-{}-{}-{}",folder_id,prefix,selectorname)}else{"".to_string()}));
 		}
 		if wrote==0
 		{
