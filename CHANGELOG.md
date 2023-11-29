@@ -6,6 +6,7 @@
 Some tikz improvements.
 Removed the restriction on results count for plotting.
 Added support for selecting targets to output.
+Merged several things from Alex.
 
 ### 2023-11-27
 Some documentation improvements.

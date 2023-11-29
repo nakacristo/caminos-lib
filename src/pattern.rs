@@ -2420,7 +2420,7 @@ impl Pattern for LinearTransform
 	}
 	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
-		use std::convert::TryInto;
+		//use std::convert::TryInto;
 		let up_origin=self.source_size.unpack(origin);
 		let mut result = vec![0usize;self.target_size.size];
 		for (index,value) in self.matrix.iter().enumerate()
