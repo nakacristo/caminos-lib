@@ -1860,15 +1860,15 @@ impl<'a> Experiment<'a>
 					res.csv = Some(csv);
 				}
 			}
-			const MINIMUM_RESULT_COUNT_TO_GENERATE : usize = 3usize;
-			// I would use 1..MINIMUM_RESULT_COUNT_TO_GENERATE but
-			// exclusive range pattern syntax is experimental
-			// see issue #37854 <https://github.com/rust-lang/rust/issues/37854> for more information
-			const MAXIMUM_RESULT_COUNT_TO_SKIP : usize = MINIMUM_RESULT_COUNT_TO_GENERATE-1;
+			// const MINIMUM_RESULT_COUNT_TO_GENERATE : usize = 3usize;
+			// // I would use 1..MINIMUM_RESULT_COUNT_TO_GENERATE but
+			// // exclusive range pattern syntax is experimental
+			// // see issue #37854 <https://github.com/rust-lang/rust/issues/37854> for more information
+			// const MAXIMUM_RESULT_COUNT_TO_SKIP : usize = MINIMUM_RESULT_COUNT_TO_GENERATE-1;
 			match results.len()
 			{
 				0 => println!("There are no results. Skipping output generation."),
-				result_count @ 1..=MAXIMUM_RESULT_COUNT_TO_SKIP => println!("There are only {} results. Skipping simulation as it is lower than {}",result_count,MINIMUM_RESULT_COUNT_TO_GENERATE),
+				//result_count @ 1..=MAXIMUM_RESULT_COUNT_TO_SKIP => println!("There are only {} results. Skipping simulation as it is lower than {}",result_count,MINIMUM_RESULT_COUNT_TO_GENERATE),
 				result_count =>
 				{
 					println!("There are {} results.",result_count);

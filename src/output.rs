@@ -1393,8 +1393,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 			if good_plots==0 { figure_tikz.push_str("skipped bad plot.\\\\"); continue; }
 			//\begin{{tikzpicture}}[baseline,trim left=(left trim point),trim axis right,remember picture]
 			//\path (yticklabel cs:0) ++(-1pt,0pt) coordinate (left trim point);
-			let selectorname=latex_make_command_name(&selector_value_to_use.to_string());
-			let tikzname=format!("{}-{}-selector{}-kind{}",folder_id,prefix,selectorname,kind_index);
+			let selectorcode=latex_make_command_name(&selector_value_to_use.to_string());
+			let selectorname=latex_protect_text(&selector_value_to_use.to_string());
+			let tikzname=format!("{}-{}-selector{}-kind{}",folder_id,prefix,selectorcode,kind_index);
 			let mut axis = "axis";
 			let mut extra = "".to_string();
 			if !symbols.is_empty()
@@ -1458,7 +1459,10 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 	]
 {pre_plots}{plots_string}	\end{{axis}}
 	%\pgfresetboundingbox\useasboundingbox (y label.north west) (current axis.north east) ($(current axis.outer north west)!(current axis.north east)!(current axis.outer north east)$);
-	\end{{tikzpicture}}%{selectorname} - {kind_index}"#,tikzname=tikzname,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},axis=axis,extra=extra,ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xmin_string=xmin[kind_index],xmax_string=xmax[kind_index],xlabel_string=latex_protect_text(&kd.label_abscissas),ylabel_string=latex_protect_text(&kd.label_ordinates),pre_plots=pre_plots,plots_string=raw_plots,legend_to_name=if kind_index==0{format!("legend to name=legend-{}-{}-{}",folder_id,prefix,selectorname)}else{"".to_string()}));
+	\end{{tikzpicture}}%{selectorname} - {kind_index}"#,tikzname=tikzname,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},axis=axis,extra=extra,ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xmin_string=xmin[kind_index],xmax_string=xmax[kind_index],xlabel_string=latex_protect_text(&kd.label_abscissas),ylabel_string=latex_protect_text(&kd.label_ordinates),pre_plots=pre_plots,plots_string=raw_plots,legend_to_name=if kind_index==0{format!("legend to name=legend-{}-{}-{}",folder_id,prefix,selectorcode)}else{"".to_string()}));
+			if kind_index < kind.len()-1 {
+				figure_tikz.push_str("\n\t\\kindseparator%");
+			}
 		}
 		if wrote==0
 		{
@@ -1487,6 +1491,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 %% -- common pgfplots prelude --
 \newenvironment{{experimentfigure}}{{\begin{{figure}}[H]\tikzexternalenable}}{{\tikzexternaldisable\end{{figure}}}}
 %\newenvironment{{experimentfigure}}{{\begin{{figure*}}}}{{\end{{figure*}}}}
+\newcommand{{\kindseparator}}{{\hskip 0ex{{}}}}
 \pgfplotsset{{compat=newest}}
 \makeatletter
 %required for fill plus pattern on boxplot
