@@ -955,6 +955,7 @@ impl<'a> Simulation<'a>
 								let extra = be.as_mut().unwrap();
 								let (_,link_class) = self.shared.network.topology.neighbour(router,port);
 								extra.link_classes.push(link_class);
+								extra.id_switches.push(router);
 								extra.entry_virtual_channels.push(*phit.virtual_channel.borrow());
 								extra.cycle_per_hop.push(self.shared.cycle);
 							}

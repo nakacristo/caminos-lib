@@ -171,6 +171,11 @@ pub fn create_shortest_routing() -> ConfigurationValue
     ConfigurationValue::Object("Shortest".to_string(), vec![])
 }
 
+///Creates a Configuration Value for DOR
+pub fn create_dor_routing(order: Vec<usize>) -> ConfigurationValue
+{
+    ConfigurationValue::Object("DOR".to_string(), vec![("order".to_string(), ConfigurationValue::Array( order.into_iter().map(|a| ConfigurationValue::Number(a as f64)).collect() ))])
+}
 
 ///Creates a Configuration Value for Omnidimensional routing
 pub fn create_omnidimensional_routing(allowed_deroutes: ConfigurationValue, include_labels: ConfigurationValue) -> ConfigurationValue

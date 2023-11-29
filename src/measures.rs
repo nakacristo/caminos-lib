@@ -415,6 +415,7 @@ impl Statistics
 			let be = packet.extra.borrow();
 			let extra = be.as_ref().unwrap();
 			let link_classes = extra.link_classes.iter().map(|x|ConfigurationValue::Number(*x as f64)).collect();
+			let switches = extra.id_switches.iter().map(|x|ConfigurationValue::Number(*x as f64)).collect();
 			let entry_virtual_channels = extra.entry_virtual_channels.iter().map(|x|match x{
 				Some(v) => ConfigurationValue::Number(*v as f64),
 				None => ConfigurationValue::None,
@@ -426,6 +427,7 @@ impl Statistics
 				(String::from("cycle_into_network"), ConfigurationValue::Number(*packet.cycle_into_network.borrow() as f64)),
 				(String::from("size"), ConfigurationValue::Number(packet.size as f64)),
 				(String::from("link_classes"), ConfigurationValue::Array(link_classes)),
+				(String::from("switches"), ConfigurationValue::Array(switches)),
 				(String::from("entry_virtual_channels"), ConfigurationValue::Array(entry_virtual_channels)),
 				(String::from("cycle_per_hop"), ConfigurationValue::Array(cycle_per_hop)),
 			];

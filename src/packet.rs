@@ -38,9 +38,14 @@ pub struct Phit
 #[derive(Debug,Default)]
 pub struct PacketExtraInfo
 {
+	///Link classes that the packet traverse
 	pub link_classes: Vec<usize>,
+	///List of VCs which the packet traverses
 	pub entry_virtual_channels: Vec<Option<usize>>,
+	///The cycle per hop
 	pub cycle_per_hop: Vec<Time>,
+	///List of switchs which a packet traverse
+	pub id_switches: Vec<usize>,
 }
 
 ///A portion of a message. They are divided into phits.
