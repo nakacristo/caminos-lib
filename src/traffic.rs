@@ -1707,6 +1707,17 @@ impl Traffic for TrafficMap
 		}).unwrap_or(0.0) // if the task_app has no origin, it has no probability
 	}
 
+	fn should_generate(&self, task: usize, _cycle: Time, rng: &mut StdRng) -> bool {
+		// The probability of a task is the same as the probability of the task in the application
+		let task_app = self.from_machine_to_app[task];
+
+		task_app.map(|app| {
+			// get the probability of the task in the application
+			self.application.should_generate(app, _cycle, rng)
+		}).unwrap_or(false) // if the task_app has no origin, it has no probability
+	}
+
+
 	fn try_consume(&mut self, task: usize, message: Rc<Message>, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool
 	{
 		// TODO: Maybe we want to return a Result instead of a bool
