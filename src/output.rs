@@ -187,6 +187,8 @@ pub struct OutputEnvironment<'a>
 	files: &'a ExperimentFiles,
 	selector_map: EnumeratedMap<ConfigurationValue>,
 	legend_map: EnumeratedMap<ConfigurationValue>,
+	/// When not None, only generate targets in the list.
+	pub targets: &'a Option<Vec<String>>,
 }
 
 #[derive(Debug)]
@@ -248,7 +250,7 @@ impl OutputEnvironmentEntry
 
 impl<'a> OutputEnvironment<'a>
 {
-	pub fn new(results: Vec<OutputEnvironmentEntry>, total_experiments: usize, files: &'a ExperimentFiles) -> OutputEnvironment<'a>
+	pub fn new(results: Vec<OutputEnvironmentEntry>, total_experiments: usize, files: &'a ExperimentFiles, targets:&'a Option<Vec<String>>) -> OutputEnvironment<'a>
 	{
 		OutputEnvironment{
 			results,
@@ -256,6 +258,7 @@ impl<'a> OutputEnvironment<'a>
 			files,
 			selector_map: EnumeratedMap::default(),
 			legend_map: EnumeratedMap::default(),
+			targets,
 		}
 	}
 	///Iterate over `ConfigurationValue`s with the context of each result.
@@ -354,6 +357,12 @@ fn create_csv(description: &ConfigurationValue, environment:&mut OutputEnvironme
 	);
 	let fields=fields.expect("There were no fields");
 	let filename=filename.expect("There were no filename");
+	if let Some(targets) = environment.targets {
+		if !targets.contains(&filename) {
+			//TODO: perhaps we need a success type.
+			return Ok(());
+		}
+	};
 	println!("Creating CSV with name \"{}\"",filename);
 	let path = environment.files.get_outputs_path();
 	let output_path=path.join(filename);
@@ -1015,6 +1024,12 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 	);
 	let tex_filename=tex_filename.ok_or_else(||backend.ill("There were no tex_filename"))?;
 	let pdf_filename=pdf_filename.ok_or_else(||backend.ill("There were no pdf_filename"))?;
+	if let Some(targets) = environment.targets {
+		if !targets.contains(&tex_filename) && !targets.contains(&pdf_filename) {
+			//TODO: perhaps we need a success type.
+			return Ok(());
+		}
+	};
 	let outputs_path = environment.files.get_outputs_path();
 	let root = environment.files.root.clone().unwrap();
 	let tex_path=&outputs_path.join(tex_filename);
@@ -1393,8 +1408,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 			if good_plots==0 { figure_tikz.push_str("skipped bad plot.\\\\"); continue; }
 			//\begin{{tikzpicture}}[baseline,trim left=(left trim point),trim axis right,remember picture]
 			//\path (yticklabel cs:0) ++(-1pt,0pt) coordinate (left trim point);
-			let selectorname=latex_make_command_name(&selector_value_to_use.to_string());
-			let tikzname=format!("{}-{}-selector{}-kind{}",folder_id,prefix,selectorname,kind_index);
+			let selectorcode=latex_make_command_name(&selector_value_to_use.to_string());
+			let selectorname=latex_protect_text(&selector_value_to_use.to_string());
+			let tikzname=format!("{}-{}-selector{}-kind{}",folder_id,prefix,selectorcode,kind_index);
 			let mut axis = "axis";
 			let mut extra = "".to_string();
 			if !symbols.is_empty()
@@ -1458,7 +1474,10 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 	]
 {pre_plots}{plots_string}	\end{{axis}}
 	%\pgfresetboundingbox\useasboundingbox (y label.north west) (current axis.north east) ($(current axis.outer north west)!(current axis.north east)!(current axis.outer north east)$);
-	\end{{tikzpicture}}%{selectorname} - {kind_index}"#,tikzname=tikzname,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},axis=axis,extra=extra,ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xmin_string=xmin[kind_index],xmax_string=xmax[kind_index],xlabel_string=latex_protect_text(&kd.label_abscissas),ylabel_string=latex_protect_text(&kd.label_ordinates),pre_plots=pre_plots,plots_string=raw_plots,legend_to_name=if kind_index==0{format!("legend to name=legend-{}-{}-{}",folder_id,prefix,selectorname)}else{"".to_string()}));
+	\end{{tikzpicture}}%{selectorname} - {kind_index}"#,tikzname=tikzname,kind_index_style=if kind_index==0{"first kind,"} else {"posterior kind,"},axis=axis,extra=extra,ymin_string=ymin[kind_index],ymax_string=ymax[kind_index],xmin_string=xmin[kind_index],xmax_string=xmax[kind_index],xlabel_string=latex_protect_text(&kd.label_abscissas),ylabel_string=latex_protect_text(&kd.label_ordinates),pre_plots=pre_plots,plots_string=raw_plots,legend_to_name=if kind_index==0{format!("legend to name=legend-{}-{}-{}",folder_id,prefix,selectorcode)}else{"".to_string()}));
+			if kind_index < kind.len()-1 {
+				figure_tikz.push_str("\n\t\\kindseparator%");
+			}
 		}
 		if wrote==0
 		{
@@ -1487,6 +1506,7 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 %% -- common pgfplots prelude --
 \newenvironment{{experimentfigure}}{{\begin{{figure}}[H]\tikzexternalenable}}{{\tikzexternaldisable\end{{figure}}}}
 %\newenvironment{{experimentfigure}}{{\begin{{figure*}}}}{{\end{{figure*}}}}
+\newcommand{{\kindseparator}}{{\hskip 0ex{{}}}}
 \pgfplotsset{{compat=newest}}
 \makeatletter
 %required for fill plus pattern on boxplot
@@ -1856,6 +1876,12 @@ fn create_preprocess_arg_max(description: &ConfigurationValue, environment:&mut 
 		"argument" => argument=Some(value),
 	);
 	let filename = filename.ok_or_else(||description.ill("There were no filename"))?;
+	if let Some(targets) = environment.targets {
+		if !targets.contains(&filename) {
+			//TODO: perhaps we need a success type.
+			return Ok(());
+		}
+	};
 	let selector = selector.ok_or_else(||description.ill("There were no selector"))?;
 	let target = target.ok_or_else(||description.ill("There were no target"))?;
 	let argument = argument.ok_or_else(||description.ill("There were no argument"))?;

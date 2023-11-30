@@ -1919,6 +1919,7 @@ pub fn terminal_default_options() -> getopts::Options
 	opts.optopt("m","message","write a message into the journal file","TEXT");
 	opts.optopt("i","interactive","whether to ask for confirmation","BOOLEAN");
 	opts.optopt("","use_csv","Use a CSV file as a source for the generations of outputs.","FILE");
+	opts.optopt("t","target","Select a target to generate. And skip the rest.","NAME");
 	opts.optflag("h","help","show this help");
 	opts.optflag("","foreign","Assume to be working with foreign data. Many checks are relaxed.");
 	opts
@@ -2002,6 +2003,11 @@ pub fn terminal_main_normal_opts(args:&[String], plugs:&Plugs, option_matches:ge
 					std::process::exit(-1);
 				}
 			};
+		}
+		if option_matches.opt_present("target")
+		{
+			let s = option_matches.opt_str("target").unwrap();
+			options.targets=Some(vec![s]);
 		}
 		if option_matches.opt_present("foreign")
 		{

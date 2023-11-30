@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use ::rand::{rngs::StdRng};
 use super::prelude::*;
 use super::cartesian::CartesianData;
@@ -383,7 +382,7 @@ impl Arrangement for Palmtree
 		//) / self.size.number_of_ports;
 		// extended, for other sizes. tested by extended_palmtree
 		let target_group_offset = self.size.group_size - input.group_offset - 1;
-		let target_port = self.size.number_of_ports - 1 - input.port_index;
+		let target_port = self.size.number_of_ports -1 -input.port_index;
 		let target_group_index = (
 			input.group_index+1+
 				((target_group_offset)*(self.size.number_of_ports/self.size.lag)+target_port/self.size.lag) % (self.size.number_of_groups-1)
@@ -521,7 +520,7 @@ pub fn new_arrangement(arg:ArrangementBuilderArgument) -> Box<dyn Arrangement>
 
 
 use crate::routing::prelude::*;
-use crate::routing::{RoutingAnnotation, SumRoutingPolicy};
+use crate::routing::{RoutingAnnotation};
 
 /**
 With the switches colored in {0,1} with a global arrangement such that global links connect only switches of the same color, the global link is labelled by that color.
@@ -1179,7 +1178,7 @@ impl Routing for PAR
 			cs = vec![routing_index];
 		}
 
-		let mut aux = bri.auxiliar.borrow_mut().take().unwrap();
+		let aux = bri.auxiliar.borrow_mut().take().unwrap();
 		let saltos = match aux.downcast_ref::<Vec<usize>>(){
 			Some(x) => {
 				if link_class == 0
@@ -1208,7 +1207,7 @@ impl Routing for PAR
 		self.first.initialize(topology,rng);
 		self.second.initialize(topology,rng);
 	}
-	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, num_virtual_channels:usize, rng:&mut StdRng)
+	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
 		let mut bri=routing_info.borrow_mut();
 		let &CandidateEgress{ref annotation,..} = requested;
@@ -1238,7 +1237,7 @@ impl PAR
 		// let mut local_missrouting=false;
 		// let mut intermediate_bypass=None;
 		// let mut dragonfly_bypass=false;
-		match_object_panic!(arg.cv,"PAR",value,
+		match_object_panic!(arg.cv,"PAR",_value,
 			// "first" => first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
 			// "second" => second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
 			// "pattern" => pattern= Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})).expect("pattern not valid for PAR"),
@@ -1256,9 +1255,8 @@ impl PAR
 
 		let first=  ConfigurationValue::Object("WeighedShortest".to_string(),vec![("class_weight".to_string(), ConfigurationValue::Array(vec![ConfigurationValue::Number(10f64), ConfigurationValue::Number(100f64)]) )]);
 		let second= ConfigurationValue::Object("Valiant4Dragonfly".to_string(), vec![
-			("first".to_string(), ConfigurationValue::Object("WeighedShortest".to_string(),vec![("class_weight".to_string(), ConfigurationValue::Array((vec![ConfigurationValue::Number(10f64), ConfigurationValue::Number(100f64)])) )])),
-			("second".to_string(), ConfigurationValue::Object("WeighedShortest".to_string(),vec![("class_weight".to_string(), ConfigurationValue::Array((vec![ConfigurationValue::Number(10f64), ConfigurationValue::Number(100f64)])))])),
-
+			("first".to_string(),first.clone()),
+			("second".to_string(),first.clone()),
 		]);
 
 		let first = new_routing(RoutingBuilderArgument{cv: &first,..arg});

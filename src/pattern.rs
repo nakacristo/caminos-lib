@@ -323,6 +323,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"Product" => Box::new(ProductPattern::new(arg)),
 			"Components" => Box::new(ComponentsPattern::new(arg)),
 			"CartesianTransform" => Box::new(CartesianTransform::new(arg)),
+			"LinearTransform" => Box::new(LinearTransform::new(arg)),
 			"CartesianTiling" => Box::new(CartesianTiling::new(arg)),
 			"Composition" => Box::new(Composition::new(arg)),
 			"Pow" => Box::new(Pow::new(arg)),
@@ -2355,6 +2356,107 @@ impl RemappedNodes
 			into_base_map: vec![],
 			pattern,
 			map,
+		}
+	}
+}
+
+
+/**
+Matrix by vector multiplication. Origin is given coordinates as within a block of size `source_size`.
+Then the destination coordinate vector is `y=Mx`, with `x` being the origin and `M` the given `matrix`.
+This destination vector is converted into an index into a block of size `target_size`.
+
+Example configuration:
+```ignore
+LinearTransform{
+	source_size: [4,8,8],
+	matrix: [
+		[1,0,0],
+		[0,1,0],
+		[0,0,1],
+	],
+	target_size: [4,8,8],
+	legend_name: "Identity",
+}
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct LinearTransform
+{
+	///The Cartesian interpretation for the source vector
+	source_size: CartesianData,
+	///A matrix of integers.
+	matrix: Vec<Vec<i32>>,
+	///The Cartesian interpretation for the destination vector
+	target_size: CartesianData,
+}
+
+impl Pattern for LinearTransform
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		if source_size!=target_size
+		{
+			panic!("In a LinearTransform source_size({}) must be equal to target_size({}).",source_size,target_size);
+		}
+		if source_size!=self.source_size.size || target_size!=self.target_size.size
+		{
+			panic!("Sizes do not agree on LinearTransform.");
+		}
+		//Check that the number of lines of the matrix is the same as the number of dimensions.
+		// if self.matrix.len()!=self.cartesian_data.sides.len()
+		// {
+		// 	panic!("The matrix has {} lines, but there are {} dimensions.",self.matrix.len(),self.cartesian_data.sides.len());
+		// }
+		//Check that the size of each line of the matrix is the same as the number of dimensions.
+		for (index,line) in self.matrix.iter().enumerate()
+		{
+			if line.len()!=self.source_size.sides.len()
+			{
+				panic!("Line {} of the matrix has {} elements, but there are {} dimensions.",index,line.len(),self.source_size.sides.len());
+			}
+		}
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		//use std::convert::TryInto;
+		let up_origin=self.source_size.unpack(origin);
+		let mut result = vec![0usize;self.target_size.size];
+		for (index,value) in self.matrix.iter().enumerate()
+		{
+			result[index] = (value.iter().zip(up_origin.iter()).map(|(&a, &b)| (a * b as i32)).sum::<i32>().rem_euclid(self.target_size.sides[index] as i32) ) as usize;
+		}
+		self.target_size.pack(&result)
+	}
+}
+
+impl LinearTransform
+{
+	fn new(arg:PatternBuilderArgument) -> LinearTransform
+	{
+		let mut source_size:Option<Vec<_>>=None;
+		let mut matrix:Option<Vec<Vec<i32>>>=None;
+		let mut target_size:Option<Vec<_>>=None;
+
+		match_object_panic!(arg.cv,"LinearTransform",value,
+			"source_size" => source_size = Some(value.as_array().expect("bad value for sides").iter()
+				.map(|v|v.as_usize().expect("bad value in sides")).collect()),
+			"matrix" => matrix=Some(value.as_array().expect("bad value for matrix").iter()
+				.map(|v|v.as_array().expect("bad value in matrix").iter().map(|n|n.as_i32().unwrap()).collect() ).collect() ),
+			"target_size" => target_size = Some(value.as_array().expect("bad value for sides").iter()
+				.map(|v|v.as_usize().expect("bad value in sides")).collect()),
+
+		);
+		let source_size=source_size.expect("There were no sides");
+		let matrix=matrix.expect("There were no matrix");
+		let target_size=target_size.expect("There were no sides");
+		//let permute=permute.expect("There were no permute");
+		//let complement=complement.expect("There were no complement");
+		LinearTransform{
+			source_size: CartesianData::new(&source_size),
+			matrix,
+			target_size: CartesianData::new(&target_size),
 		}
 	}
 }

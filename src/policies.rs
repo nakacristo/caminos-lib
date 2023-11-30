@@ -1247,7 +1247,7 @@ pub struct OccupancyFunction
 	occupancy_coefficient: i32,
 	///Which multiplies the product of label and occupancy.
 	product_coefficient: i32,
-	///Just added.OccupancyFunction
+	///Just added.
 	constant_coefficient: i32,
 	///Whether to include the own router buffers in the calculation.
 	use_internal_space: bool,
