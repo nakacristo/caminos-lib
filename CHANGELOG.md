@@ -1,6 +1,10 @@
 # Change Log
 
-## next, [0.6.3]
+## [0.6.3]
+
+### 2023-12-01
+Include fix of TrafficMap.
+Publish 0.6.3.
 
 ### 2023-11-29
 Some tikz improvements.
