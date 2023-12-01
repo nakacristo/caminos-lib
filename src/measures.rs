@@ -292,12 +292,10 @@ pub struct Statistics
 	///For each definition of packet statistics, we have a vector with an element for each actual value of `keys`.
 	///Each of these elements have that value of `key`, together with the averages and the count.
 	pub packet_defined_statistics_measurement: Vec< Vec< (Vec<ConfigurationValue>,Vec<f32>,usize) >>,
-
-
-	pub temporal_packet_defined_statistics_definitions: Vec< (Vec<Expr>,Vec<Expr>) >,
-	///For each definition of packet statistics, we have a vector with an element for each actual value of `keys`.
-	///Each of these elements have that value of `key`, together with the averages and the count.
-	pub temporal_packet_defined_statistics_measurement: Vec< Vec< Vec< (Vec<ConfigurationValue>,Vec<f32>,usize) >>>,
+	///A list of statistic definitions for server statistics, indexed by the temporal step.
+	pub temporal_server_defined_statistics_definitions: Vec< (Vec<Expr>, Vec<Expr>) >,
+	///For each definition of server statistics, we have a vector with an element for each actual value of `keys`.
+	pub temporal_server_defined_statistics_measurement: Vec< Vec< Vec< (Vec<ConfigurationValue>, Vec<f32>, usize) >>>,
 }
 
 impl Statistics
@@ -335,8 +333,8 @@ impl Statistics
 				],
 			packet_defined_statistics_definitions:statistics_packet_definitions,
 			packet_defined_statistics_measurement,
-			temporal_packet_defined_statistics_definitions:temporal_statistics_packet_definitions,
-			temporal_packet_defined_statistics_measurement,
+			temporal_server_defined_statistics_definitions:temporal_statistics_packet_definitions,
+			temporal_server_defined_statistics_measurement: temporal_packet_defined_statistics_measurement,
 		}
 	}
 	///Print in stdout a header showing the statistical columns to be periodically printed.

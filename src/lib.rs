@@ -565,16 +565,16 @@ impl Network
 			))
 		}).collect()
 	}
-	fn get_temporal_statistics_servers_expr<'a>(&'a self, temporal_packet_defined_statistics_definitions: &Vec< (Vec<Expr>, Vec<Expr>)>) -> Vec< Vec< Vec< (Vec<ConfigurationValue>, Vec<f32>, usize) >>>
+	fn get_temporal_statistics_servers_expr<'a>(&'a self, temporal_server_defined_statistics_definitions: &Vec< (Vec<Expr>, Vec<Expr>)>) -> Vec< Vec< Vec< (Vec<ConfigurationValue>, Vec<f32>, usize) >>>
 	{
 		//measures::jain(self.servers.iter().map(|s|s.statistics.current_measurement.created_phits as f64))
 		let limit:usize = self.servers.iter().map(|s|s.statistics.temporal_statistics.len()).max().unwrap_or(0);
-		let mut temporal_packet_defined_statistics_measurement: Vec<Vec<Vec<(Vec<ConfigurationValue>, Vec<f32>, usize)>>> =  vec![vec![vec![]; temporal_packet_defined_statistics_definitions.len() ]; limit ];
+		let mut temporal_server_defined_statistics_measurement: Vec<Vec<Vec<(Vec<ConfigurationValue>, Vec<f32>, usize)>>> =  vec![vec![vec![]; temporal_server_defined_statistics_definitions.len() ]; limit ];
 
 		for index_cycle in 0..limit
 		{
 			//(0..limit).map(|index_cycle|{
-			for (index,definition) in temporal_packet_defined_statistics_definitions.iter().enumerate()
+			for (index,definition) in temporal_server_defined_statistics_definitions.iter().enumerate()
 			{
 				for server in self.servers.iter()
 				{
@@ -584,7 +584,7 @@ impl Network
 						(String::from("missed_generations"), ConfigurationValue::Number(server.statistics.temporal_statistics.get(index_cycle).map(|m|m.missed_generations as f64).unwrap_or(0f64))),
 						(String::from("server_index"), ConfigurationValue::Number(server.index as f64)),
 						(String::from("switches"), ConfigurationValue::Number( match server.port.0{
-							Location::RouterPort {router_index, router_port} => router_index as f64,
+							Location::RouterPort {router_index, router_port: _} => router_index as f64,
 							_ => panic!("Here there should be a router")
 						} )),
 					];
@@ -601,7 +601,7 @@ impl Network
 						}).collect();
 
 					//find the measurement
-					let measurement = temporal_packet_defined_statistics_measurement[index_cycle][index].iter_mut().find(|m|m.0==key);
+					let measurement = temporal_server_defined_statistics_measurement[index_cycle][index].iter_mut().find(|m|m.0==key);
 					match measurement
 					{
 						Some(m) =>
@@ -613,13 +613,13 @@ impl Network
 								m.2+=1;
 							}
 						None => {
-							temporal_packet_defined_statistics_measurement[index_cycle][index].push( (key,value,1) )
+							temporal_server_defined_statistics_measurement[index_cycle][index].push( (key, value, 1) )
 						},
 					};
 				}
 			}
 		} //).collect()
-		temporal_packet_defined_statistics_measurement
+		temporal_server_defined_statistics_measurement
 		//temporal_packet_defined_statistics_measurement
 	}
 }
@@ -1529,9 +1529,9 @@ impl<'a> Simulation<'a>
 			result_content.push( (String::from("packet_defined_statistics"),ConfigurationValue::Array(pds_content)) );
 		}
 
-		if !self.statistics.temporal_packet_defined_statistics_measurement.is_empty()
+		if !self.statistics.temporal_server_defined_statistics_measurement.is_empty()
 		{
-			let temporal_measurement = self.shared.network.get_temporal_statistics_servers_expr(&self.statistics.temporal_packet_defined_statistics_definitions);
+			let temporal_measurement = self.shared.network.get_temporal_statistics_servers_expr(&self.statistics.temporal_server_defined_statistics_definitions);
 			let mut all_temporal_measurement = vec![];
 			for cycle in temporal_measurement
 			{
