@@ -50,6 +50,8 @@ pub struct Megafly
 	global_arrangement: Box<dyn Arrangement>,
 	///`distance_matrix.get(i,j)` = distance from router i to router j.
 	distance_matrix:Matrix<u8>,
+	// Cartesian data [switch_index, group_index]
+	cartesian_data: CartesianData,
 }
 
 impl Topology for Megafly
@@ -176,7 +178,7 @@ impl Topology for Megafly
 	}
 	fn cartesian_data(&self) -> Option<&CartesianData>
 	{
-		todo!()
+		Some(&self.cartesian_data)
 	}
 	fn coordinated_routing_record(&self, _coordinates_a:&[usize], _coordinates_b:&[usize], _rng: Option<&mut StdRng>)->Vec<i32>
 	{
@@ -229,6 +231,7 @@ impl Megafly
 			group_size,
 			number_of_groups,
 			distance_matrix:Matrix::constant(0,0,0),
+			cartesian_data: CartesianData::new(&[group_size, number_of_groups]),
 		};
 		let (distance_matrix,_amount_matrix)=topo.compute_amount_shortest_paths();
 		topo.distance_matrix=distance_matrix.map(|x|*x as u8);

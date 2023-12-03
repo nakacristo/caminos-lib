@@ -699,7 +699,7 @@ pub struct Valiant4Dragonfly
 	//exclude_h_groups:bool,
 	intermediate_bypass: Option<Box<dyn Pattern>>,
 	local_missrouting: bool, //only local missrouting if target in the group
-dragonfly_bypass: bool, //lggl routes
+	dragonfly_bypass: bool, //lggl routes
 }
 
 impl Routing for Valiant4Dragonfly
@@ -862,7 +862,6 @@ impl Routing for Valiant4Dragonfly
 					_ => panic!("The server is not attached to a router"),
 				};
 				middle_coord = cartesian_data.unpack(middle);
-
 			}
 		}
 
