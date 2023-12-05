@@ -2453,12 +2453,59 @@ impl LinearTransform
 		let target_size=target_size.expect("There were no sides");
 		//let permute=permute.expect("There were no permute");
 		//let complement=complement.expect("There were no complement");
+		//calculate the derminant of the matrix
+		let determinant = laplace_determinant(&matrix);
+		if determinant == 0
+		{
+			//print warning
+			println!("WARNING: The determinant of the matrix in the LinearTransform is 0.");
+		}
+
 		LinearTransform{
 			source_size: CartesianData::new(&source_size),
 			matrix,
 			target_size: CartesianData::new(&target_size),
 		}
 	}
+}
+
+
+/**
+Method to calculate the determinant of a matrix.
+**/
+fn laplace_determinant(matrix: &Vec<Vec<i32>>) -> i32
+{
+	let mut determinant = 0;
+	if matrix.len() == 1
+	{
+		return matrix[0][0];
+	}
+	else if matrix.len() == 2
+	{
+		return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0];
+	}
+	else
+	{
+		for i in 0..matrix.len()
+		{
+			let mut sub_matrix = vec![vec![0; matrix.len() - 1]; matrix.len() - 1];
+			for j in 1..matrix.len()
+			{
+				let mut index = 0;
+				for k in 0..matrix.len()
+				{
+					if k == i
+					{
+						continue;
+					}
+					sub_matrix[j - 1][index] = matrix[j][k];
+					index += 1;
+				}
+			}
+			determinant += matrix[0][i] * i32::pow(-1, i as u32) * laplace_determinant(&sub_matrix);
+		}
+	}
+	determinant
 }
 
 
