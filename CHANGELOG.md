@@ -4,6 +4,7 @@
 
 ### 2023-12-05
 Sanitize some generated latex comment.
+Added routing AdaptiveStart.
 
 ## [0.6.3]
 

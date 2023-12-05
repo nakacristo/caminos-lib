@@ -35,7 +35,7 @@ use crate::Plugs;
 /// Some things most uses of the topology module will use.
 pub mod prelude
 {
-	pub use super::{Topology,Location,cartesian::CartesianData,TopologyBuilderArgument,new_topology};
+	pub use super::{Topology,Location,cartesian::CartesianData,TopologyBuilderArgument,new_topology,NeighbourRouterIteratorItem};
 	pub use std::cell::{RefCell};
 	pub use ::rand::rngs::StdRng;
 }

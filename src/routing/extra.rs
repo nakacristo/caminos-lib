@@ -16,7 +16,8 @@ use ::rand::{rngs::StdRng,Rng};
 use crate::match_object_panic;
 use crate::config_parser::ConfigurationValue;
 use crate::routing::*;
-use crate::topology::{Topology,Location};
+use crate::topology::prelude::*;
+//use crate::topology::{Topology,Location};
 
 ///A policy for the `SumRouting` about how to select among the two `Routing`s.
 #[derive(Debug)]
@@ -660,4 +661,106 @@ impl Routing for EachLengthSourceAdaptiveRouting
 		self.routing.initialize(topology,rng);
 	}
 }
+
+
+/**
+Begins including all neighbours until some condition. Then use an underlying routing until the destination.
+
+See for example Adaptive Clos (CLOS AD, from "Flattened Butterfly : A Cost-Efficient Topology for High-Radix Networks"
+by John Kim, William J. Dally, and Dennis Abts. ISCA'27.), where a packet is routing in the Hamming topology adaptatively alike in a Clos Network.
+Going though the queues with least occupation until reaching a root. To emulate its initial DOR requirement ...TODO...
+
+```ignore
+AdaptiveStart{
+	adaptive_hops: 3,
+	//adaptive_label: 0,
+	routing: Shortest,
+}
+```
+
+**/
+#[derive(Debug)]
+pub struct AdaptiveStart
+{
+	adaptive_hops: usize,
+	routing: Box<dyn Routing>,
+	adaptive_label: i32,
+}
+
+impl Routing for AdaptiveStart
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
+	{
+		if target_router==current_router
+		{
+			let target_server = target_server.expect("target server was not given.");
+			for i in 0..topology.ports(current_router)
+			{
+				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router,i)
+				{
+					if server==target_server
+					{
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
+					}
+				}
+			}
+			unreachable!();
+		}
+		if let Some(ref meta) = routing_info.meta {
+			assert_eq!(meta.len(),1);
+			return self.routing.next(&meta[0].borrow(),topology,current_router,target_router,target_server,num_virtual_channels,rng);
+		}
+		let mut r =Vec::with_capacity(topology.ports(current_router)*num_virtual_channels);
+		for NeighbourRouterIteratorItem{port_index,..} in topology.neighbour_router_iter(current_router)
+		{
+			r.extend((0..num_virtual_channels).map(|vc|{
+				let mut egress = CandidateEgress::new(port_index,vc);
+				egress.label = self.adaptive_label;
+				egress
+			}));
+		}
+		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
+	}
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, _current_port:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
+	{
+		let mut bri = routing_info.borrow_mut();
+		if let None = bri.meta {
+			if bri.hops >= self.adaptive_hops {
+				let info = RefCell::new(RoutingInfo::new());
+				self.routing.initialize_routing_info(&info,topology,current_router,target_router,target_server,rng);
+				bri.meta = Some(vec![info]);
+			}
+		}
+	}
+}
+
+impl AdaptiveStart
+{
+	pub fn new(arg: RoutingBuilderArgument) -> AdaptiveStart
+	{
+		let mut adaptive_hops = None;
+		let mut routing = None;
+		let mut adaptive_label = 0i32;
+		match_object_panic!(arg.cv,"AdaptiveStart",value,
+			"adaptive_hops" => adaptive_hops = Some(value.as_usize().expect("bad value for adaptive_hops")),
+			"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"adaptive_label" => adaptive_label = value.as_i32().expect("bad value for adaptive_label"),
+		);
+		let adaptive_hops = adaptive_hops.expect("missing adaptive_hops");
+		if adaptive_hops == 0 {
+			panic!("adaptive_hops cannot be 0.");
+		}
+		let routing = routing.expect("missing routing");
+		AdaptiveStart{
+			adaptive_hops,
+			routing,
+			adaptive_label,
+		}
+	}
+}
+
+
+
+
 

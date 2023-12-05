@@ -435,6 +435,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"AscendantChannelsWithLinkClass" => Box::new(AscendantChannelsWithLinkClass::new(arg)),
 			"ChannelMap" => Box::new(ChannelMap::new(arg)),
 			"Dragonfly2Colors" => Box::new(crate::topology::dragonfly::Dragonfly2ColorsRouting::new(arg)),
+			"AdaptiveStart" => Box::new(AdaptiveStart::new(arg)),
 			_ => panic!("Unknown Routing {}",cv_name),
 		}
 	}
