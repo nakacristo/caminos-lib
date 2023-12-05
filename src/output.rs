@@ -1409,7 +1409,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 			//\begin{{tikzpicture}}[baseline,trim left=(left trim point),trim axis right,remember picture]
 			//\path (yticklabel cs:0) ++(-1pt,0pt) coordinate (left trim point);
 			let selectorcode=latex_make_command_name(&selector_value_to_use.to_string());
-			let selectorname=latex_protect_text(&selector_value_to_use.to_string());
+			//let selectorname=latex_protect_text(&selector_value_to_use.to_string());
+			let selectorname=latex_protect_text(&selector_value_to_use.to_string().replace('\n'," ").replace('\r'," "));
 			let tikzname=format!("{}-{}-selector{}-kind{}",folder_id,prefix,selectorcode,kind_index);
 			let mut axis = "axis";
 			let mut extra = "".to_string();
