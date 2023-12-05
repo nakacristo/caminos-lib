@@ -24,7 +24,7 @@ use std::convert::TryFrom;
 use ::rand::{rngs::StdRng,Rng,prelude::SliceRandom};
 
 use crate::config_parser::ConfigurationValue;
-use crate::topology::cartesian::{DOR,O1TURN,ValiantDOR,OmniDimensionalDeroute, DimWAR, GENERALTURN, Valiant4Hamming};
+use crate::topology::cartesian::{DOR, O1TURN, ValiantDOR, OmniDimensionalDeroute, DimWAR, GENERALTURN, Valiant4Hamming, AdaptiveValiantClos};
 use crate::topology::dragonfly::{PAR, Valiant4Dragonfly};
 use crate::topology::{Topology,Location};
 pub use crate::event::Time;
@@ -419,6 +419,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"OmniDimensionalDeroute" => Box::new(OmniDimensionalDeroute::new(arg)),
 			"DimWAR" => Box::new(DimWAR::new(arg)),
 			"Valiant4Hamming" => Box::new(Valiant4Hamming::new(arg)),
+			"AdaptiveValiantClos" => Box::new(AdaptiveValiantClos::new(arg)),
 			"Valiant4Dragonfly" => Box::new(Valiant4Dragonfly::new(arg)),
 			"PAR" => Box::new(PAR::new(arg)),
 			"Shortest" => Box::new(Shortest::new(arg)),
