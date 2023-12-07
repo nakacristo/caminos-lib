@@ -32,7 +32,7 @@ pub enum SumRoutingPolicy
 	///Note that both routings are informed of the hops given, which could be illegal for one of them.
 	SecondWhenFirstEmpty,
 	///At every hop of the first routing give the possibility to use the second routing from the current router towards the target router.
-	///once a hop exclussive to the second routing is given continues that way.
+	///once a hop exclusive to the second routing is given continues that way.
 	EscapeToSecond,
 }
 

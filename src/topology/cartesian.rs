@@ -2746,7 +2746,7 @@ impl Routing for AdaptiveValiantClos
 			let idempotent = base.idempotent;
 			r=base.into_iter().filter_map(|egress|
 				{
-					if !self.first_reserved_virtual_channels.contains(&egress.virtual_channel)
+					if !self.first_reserved_virtual_channels.contains(&egress.virtual_channel) && self.second_reserved_virtual_channels.contains(&egress.virtual_channel)
 					{
 						Some(egress)
 					}else{
