@@ -1,6 +1,15 @@
 # Change Log
 
-## next, [0.6.3]
+## next, [0.6.4]
+
+### 2023-12-05
+Sanitize some generated latex comment.
+
+## [0.6.3]
+
+### 2023-12-01
+Include fix of TrafficMap.
+Publish 0.6.3.
 
 ### 2023-11-29
 Some tikz improvements.
