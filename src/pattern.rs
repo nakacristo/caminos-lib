@@ -2402,6 +2402,7 @@ impl Pattern for LinearTransform
 		}
 		if source_size!=self.source_size.size || target_size!=self.target_size.size
 		{
+			println!("source_size({})!=self.source_size.size({}) || target_size({})!=self.target_size.size({})",source_size,self.source_size.size,target_size,self.target_size.size);
 			panic!("Sizes do not agree on LinearTransform.");
 		}
 		//Check that the number of lines of the matrix is the same as the number of dimensions.

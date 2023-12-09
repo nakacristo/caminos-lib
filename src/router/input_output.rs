@@ -803,6 +803,11 @@ impl Eventful for InputOutput
 						}
 						if good_ports.len()==0
 						{
+							self.time_at_input_head[entry_port][entry_vc]+=1;
+							// if self.time_at_input_head[entry_port][entry_vc] > 25000
+							// {
+							// 	panic!("There are no choices for packet {:?} entry_port={} entry_vc={} in router {} towards server {} after policies.",phit.packet,entry_port,entry_vc,self.router_index,target_server);
+							// }
 							continue;//There is no available port satisfying the policies. Hopefully there will in the future.
 						}
 						//else if good_ports.len()>=2

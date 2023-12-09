@@ -1,11 +1,14 @@
 
 
+use crate::PatternBuilderArgument;
+use crate::pattern::new_pattern;
 use quantifiable_derive::Quantifiable;//the derive macro
 use super::prelude::*;
 use crate::matrix::Matrix;
 use super::dragonfly::{Arrangement,ArrangementPoint,ArrangementSize,Palmtree,new_arrangement};
 use crate::config_parser::ConfigurationValue;
 use crate::match_object_panic;
+use crate::pattern::Pattern;
 use crate::routing::{CandidateEgress, Error, Routing, RoutingBuilderArgument, RoutingInfo, RoutingNextCandidates};
 use crate::topology::NeighbourRouterIteratorItem;
 
@@ -266,8 +269,8 @@ impl Megafly
 
 
 /**
-MegaflyAD routing from Indirect adaptive routing... Jiang '09....
-It uses 5 local VC and 2 global VC
+MegaflyAD routing from Indirect adaptive routing...
+It uses 2VCs, one for the 1st segment, and another for the 2nd segment.
 ```ignore
 MegaflyAD{
 
@@ -279,7 +282,10 @@ pub struct MegaflyAD
 {
 	first_allowed_virtual_channels: Vec<usize>,
 	second_allowed_virtual_channels: Vec<usize>,
-	minimal_to_deroute: Vec<usize>
+	minimal_to_deroute: Vec<usize>,
+	intermediate_source_minimal_pattern: Option<Box<dyn Pattern>>,
+	intermediate_target_minimal_pattern: Option<Box<dyn Pattern>>,
+	// k_tree: Option<usize>,
 }
 
 impl Routing for MegaflyAD
@@ -314,7 +320,7 @@ impl Routing for MegaflyAD
 		let source_router = visited_routers[0];
 		let selections = routing_info.selections.as_ref().unwrap();
 
-		let cartesian_data = topology.cartesian_data().expect("cartesian data not available");
+		let cartesian_data = topology.cartesian_data().expect("cartesian data not available"); //BEAWARE THAT DF+ IS AN INDIRECT NETWORK
 		let current_coord = cartesian_data.unpack(current_router);
 		let target_coord = cartesian_data.unpack(target_router);
 		let source_coord = cartesian_data.unpack(source_router);
@@ -328,9 +334,9 @@ impl Routing for MegaflyAD
 
 		for NeighbourRouterIteratorItem{link_class: next_link_class,port_index,neighbour_router:neighbour_router_index,..} in topology.neighbour_router_iter(current_router)
 		{
-			 let neighbour_coord = cartesian_data.unpack(neighbour_router_index);
-
+			let neighbour_coord = cartesian_data.unpack(neighbour_router_index);
 			let next_distance = topology.distance(neighbour_router_index, target_router);
+
 			let minimal = if next_distance < distance
 			{
 				0 //salto minimo
@@ -349,6 +355,7 @@ impl Routing for MegaflyAD
 								continue;
 							}
 
+
 							r.extend(self.first_allowed_virtual_channels.iter().map(|v| CandidateEgress{port:port_index,virtual_channel:*v,label:minimal,..Default::default()}));
 
 						}
@@ -356,21 +363,68 @@ impl Routing for MegaflyAD
 
 							if pos_target_group{
 
-								if self.minimal_to_deroute[2] == 0 && minimal == 1{
+								if minimal == 1 && (self.minimal_to_deroute[2] == 0 || selections[1] == 2)  {
 									continue;
+								}
+
+								if selections[1] == 0 && minimal == 1{ //if were in source and target, dont missroute!!
+									continue;
+
 								}
 
 							}else if pos_source_group{
 
 								continue;
 
-							} else {
+							} else { //were in the intermediate group
+
 								if distance == 2{ //si estas a gd no bajar.
 									continue;
 								}
+
+								// see if we can use the minimal pattern from the source port
+								if let Some(ref pattern) = self.intermediate_source_minimal_pattern
+								{
+									//get a server neighbour of the source router Which one.... (?)
+									if let (Location::ServerPort(server),_link_class) = topology.neighbour(source_router, topology.degree(source_router))
+									{
+										let destination = pattern.get_destination(server ,topology,_rng);
+										if destination != neighbour_coord[0]{
+											// println!("destination={}, neighbour_coord[0]={}",destination, neighbour_coord[0]);
+											continue;
+										}
+
+									}else {
+
+										println!("source_router{}",source_router);
+										panic!("MegaflyAD routing found no server neighbour in a router....");
+
+									}
+
+									// let destination = pattern.get_destination(source_router ,topology,_rng);
+									// if destination != neighbour_coord[0]{
+									// 	continue;
+									// }
+								}
+
+								if let Some(ref pattern) = self.intermediate_target_minimal_pattern
+								{
+									let destination = pattern.get_destination(target_server.unwrap() ,topology,_rng);
+									if destination != neighbour_coord[0]{
+										continue;
+									}
+								}
 							}
 
-							r.extend(self.first_allowed_virtual_channels.iter().map(|v| CandidateEgress{port:port_index,virtual_channel:*v,label:minimal,..Default::default()}));
+							if selections[1] < 2{
+
+								r.extend(self.first_allowed_virtual_channels.iter().map(|v| CandidateEgress{port:port_index,virtual_channel:*v,label:minimal,..Default::default()}));
+
+							}else{
+
+								r.extend(self.second_allowed_virtual_channels.iter().map(|v| CandidateEgress{port:port_index,virtual_channel:*v,label:minimal,..Default::default()}));
+
+							}
 
 						}
 						2 =>{ //up
@@ -379,7 +433,7 @@ impl Routing for MegaflyAD
 							}
 						}
 						3 =>{ //down
-							if minimal == 0{
+							if next_distance == 0{
 								r.extend(self.second_allowed_virtual_channels.iter().map(|v| CandidateEgress::new(port_index, *v)));
 							}
 						}
@@ -391,6 +445,7 @@ impl Routing for MegaflyAD
 				}
 				1 =>{ //global link
 					let real_minimal = if neighbour_coord[1] == target_coord[1] {0} else {1};
+
 					match selections[1]
 					{
 						0 =>{
@@ -398,7 +453,7 @@ impl Routing for MegaflyAD
 
 								continue;
 
-							}else {
+							} else {
 								if self.minimal_to_deroute[1] == 0 && real_minimal == 1{
 									continue;
 								}
@@ -414,9 +469,7 @@ impl Routing for MegaflyAD
 								}
 
 							} else {
-
 								continue;
-
 							}
 						}
 						_ => {
@@ -428,6 +481,7 @@ impl Routing for MegaflyAD
 				_ => panic!("Megafly only route through local and global links"),
 			}
 		}
+
 		//if r is 0 panic
 		if r.len() == 0
 		{
@@ -464,22 +518,22 @@ impl Routing for MegaflyAD
 		{
 			None => unreachable!(),
 			Some(ref x) =>
+			{
+				if link_class == 0
 				{
-					if link_class == 0
-					{
-						vec![x[0]+1, x[1]]
+					vec![x[0]+1, x[1]]
 
-					} else if link_class == 1{
-						vec![x[0], x[1]+1]
+				} else if link_class == 1{
+					vec![x[0], x[1]+1]
 
-					}else{
-						panic!("Megafly only route through local and global links")
-					}
-				},
+				}else{
+					panic!("Megafly only route through local and global links")
+				}
+			},
 		};
 
 		//panic if more than 4 local hops and 2 global hops
-		if cs[0] > 4 || cs[1] > 2
+		if cs[0] > 4
 		{
 			println!("cs={:?}",cs);
 			panic!("MegaflyAD routing through more than 4 local hops")
@@ -500,8 +554,16 @@ impl Routing for MegaflyAD
 			None => panic!("visited_routers not initialized"),
 		};
 	}
-	fn initialize(&mut self, _topology:&dyn Topology, _rng: &mut StdRng)
+	fn initialize(&mut self, topology:&dyn Topology, _rng: &mut StdRng)
 	{
+		if let Some(ref mut pattern) = self.intermediate_source_minimal_pattern
+		{
+			pattern.initialize(topology.num_servers(), topology.num_servers(), topology, _rng);
+		}
+		if let Some(ref mut pattern) = self.intermediate_target_minimal_pattern
+		{
+			pattern.initialize(topology.num_servers(), topology.num_servers(), topology, _rng);
+		}
 	}
 	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
@@ -521,14 +583,11 @@ impl MegaflyAD
 		let mut first_allowed_virtual_channels =vec![0];
 		let mut second_allowed_virtual_channels =vec![1];
 		let mut minimal_to_deroute=vec![0, 0, 1];
-		// let mut local_missrouting=false;
-		// let mut intermediate_bypass=None;
-		// let mut dragonfly_bypass=false;
+		let mut intermediate_source_minimal_pattern=None;
+		let mut intermediate_target_minimal_pattern=None;
+
 		match_object_panic!(arg.cv,"MegaflyAD",value,
-			// "first" => first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
-			// "second" => second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
-			// "pattern" => pattern= Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})).expect("pattern not valid for PAR"),
-			// // "exclude_h_groups"=> exclude_h_groups=value.as_bool().expect("bad value for exclude_h_groups"),
+
 			"first_allowed_virtual_channels" => first_allowed_virtual_channels=value.
 				as_array().expect("bad value for first_reserved_virtual_channels").iter()
 				.map(|v|v.as_f64().expect("bad value in first_reserved_virtual_channels") as usize).collect(),
@@ -537,15 +596,18 @@ impl MegaflyAD
 				.map(|v|v.as_f64().expect("bad value in second_reserved_virtual_channels") as usize).collect(),
 			"minimal_to_deroute" => minimal_to_deroute=value.as_array().expect("bad value for minimal_to_deroute").iter()
 				.map(|v|v.as_f64().expect("bad value in minimal_to_deroute") as usize).collect(),
-			// "intermediate_bypass" => intermediate_bypass=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
-			// "local_missrouting" => local_missrouting=value.as_bool().expect("bad value for local_missrouting"),
-			// "dragonfly_bypass" => dragonfly_bypass=value.as_bool().expect("bad value for dragonfly_bypass"),
+			"intermediate_source_minimal_pattern" => intermediate_source_minimal_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"intermediate_target_minimal_pattern" => intermediate_target_minimal_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+
 		);
+
 
 		MegaflyAD{
 			first_allowed_virtual_channels,
 			second_allowed_virtual_channels,
 			minimal_to_deroute,
+			intermediate_source_minimal_pattern,
+			intermediate_target_minimal_pattern,
 		}
 	}
 }

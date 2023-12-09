@@ -20,7 +20,6 @@ use std::convert::TryInto;
 use std::rc::Rc;
 
 use ::rand::{Rng,rngs::StdRng};
-use crate::config_parser::Token::False;
 
 ///Extra information to be used by the policies of virtual channels.
 #[derive(Debug)]

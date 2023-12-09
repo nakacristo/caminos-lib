@@ -2,7 +2,7 @@ use caminos_lib::*;
 use config_parser::ConfigurationValue;
 
 /*
-    Auxiliary functions to create the configuration file for the tests. Each function has a struct as argument wich contains the needed parameters
+    Auxiliary functions to create the configuration file for the tests. Each function has a struct as argument which contains the needed parameters
 */
 
 /// Encapsulates the parameters needed to create a Virtual Channel Policy
@@ -16,6 +16,85 @@ pub fn create_vcp( arg: VirtualChannelPoliciesBuilder) -> ConfigurationValue
 {
     ConfigurationValue::Array(arg.policies)
 }
+
+
+pub struct OccupancyPolicyBuilder
+{
+    ///Which multiplies the label.
+    pub label_coefficient: i32,
+    ///Which multiplies the occupancy.
+    pub occupancy_coefficient: i32,
+    ///Which multiplies the product of label and occupancy.
+    pub product_coefficient: i32,
+    ///Just added.
+    pub constant_coefficient: i32,
+    ///Whether to include the own router buffers in the calculation.
+    pub use_internal_space: ConfigurationValue,
+    ///Whether to include the known state of the next router buffers in the calculation.
+    pub use_neighbour_space: ConfigurationValue,
+    ///Whether to aggregate all virtual channels associated to the port.
+    ///Defaults to true.
+    pub aggregate: ConfigurationValue,
+}
+
+/// Creates a Configuration Value with the parameters for the Occupancy Policy
+pub fn create_occupancy_policy(arg: OccupancyPolicyBuilder) -> ConfigurationValue
+{
+    ConfigurationValue::Object("OccupancyFunction".to_string(), vec![
+        ("label_coefficient".to_string(), ConfigurationValue::Number(arg.label_coefficient as f64)),
+        ("occupancy_coefficient".to_string(), ConfigurationValue::Number(arg.occupancy_coefficient as f64)),
+        ("product_coefficient".to_string(), ConfigurationValue::Number(arg.product_coefficient as f64)),
+        ("constant_coefficient".to_string(), ConfigurationValue::Number(arg.constant_coefficient as f64)),
+        ("use_internal_space".to_string(), arg.use_internal_space),
+        ("use_neighbour_space".to_string(), arg.use_neighbour_space),
+        ("aggregate".to_string(), arg.aggregate),
+    ])
+}
+
+
+pub struct MapHopBuilder{
+    pub hop_to_policy: Vec<ConfigurationValue>,
+    pub above_policy: Option<ConfigurationValue>,
+}
+
+/// Creates a Configuration Value with the parameters for the Map Hop Policy
+/// The hop_to_policy vector contains the policies for each hop
+pub fn create_map_hop_policy(arg: MapHopBuilder) -> ConfigurationValue
+{
+    if let Some(above_policy) = arg.above_policy {
+        ConfigurationValue::Object("MapHop".to_string(), vec![
+            ("hop_to_policy".to_string(), ConfigurationValue::Array(arg.hop_to_policy)),
+            ("above_policy".to_string(), above_policy),
+        ])
+    } else {
+        ConfigurationValue::Object("MapHop".to_string(), vec![
+            ("hop_to_policy".to_string(), ConfigurationValue::Array(arg.hop_to_policy)),
+        ])
+    }
+}
+
+pub struct MapLabelBuilder{
+    pub label_to_policy: Vec<ConfigurationValue>,
+    pub above_policy: Option<ConfigurationValue>,
+}
+
+/// Creates a Configuration Value with the parameters for the Map Label Policy
+/// The label_to_policy vector contains the policies for each label
+pub fn create_map_label_policy(arg: MapLabelBuilder) -> ConfigurationValue
+{
+    if let Some(above_policy) = arg.above_policy {
+        ConfigurationValue::Object("MapLabel".to_string(), vec![
+            ("label_to_policy".to_string(), ConfigurationValue::Array(arg.label_to_policy)),
+            ("above_policy".to_string(), above_policy),
+        ])
+    } else {
+        ConfigurationValue::Object("MapLabel".to_string(), vec![
+            ("label_to_policy".to_string(), ConfigurationValue::Array(arg.label_to_policy)),
+        ])
+    }
+}
+
+
 
 /// Encapsulates the parameters needed to create a Input_output router
 pub struct InputOutputRouterBuilder {
@@ -96,6 +175,45 @@ pub fn create_hamming_topology(arg: HammingBuilder) -> ConfigurationValue //Box<
                                              ("servers_per_router".to_string(),ConfigurationValue::Number(arg.servers_per_router as f64))])
 }
 
+/// Encapsulates the parameters needed to create a Megafly topology
+pub struct MegaflyBuilder
+{
+    pub global_ports_per_spine: usize,
+    pub servers_per_leaf: usize,
+    pub global_arrangement: ConfigurationValue,
+    pub group_size: usize,
+    pub number_of_groups: usize,
+}
+
+/// Creates a Configuration Value with the parameters for the Megafly topology
+pub fn create_megafly_topology(arg: MegaflyBuilder) -> ConfigurationValue //Box<dyn Topology>
+{
+    ConfigurationValue::Object("Megafly".to_string(),
+                               vec![("global_ports_per_spine".to_string(),ConfigurationValue::Number(arg.global_ports_per_spine as f64)),
+                                    ("servers_per_leaf".to_string(),ConfigurationValue::Number(arg.servers_per_leaf as f64)),
+                                    ("global_arrangement".to_string(),arg.global_arrangement),
+                                    ("group_size".to_string(),ConfigurationValue::Number(arg.group_size as f64)),
+                                    ("number_of_groups".to_string(),ConfigurationValue::Number(arg.number_of_groups as f64))])
+}
+
+/// Routing MegaflyAD (FPAR) for megafly topology
+pub struct MegaflyAD
+{
+    pub first_allowed_virtual_channels: Vec<usize>,
+    pub second_allowed_virtual_channels: Vec<usize>,
+    pub minimal_to_deroute: Vec<usize>,
+}
+pub fn create_megafly_ad(arg: MegaflyAD) -> ConfigurationValue
+{
+    ConfigurationValue::Object("MegaflyAD".to_string(), vec![
+        ("first_allowed_virtual_channels".to_string(), ConfigurationValue::Array(arg.first_allowed_virtual_channels.into_iter().map(|a| ConfigurationValue::Number(a as f64)).collect())),
+        ("second_allowed_virtual_channels".to_string(), ConfigurationValue::Array(arg.second_allowed_virtual_channels.into_iter().map(|a| ConfigurationValue::Number(a as f64)).collect())),
+        ("minimal_to_deroute".to_string(), ConfigurationValue::Array(arg.minimal_to_deroute.into_iter().map(|a| ConfigurationValue::Number(a as f64)).collect())),
+    ])
+}
+
+
+
 /// Encapsulates the parameters needed to create a Cartesian shift pattern (x, y) -> (x + shift_x, y + shift_y)
 /// DEPRECATED - use cartesian_pattern_builder
 pub struct ShiftPatternBuilder
@@ -146,6 +264,29 @@ pub fn create_cartesian_pattern(arg: CartesianPatternBuilder) -> ConfigurationVa
     }
     ConfigurationValue::Object("CartesianTransform".to_string(), vec)
 }
+
+pub fn create_uniform_pattern() -> ConfigurationValue
+{
+    ConfigurationValue::Object("Uniform".to_string(), vec![])
+}
+
+pub struct HomogeneousTrafficBuilder
+{
+    pub pattern: ConfigurationValue,
+    pub servers: usize,
+    pub load: f64,
+    pub message_size: usize,
+}
+/// Creates a Configuration Value with the parameters for the Homogeneous traffic pattern
+pub fn create_homogeneous_traffic(arg: HomogeneousTrafficBuilder) -> ConfigurationValue
+{
+    ConfigurationValue::Object("HomogeneousTraffic".to_string(), vec![
+        ("pattern".to_string(), arg.pattern),
+        ("servers".to_string(), ConfigurationValue::Number(arg.servers as f64)),
+        ("load".to_string(), ConfigurationValue::Number(arg.load)),
+        ("message_size".to_string(), ConfigurationValue::Number(arg.message_size as f64))])
+}
+
 
 
 /// Encapsulates the parameters needed to create a Burst traffic pattern.
