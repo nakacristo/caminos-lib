@@ -245,9 +245,12 @@ impl Routing for Valiant
 		};
 		let mut bri=routing_info.borrow_mut();
 		bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
-		if middle==current_router || middle==target_router
+		if middle==current_router  //|| middle==target_router
 		{
-			self.second.initialize_routing_info(&bri.meta.as_ref().unwrap()[1],topology,current_router,target_router,target_server,rng);
+			// self.second.initialize_routing_info(&bri.meta.as_ref().unwrap()[1],topology,current_router,target_router,target_server,rng);
+			bri.selections=Some(vec![target_router as i32]);
+			self.first.initialize_routing_info(&bri.meta.as_ref().unwrap()[0],topology,current_router,target_router,target_server,rng)
+
 		}
 		else
 		{
