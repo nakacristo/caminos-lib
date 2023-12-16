@@ -1190,7 +1190,11 @@ impl Traffic for Sequence
 	}
 	fn probability_per_cycle(&self,task:usize) -> f32
 	{
-		self.traffics[self.current_traffic].probability_per_cycle(task)
+		if self.current_traffic < self.traffics.len() {
+			self.traffics[self.current_traffic].probability_per_cycle(task)
+		}else{
+			0.0
+		}
 	}
 	fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
 	{
