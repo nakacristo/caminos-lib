@@ -12,6 +12,7 @@ use std::rc::Rc;
 use std::collections::{BTreeSet,BTreeMap,VecDeque};
 //use std::mem::{size_of};
 use std::fmt::Debug;
+// use std::thread::current;
 
 use ::rand::{Rng,rngs::StdRng};
 
@@ -23,6 +24,7 @@ use crate::topology::Topology;
 use crate::event::Time;
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::quantify::Quantifiable;
+use crate::topology::prelude::CartesianData;
 
 ///Possible errors when trying to generate a message with a `Traffic`.
 #[derive(Debug)]
@@ -244,6 +246,7 @@ pub fn new_traffic(arg:TrafficBuilderArgument) -> Box<dyn Traffic>
 			"Sequence" => Box::new(Sequence::new(arg)),
 			"BoundedDifference" => Box::new(BoundedDifference::new(arg)),
 			"TrafficMap" => Box::new(TrafficMap::new(arg)),
+			"Sweep" => Box::new(Sweep::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -898,6 +901,212 @@ impl Burst
 		}
 	}
 }
+
+/**
+* Sweep traffic communication, defined in a n-cube. Represents the communications of a distributed dynamic programming algorithm.
+* send_to: Vec<Vec<usize>>, a vector of vectors defining the direction of the sweep
+* A server can only start sending when it has received all the messages incoming.
+* There is no warp around in the edges of the cube.
+* Usually, server 0 starts sending first, but it is not necessary. Various server can start at the same time, if they've nothing to receive.
+**/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct Sweep
+{
+	cartesian_data: CartesianData, //the cartesian data of the tasks
+	send_to: Vec<Vec<usize>>, //the directions of the sweep
+	messages_per_destination: Vec<usize>, //the number of messages to send to each communication
+	message_size: Vec<usize>, //the size of each message
+	// starting_point: usize,
+	map_to_send: Vec<Vec<usize>>, //the number of available messages to send for a task, for each destination
+	general_to_receive: Vec<usize>, //the number of incoming messages to receive for each task
+}
+
+impl Traffic for Sweep
+{
+	fn generate_message(&mut self, origin:usize, cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
+	{
+		if origin >= self.cartesian_data.size
+		{
+			//panic!("origin {} does not belong to the traffic",origin);
+			return Err(TrafficError::OriginOutsideTraffic);
+		}
+		let max_index = self.map_to_send[origin].iter().enumerate().max_by_key(|&(_, item)| item).unwrap().0;
+
+		if self.map_to_send[origin][max_index] == 0
+		{
+			return Err(TrafficError::SelfMessage);
+		}
+		self.map_to_send[origin][max_index]-=1;
+		let src_coords= self.cartesian_data.unpack(origin);
+
+		if sum_out_of_bounds(src_coords.clone(), self.send_to[max_index].clone(), self.cartesian_data.sides.clone())
+		{
+			//print coordinates
+			println!("src_coords: {:?}", src_coords);
+			println!("send_to: {:?}", self.send_to[max_index]);
+			println!("sides: {:?}", self.cartesian_data.sides);
+			panic!("Out of bounds")
+		}
+
+		let dst_coords = src_coords.iter().enumerate().map(|(i, v)| v + self.send_to[max_index][i]).collect::<Vec<usize>>();
+		let destination = self.cartesian_data.pack(&dst_coords);
+		if origin==destination
+		{
+			return Err(TrafficError::SelfMessage);
+		}
+		let message=Rc::new(Message{
+			origin,
+			destination,
+			size:self.message_size[max_index],
+			creation_cycle: cycle,
+		});
+		Ok(message)
+	}
+	fn probability_per_cycle(&self, task:usize) -> f32
+	{
+        if task >= self.general_to_receive.len(){
+            
+           return  0.0;
+        }
+
+		if self.general_to_receive[task] == 0 && self.map_to_send[task].iter().sum::<usize>() != 0
+		{
+			1.0
+		}
+		else
+		{
+			0.0
+		}
+	}
+	fn try_consume(&mut self, task:usize, _message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+	{
+		// let message_ptr=message.as_ref() as *const Message;
+		// self.generated_messages.remove(&message_ptr)
+		if self.general_to_receive[task] <= 0
+		{
+			println!("task: {} ", task);
+			println!("message: {:?} ", _message);
+			println!("to receive: {:?}", self.general_to_receive);
+			println!("to send: {:?} ", self.map_to_send);
+			panic!("Should not consume more")
+
+		}else{
+
+			self.general_to_receive[task] -= 1;
+			true
+		}
+
+	}
+	fn is_finished(&self) -> bool
+	{
+		if self.general_to_receive.iter().sum::<usize>() != 0
+		{
+			return false;
+		}
+		true
+	}
+	fn task_state(&self, _task:usize, _cycle:Time) -> TaskTrafficState
+	{
+		if self.is_finished() {
+			TaskTrafficState::Generating
+		} else {
+			//We do not know whether someone is sending us data.
+			//if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
+			// Sometimes it could be Finished, but it is not worth computing...
+			TaskTrafficState::FinishedGenerating
+		}
+	}
+
+	fn number_tasks(&self) -> usize {
+		self.cartesian_data.size
+	}
+}
+
+impl Sweep
+{
+	pub fn new(arg:TrafficBuilderArgument) -> Sweep
+	{
+		let mut sides=None;
+		let mut send_to=None;
+		let mut messages_per_destination=None;
+		let mut message_size=None;
+		// let mut starting_point=None;
+
+		match_object_panic!(arg.cv,"Sweep",value,
+			"sides" => sides=Some(value.as_array().expect("bad value for sides").iter().map(|a| a.as_usize().unwrap()).collect::<Vec<usize>>()),
+			"send_to" => send_to=Some(value.as_array().expect("bad value for send_to").iter().map(|a| a.as_array().expect("bad value to send_to").iter().map(|b| b.as_usize().unwrap() as usize).collect() ).collect() ),
+			"messages_per_destination" => messages_per_destination=Some( value.as_array().expect("bad value for messages_per_destination").iter().map(|a| a.as_usize().unwrap() ).collect::<Vec<usize>>() ),
+			"message_size" => message_size=Some(value.as_array().expect("bad value for message_size").iter().map(|a| a.as_usize().unwrap() ).collect() ),
+			// "starting_point" => starting_point=Some(value.as_array().expect("bad value for starting_point").iter().map(|a| a.as_usize().unwrap()).collect::<Vec<usize>>()),
+		);
+		let sides=sides.expect("There were no sides");
+		let message_size=message_size.expect("There were no message_size");
+		let messages_per_destination: Vec<usize> =messages_per_destination.expect("There were no messages_per_destination");
+		let send_to : Vec<Vec<usize>>=send_to.expect("There were no send_to");
+		let cartesian_data = CartesianData::new(&sides);
+		// let starting_point=cartesian_data.pack(&starting_point.expect("There were no starting_point"));
+		let mut map_to_send = vec![ vec![0; send_to.len()]; cartesian_data.size];
+		let mut general_to_receive = vec![0; cartesian_data.size];
+
+		// let to_send = to_send.iter().enumerate().map(|(i, v)| {
+		// 	let current_task = cartesian_data.unpack(i);
+		// 	v.iter().enumerate().map(|index,e| if sum_out_of_bounds(current_task, v.clone(), cartesian_data.sides){0} else{messages_per_destination[index]}).collect::<Vec<usize>>()
+		//
+		// }).collect();
+		//
+		// let to_recieve = vec![ vec![0; send_to.len()]; cartesian_data.size()];
+		// let to_recieve = to_recieve.iter().enumerate().map(|(i, v)| {
+		// 	let current_task = cartesian_data.unpack(i);
+		// 	v.iter().enumerate().map(|index,e| if sum_out_of_bounds(current_task, v.clone(), cartesian_data.sides){0} else{messages_per_destination[index]}).collect::<Vec<usize>>()
+		//
+		// }).collect();
+
+		for index in 0..map_to_send.len()
+		{
+			let current_task = cartesian_data.unpack(index);
+			for (i, v) in send_to.iter().enumerate()
+			{
+				if !sum_out_of_bounds(current_task.clone(), v.clone(), cartesian_data.sides.clone())
+				{
+					let index_to_send = cartesian_data.pack(&v.into_iter().zip(current_task.clone()).map(|(a, b)| a + b ).collect::<Vec<usize>>());
+					map_to_send[index][i] = messages_per_destination[i];
+					general_to_receive[index_to_send] += messages_per_destination[i];
+				}
+			}
+		}
+		// println!("INITIAL general_to_receive: {:?}", general_to_receive);
+		// general_to_receive[starting_point] = 0; //maybe this is not necessary, as its 0 anyways
+		// println!("INITIAL map_to_send: {:?}", map_to_send);
+
+		//search the task which generate first, which are the ones without messages to receive
+		println!("Tasks sending first: {:?}", general_to_receive.iter().enumerate().filter(|(_, &v)| v == 0).map(|(i, _)| i).collect::<Vec<usize>>());
+
+		Sweep {
+			cartesian_data,
+			send_to,
+			messages_per_destination,
+			message_size,
+			// starting_point,
+			map_to_send,
+			general_to_receive,
+		}
+	}
+}
+
+/**
+* Function to check if the sum of two vectors is out of bounds
+**/
+fn sum_out_of_bounds(vec1: Vec<usize>, vec2: Vec<usize>, sides: Vec<usize>) -> bool {
+	for i in 0..vec1.len() {
+		if vec1[i] + vec2[i] >= sides[i] {
+			return true;
+		}
+	}
+	false
+}
+
+
 
 /**
 Has a major traffic `action_traffic` generated normally. When a message from this `action_traffic` is consumed, the `reaction_traffic` is requested for a message. This reaction message will be generated by the task that consumed the action message. The destination of the reaction message is independent of the origin of the action message. The two traffics must involve the same number of tasks.
