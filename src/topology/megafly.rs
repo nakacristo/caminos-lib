@@ -1,7 +1,7 @@
 
 
 use crate::PatternBuilderArgument;
-use crate::pattern::new_pattern;
+use crate::pattern::{new_pattern};
 use quantifiable_derive::Quantifiable;//the derive macro
 use super::prelude::*;
 use crate::matrix::Matrix;
@@ -285,6 +285,7 @@ pub struct MegaflyAD
 	minimal_to_deroute: Vec<usize>,
 	intermediate_source_minimal_pattern: Option<Box<dyn Pattern>>,
 	intermediate_target_minimal_pattern: Option<Box<dyn Pattern>>,
+	intermediate_leaf_switch_pattern: Box<dyn Pattern>,
 	// k_tree: Option<usize>,
 }
 
@@ -389,7 +390,7 @@ impl Routing for MegaflyAD
 									if let (Location::ServerPort(server),_link_class) = topology.neighbour(source_router, topology.degree(source_router))
 									{
 										let destination = pattern.get_destination(server ,topology,_rng);
-										if destination != neighbour_coord[0]{
+										if destination != self.intermediate_leaf_switch_pattern.get_destination(neighbour_coord[0], topology, _rng){
 											// println!("destination={}, neighbour_coord[0]={}",destination, neighbour_coord[0]);
 											continue;
 										}
@@ -410,7 +411,7 @@ impl Routing for MegaflyAD
 								if let Some(ref pattern) = self.intermediate_target_minimal_pattern
 								{
 									let destination = pattern.get_destination(target_server.unwrap() ,topology,_rng);
-									if destination != neighbour_coord[0]{
+									if destination != self.intermediate_leaf_switch_pattern.get_destination(neighbour_coord[0], topology, _rng){
 										continue;
 									}
 								}
@@ -564,6 +565,9 @@ impl Routing for MegaflyAD
 		{
 			pattern.initialize(topology.num_servers(), topology.num_servers(), topology, _rng);
 		}
+		let cartesian_data = topology.cartesian_data().expect("cartesian data not available"); //BEAWARE THAT DF+ IS AN INDIRECT NETWORK
+		self.intermediate_leaf_switch_pattern.initialize(cartesian_data.sides[0], cartesian_data.sides[0], topology, _rng);
+
 	}
 	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
 	{
@@ -585,7 +589,7 @@ impl MegaflyAD
 		let mut minimal_to_deroute=vec![0, 0, 1];
 		let mut intermediate_source_minimal_pattern=None;
 		let mut intermediate_target_minimal_pattern=None;
-
+		let mut intermediate_leaf_switch_pattern :Box<dyn Pattern> = new_pattern(PatternBuilderArgument{cv: &ConfigurationValue::Object("Identity".to_string(), vec![]),plugs:arg.plugs});
 		match_object_panic!(arg.cv,"MegaflyAD",value,
 
 			"first_allowed_virtual_channels" => first_allowed_virtual_channels=value.
@@ -598,9 +602,8 @@ impl MegaflyAD
 				.map(|v|v.as_f64().expect("bad value in minimal_to_deroute") as usize).collect(),
 			"intermediate_source_minimal_pattern" => intermediate_source_minimal_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 			"intermediate_target_minimal_pattern" => intermediate_target_minimal_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
-
+			"intermediate_leaf_switch_pattern" => intermediate_leaf_switch_pattern=new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs}),
 		);
-
 
 		MegaflyAD{
 			first_allowed_virtual_channels,
@@ -608,6 +611,7 @@ impl MegaflyAD
 			minimal_to_deroute,
 			intermediate_source_minimal_pattern,
 			intermediate_target_minimal_pattern,
+			intermediate_leaf_switch_pattern,
 		}
 	}
 }
