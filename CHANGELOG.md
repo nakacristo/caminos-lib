@@ -2,6 +2,9 @@
 
 ## next, [0.6.4]
 
+### 2023-12-21
+Tuned usage of tikzexternalize to behave reasonably when using `-no-shell-escape`.
+
 ### 2023-12-05
 Sanitize some generated latex comment.
 Added routing AdaptiveStart.
