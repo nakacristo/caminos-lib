@@ -1208,14 +1208,17 @@ impl<'a> Simulation<'a>
 						{
 							size
 						};
+						let mut routing_info = RoutingInfo::new();
+						routing_info.source_server = Some(iserver);
 						server.stored_packets.push_back(Packet{
 							size:ps,
-							routing_info: RefCell::new(RoutingInfo::new()),
+							routing_info: RefCell::new(routing_info),
 							message:message.clone(),
 							index:0,
 							cycle_into_network:RefCell::new(0),
 							extra: RefCell::new(None),
 						}.into_ref());
+
 						size-=ps;
 					}
 				}

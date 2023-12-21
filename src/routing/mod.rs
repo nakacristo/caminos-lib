@@ -66,6 +66,8 @@ pub struct RoutingInfo
 	pub meta: Option<Vec<RefCell<RoutingInfo>>>,
 	///Arbitrary data with internal mutability.
 	pub auxiliar: RefCell<Option<Box<dyn std::any::Any>>>,
+	///Source server index, optional.
+	pub source_server: Option<usize>,
 }
 
 impl RoutingInfo
@@ -80,6 +82,7 @@ impl RoutingInfo
 			visited_routers: None,
 			meta: None,
 			auxiliar: RefCell::new(None),
+			source_server: None,
 		}
 	}
 }
