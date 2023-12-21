@@ -8,23 +8,32 @@ Implementation of general Up/Down-like routings.
 */
 
 use ::rand::{rngs::StdRng};
-
+use crate::pattern::{new_pattern};
+use crate::PatternBuilderArgument;
 use crate::match_object_panic;
 use crate::config_parser::ConfigurationValue;
 use crate::routing::prelude::*;
 use crate::topology::{Topology,NeighbourRouterIteratorItem,Location};
 use crate::matrix::Matrix;
+use crate::pattern::Pattern;
 
 ///Use a shortest up/down path from origin to destination.
 ///The up/down paths are understood as provided by `Topology::up_down_distance`.
+/// parameters:
+/// * `source_pattern` (optional): a pattern to select the up path depending on the source server.
+/// * `destination_pattern` (optional): a pattern to select the up path depending on the destination server.
+/// * `port_pattern` (optional): apply a pattern to the port.
 #[derive(Debug)]
 pub struct UpDown
 {
+	source_pattern: Option<Vec<Box<dyn Pattern>>>,
+	destination_pattern: Option<Vec<Box<dyn Pattern>>>,
+	port_pattern: Option<Vec<Box<dyn Pattern>>>,
 }
 
 impl Routing for UpDown
 {
-	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
+	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
 		//let (target_location,_link_class)=topology.server_neighbour(target_server);
 		//let target_router=match target_locatiself.vcs[vc_index]on
@@ -53,20 +62,49 @@ impl Routing for UpDown
 		}
 		let num_ports=topology.ports(current_router);
 		let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
-		for i in 0..num_ports
+		for NeighbourRouterIteratorItem{link_class: next_link_class,port_index,neighbour_router:neighbour_router_index,..} in topology.neighbour_router_iter(current_router)
 		{
-			//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
-			if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,i)
+			if let Some((new_u, new_d)) = topology.up_down_distance(neighbour_router_index,target_router)
 			{
-				if let Some((new_u, new_d)) = topology.up_down_distance(router_index,target_router)
+				if new_u<up_distance && new_d<=down_distance // I guess its an up stage
 				{
-					if (new_u<up_distance && new_d<=down_distance) || (new_u<=up_distance && new_d<down_distance)
+					let mut port_hash = port_index;
+					if let Some(ref port_pattern) = self.port_pattern
 					{
-						r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+						let pattern = &port_pattern[next_link_class];
+						port_hash = pattern.get_destination(port_index,topology,rng)
 					}
+
+					// if let Some(ref source_pattern) = self.source_pattern
+					// {
+					// 	let pattern = &source_pattern[next_link_class];
+					//
+					// }
+
+					if let Some(ref destination_pattern) = self.destination_pattern
+					{
+						let pattern = &destination_pattern[next_link_class];
+						let target = target_server.unwrap();
+						if pattern.get_destination(target,topology,rng) != port_hash{
+							continue;
+						}
+					}
+
+					r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(port_index,vc)));
+				}else if new_u<=up_distance && new_d<down_distance
+				{
+					r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(port_index,vc)));
 				}
 			}
 		}
+		// for i in 0..num_ports
+		// {
+		// 	//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+		// 	if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,i)
+		// 	{
+		//
+		// 	}
+		// }
 		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
 		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
@@ -76,8 +114,24 @@ impl UpDown
 {
 	pub fn new(arg: RoutingBuilderArgument) -> UpDown
 	{
-		match_object_panic!(arg.cv,"UpDown",_value);
+		let mut source_pattern = None;
+		let mut destination_pattern = None;
+		let mut port_pattern = None;
+		match_object_panic!(arg.cv,"UpDown",value,
+			"source_pattern" => source_pattern = Some(value.as_array().expect("bad value for source_pattern").iter().map(|x|{
+				new_pattern(PatternBuilderArgument{cv:x,plugs:arg.plugs})
+			}).collect()),
+			"destination_pattern" => destination_pattern = Some(value.as_array().expect("bad value for destination_pattern").iter().map(|x|{
+				new_pattern(PatternBuilderArgument{cv:x,plugs:arg.plugs})
+			}).collect()),
+			"port_pattern" => port_pattern = Some(value.as_array().expect("bad value for port_pattern").iter().map(|x|{
+				new_pattern(PatternBuilderArgument{cv:x,plugs:arg.plugs})
+			}).collect()),
+		);
 		UpDown{
+			source_pattern,
+			destination_pattern,
+			port_pattern,
 		}
 	}
 }
