@@ -6,6 +6,7 @@ use rand::prelude::SliceRandom;
 //use quantifiable_derive::Quantifiable;//the derive macro
 use crate::allocator::{Allocator, Request, GrantedRequests, AllocatorBuilderArgument};
 use crate::config_parser::ConfigurationValue;
+use crate::config_parser::Token::True;
 use crate::match_object_panic;
 
 
@@ -28,6 +29,8 @@ pub struct RandomPriorityAllocator {
     num_clients: usize,
     /// The requests of the clients
     requests: Vec<Request>,
+    /// Greatest first
+    greatest_first: bool,
     /// The RNG or None if the seed is not set
     rng: Option<StdRng>,
 }
@@ -45,12 +48,19 @@ impl RandomPriorityAllocator {
         }
         // Get the seed from the configuration
         let mut seed = None;
+        let mut greatest_first = false;
         match_object_panic!(args.cv, "RandomWithPriority", value,
         "seed" => match value
         {
             &ConfigurationValue::Number(s) => seed = Some(s as u64),
             _ => panic!("Bad value for seed"),
-        }
+        },
+        "greatest_first" => match value
+        {
+            &ConfigurationValue::True => greatest_first = true,
+            &ConfigurationValue::False => greatest_first = false,
+            _ => panic!("Bad value for greatest_first"),
+        },
         );
         let rng = seed.map(|s| StdRng::seed_from_u64(s));
         // Create the allocator
@@ -58,6 +68,7 @@ impl RandomPriorityAllocator {
             num_resources: args.num_resources,
             num_clients: args.num_clients,
             requests: Vec::new(),
+            greatest_first,
             rng,
         }
     }
@@ -119,6 +130,12 @@ impl Allocator for RandomPriorityAllocator {
 
         // Sort the requests by priority (least is first)
         self.requests.sort_by(|a, b| a.priority.unwrap().cmp(&b.priority.unwrap()));
+
+        // Reverse the requests if greatest first is set
+        if self.greatest_first {
+            // Sort the requests by priority (greatest is first)
+            self.requests.reverse();
+        }
 
         // Allocate the requests with an iterator
         for Request{ref resource, ref client, ref priority } in self.requests.iter() {

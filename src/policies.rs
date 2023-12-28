@@ -321,6 +321,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"MapMessageSize" => Box::new(MapMessageSize::new(arg)),
 			"Chain" => Box::new(Chain::new(arg)),
 			"VOQ" => Box::new(VOQ::new(arg)),
+			"CycleIntoNetwork" => Box::new(CycleIntoNetwork::new(arg)),
 			_ => panic!("Unknown policy {}",cv_name),
 		}
 	}
@@ -2135,6 +2136,59 @@ impl VOQ
 
 
 
+///Apply a different policy to candidates with each label.
+#[derive(Debug)]
+pub struct CycleIntoNetwork
+{
+}
 
+impl VirtualChannelPolicy for CycleIntoNetwork
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		candidates.iter().map(|cand|{
 
+				let mut cand2 = cand.clone();
+				cand2.label = info.phit.packet.cycle_into_network.take() as i32;
+				cand2
 
+			}
+		).collect::<Vec<CandidateEgress>>()
+		// for mut cand in candidates.into_iter()
+		// {
+		// 	cand.label  = info.phit.packet.cycle_into_network.take() as i32;
+		// }
+		//
+		// candidates
+
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl CycleIntoNetwork
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> CycleIntoNetwork
+	{
+		match_object_panic!(arg.cv,"CycleIntoNetwork",value,
+
+		);
+		CycleIntoNetwork {
+
+		}
+	}
+}
