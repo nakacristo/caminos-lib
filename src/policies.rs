@@ -20,6 +20,7 @@ use std::convert::TryInto;
 use std::rc::Rc;
 
 use ::rand::{Rng,rngs::StdRng};
+use crate::topology::prelude::CartesianData;
 
 ///Extra information to be used by the policies of virtual channels.
 #[derive(Debug)]
@@ -322,6 +323,9 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"Chain" => Box::new(Chain::new(arg)),
 			"VOQ" => Box::new(VOQ::new(arg)),
 			"CycleIntoNetwork" => Box::new(CycleIntoNetwork::new(arg)),
+			"LinkExitLabel" => Box::new(LinkExitLabel::new(arg)),
+			"LinkEntryLabel" => Box::new(LinkEntryLabel::new(arg)),
+			"CartesianSpaceLabel" => Box::new(CartesianSpaceLabel::new(arg)),
 			_ => panic!("Unknown policy {}",cv_name),
 		}
 	}
@@ -2184,11 +2188,210 @@ impl CycleIntoNetwork
 {
 	pub fn new(arg:VCPolicyBuilderArgument) -> CycleIntoNetwork
 	{
-		match_object_panic!(arg.cv,"CycleIntoNetwork",value,
+		match_object_panic!(arg.cv,"CycleIntoNetwork",_value,
 
 		);
 		CycleIntoNetwork {
 
+		}
+	}
+}
+
+
+#[derive(Debug)]
+pub struct LinkEntryLabel
+{
+}
+
+impl VirtualChannelPolicy for LinkEntryLabel
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		let (_location, link_class_entry)=topology.neighbour(router.get_index().unwrap(), info.entry_port);
+		let link_class_entry = link_class_entry as i32;
+
+		candidates.iter().map(|cand|{
+
+			let mut cand2 = cand.clone();
+
+			cand2.label = link_class_entry;
+			cand2
+		}
+		).collect::<Vec<CandidateEgress>>()
+		// for mut cand in candidates.into_iter()
+		// {
+		// 	cand.label  = info.phit.packet.cycle_into_network.take() as i32;
+		// }
+		//
+		// candidates
+
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl LinkEntryLabel
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> LinkEntryLabel
+	{
+		match_object_panic!(arg.cv,"LinkEntryLabel",_value,
+
+		);
+		LinkEntryLabel {
+
+		}
+	}
+}
+
+
+#[derive(Debug)]
+pub struct LinkExitLabel
+{
+}
+
+impl VirtualChannelPolicy for LinkExitLabel
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, _info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+
+		candidates.iter().map(|cand|{
+
+			let mut cand2 = cand.clone();
+			let (_location, link_class_exit)= topology.neighbour(router.get_index().unwrap(), cand2.port);
+
+			cand2.label = link_class_exit as i32;
+			cand2
+		}
+		).collect::<Vec<CandidateEgress>>()
+		// for mut cand in candidates.into_iter()
+		// {
+		// 	cand.label  = info.phit.packet.cycle_into_network.take() as i32;
+		// }
+		//
+		// candidates
+
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl LinkExitLabel
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> LinkExitLabel
+	{
+		match_object_panic!(arg.cv,"LinkExitLabel",_value,
+
+		);
+		LinkExitLabel {
+
+		}
+	}
+}
+
+#[derive(Debug)]
+pub struct CartesianSpaceLabel
+{
+	policies: Vec<Box<dyn VirtualChannelPolicy>>,
+	// sizes: Vec<usize>,
+	cartesian_space:CartesianData,
+}
+
+impl VirtualChannelPolicy for CartesianSpaceLabel
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+
+		candidates.iter().map(|cand|{
+
+			let mut coord = vec![0usize; self.cartesian_space.sides.len()];
+
+			for (index,p) in self.policies.iter().enumerate()
+			{
+				let cand2 = cand.clone();
+				let candidate = p.filter(vec![cand2],router,info,topology,_rng);
+				coord[index] = candidate[0].label as usize;
+			}
+			let mut cand_def = cand.clone();
+			cand_def.label = self.cartesian_space.pack(&coord) as i32;
+			cand_def
+		}
+
+		).collect::<Vec<CandidateEgress>>()
+		// for mut cand in candidates.into_iter()
+		// {
+		// 	cand.label  = info.phit.packet.cycle_into_network.take() as i32;
+		// }
+		//
+		// candidates
+
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl CartesianSpaceLabel
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> CartesianSpaceLabel
+	{
+		let mut policies=None;
+		let mut sizes=None;
+		match_object_panic!(arg.cv,"CartesianSpaceLabel",value,
+			"values" => policies=Some(value.as_array().expect("bad value for policies").iter()
+				.map(|v|new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg})).collect::<Vec<Box<dyn VirtualChannelPolicy>>>()),
+			"sizes" => sizes=Some(value.as_array().expect("bad value for sizes").iter()
+				.map(|v|v.as_usize().expect("bad value in sizes")).collect::<Vec<usize>>()),
+		);
+		let policies=policies.expect("There were no policies");
+		let sizes=sizes.expect("There were no sizes");
+		if policies.len() != sizes.len()
+		{
+			panic!("The number of policies must be the same as the number of dimensions");
+		}
+		CartesianSpaceLabel{
+			policies,
+			cartesian_space: CartesianData::new(&sizes),
 		}
 	}
 }
