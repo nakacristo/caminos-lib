@@ -2453,15 +2453,16 @@ impl Routing for Valiant4Hamming
 		let src_coord = cartesian_data.unpack(current_router);
 		let trg_coord = cartesian_data.unpack(target_router);
 
-		let middle_server = self.pattern.get_destination(source_server,topology, rng);
-		let (middle_location,_link_class)=topology.server_neighbour(middle_server);
-		let mut middle_router=match middle_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let middle_server = self.pattern.get_destination(source_server,topology, rng);
+		//let (middle_location,_link_class)=topology.server_neighbour(middle_server);
+		let mut middle_router;
+		// =match middle_location
+		// {
+		// 	Location::RouterPort{router_index,router_port:_} =>router_index,
+		// 	_ => panic!("The server is not attached to a router"),
+		// };
 
-		let mut middle_coord = cartesian_data.unpack(middle_router);
+		let mut middle_coord= vec![]; // = cartesian_data.unpack(middle_router);
 		let mut not_valid_middle = true;
 
 		while not_valid_middle

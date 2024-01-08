@@ -325,6 +325,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"CycleIntoNetwork" => Box::new(CycleIntoNetwork::new(arg)),
 			"LinkExitLabel" => Box::new(LinkExitLabel::new(arg)),
 			"LinkEntryLabel" => Box::new(LinkEntryLabel::new(arg)),
+			"ChannelHop" => Box::new(ChannelHop::new(arg)),
 			"CartesianSpaceLabel" => Box::new(CartesianSpaceLabel::new(arg)),
 			_ => panic!("Unknown policy {}",cv_name),
 		}
@@ -2213,7 +2214,6 @@ impl VirtualChannelPolicy for LinkEntryLabel
 		candidates.iter().map(|cand|{
 
 			let mut cand2 = cand.clone();
-
 			cand2.label = link_class_entry;
 			cand2
 		}
@@ -2316,6 +2316,69 @@ impl LinkExitLabel
 	}
 }
 
+/*
+	Performed Hops in the Label.
+ */
+#[derive(Debug)]
+pub struct ChannelHop
+{
+
+}
+
+impl VirtualChannelPolicy for ChannelHop
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+
+		candidates.into_iter().map(|f|{
+
+			let CandidateEgress{
+				port,
+				virtual_channel,//: virtual_channel,
+				estimated_remaining_hops,//: estimated_remaining_hops,
+				label: _l,//: _label,
+				router_allows,//: router_allows,
+				annotation,//: annotation
+			} = f;
+
+			CandidateEgress {
+				port: port,
+				virtual_channel:virtual_channel,
+				label: info.performed_hops as i32,
+				estimated_remaining_hops: estimated_remaining_hops,
+				router_allows: router_allows,
+				annotation: annotation
+			}
+		}).collect::<Vec<_>>()
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl ChannelHop
+{
+	pub fn new(_arg:VCPolicyBuilderArgument) -> ChannelHop
+	{
+		ChannelHop{
+		}
+	}
+}
+
+
 #[derive(Debug)]
 pub struct CartesianSpaceLabel
 {
@@ -2336,7 +2399,7 @@ impl VirtualChannelPolicy for CartesianSpaceLabel
 			for (index,p) in self.policies.iter().enumerate()
 			{
 				let cand2 = cand.clone();
-				let candidate = p.filter(vec![cand2],router,info,topology,_rng);
+				let candidate = p.filter(vec![cand2], router,info, topology, _rng);
 				coord[index] = candidate[0].label as usize;
 			}
 			let mut cand_def = cand.clone();
