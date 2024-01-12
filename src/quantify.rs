@@ -1,8 +1,6 @@
 
 use std::mem::{size_of,size_of_val};
-use std::collections::VecDeque;
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
+use std::collections::{VecDeque,BTreeMap,BTreeSet,HashMap};
 use std::rc::Rc;
 use std::cell::{RefCell};
 //use quantifiable_derive::Quantifiable;//the derive macro
@@ -27,6 +25,23 @@ impl<T:Quantifiable> Quantifiable for Vec<T>
 	fn total_memory(&self) -> usize
 	{
 		size_of::<Vec<T>>() + self.iter().map(|e|e.total_memory()).sum::<usize>() + (self.capacity()-self.len())*size_of::<T>()
+	}
+	fn print_memory_breakdown(&self)
+	{
+		unimplemented!();
+	}
+	fn forecast_total_memory(&self) -> usize
+	{
+		unimplemented!();
+	}
+}
+
+impl<K,V> Quantifiable for HashMap<K,V>
+{
+	fn total_memory(&self) -> usize
+	{
+		//TODO...
+		0
 	}
 	fn print_memory_breakdown(&self)
 	{

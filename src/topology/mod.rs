@@ -42,7 +42,7 @@ pub mod prelude
 
 ///A location where a phit can be inserted.
 ///None is used for disconnected ports, for example in the `Mesh` topology.
-#[derive(Clone,Debug,Quantifiable)]
+#[derive(Clone,Debug,Quantifiable,Hash,Eq,PartialEq)]
 pub enum Location
 {
 	RouterPort{
