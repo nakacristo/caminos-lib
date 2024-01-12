@@ -443,14 +443,19 @@ impl UniformPattern
 	}
 }
 
-///Build a random permutation on initialization, which is then kept constant.
-///This allows self-messages; with a reasonable probability of having one.
-///See `RandomInvolution` and `FileMap`.
+/**
+Build a random permutation on initialization, which is then kept constant.
+This allows self-messages; with a reasonable probability of having one.
+Has `random_seed` as optional configuration to use an internal random-number generator instead of the simulation-wide one.
+
+See [RandomInvolution] and [FileMap].
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct RandomPermutation
 {
 	permutation: Vec<usize>,
+	rng: Option<StdRng>,
 }
 
 impl Pattern for RandomPermutation
@@ -462,6 +467,7 @@ impl Pattern for RandomPermutation
 			panic!("In a permutation source_size({}) must be equal to target_size({}).",source_size,target_size);
 		}
 		self.permutation=(0..source_size).collect();
+		let rng= self.rng.as_mut().unwrap_or(rng);
 		self.permutation.shuffle(rng);
 	}
 	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
@@ -474,9 +480,13 @@ impl RandomPermutation
 {
 	fn new(arg:PatternBuilderArgument) -> RandomPermutation
 	{
-		match_object_panic!(arg.cv,"RandomPermutation",_value);
+		let mut rng = None; 
+		match_object_panic!(arg.cv,"RandomPermutation",value,
+			"seed" => rng = Some( value.as_rng().expect("bad value for seed") ),
+		);
 		RandomPermutation{
 			permutation: vec![],
+			rng,
 		}
 	}
 }
