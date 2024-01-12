@@ -2,6 +2,9 @@
 
 ## next, [0.6.4]
 
+### 2024-01-12
+Added `ConfigurationValue::as_rng`.
+
 ### 2023-12-21
 Tuned usage of tikzexternalize to behave reasonably when using `-no-shell-escape`.
 

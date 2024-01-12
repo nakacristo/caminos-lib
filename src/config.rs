@@ -6,6 +6,8 @@ use std::path::Path;
 use std::fs::File;
 //use std::rc::Rc;
 
+use rand::{rngs::StdRng,SeedableRng};
+
 use crate::config_parser::{self,ConfigurationValue,Expr};
 use crate::event::Time;
 use crate::{error,source_location};
@@ -1937,6 +1939,26 @@ impl ConfigurationValue
 		match self
 		{
 			&ConfigurationValue::Expression(ref e) => Ok(e),
+			_ => Err(error!(ill_formed_configuration, self.clone() )),
+		}
+	}
+	pub fn as_rng(&self) -> Result<StdRng,Error>
+	{
+		match self
+		{
+			&ConfigurationValue::Number(x) =>{
+				let seed =  x as u64;
+				// Casting from a float to an integer will round the float towards zero
+				// overflows and underflows will saturate
+				// Casting from an integer to float will produce the closest possible float
+				let y = seed as f64;
+				let tolerance = 1e-5;
+				if x-y > tolerance || x-y < -tolerance {
+					Err(error!(ill_formed_configuration, self.clone()))
+				} else {
+					Ok( StdRng::seed_from_u64(seed) )
+				}
+			},
 			_ => Err(error!(ill_formed_configuration, self.clone() )),
 		}
 	}
