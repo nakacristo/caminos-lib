@@ -210,21 +210,18 @@ impl Topology for RandomLinkFaults
 	{
 		self.topology.server_neighbour(server_index)
 	}
-	fn diameter(&self) -> usize { self.topology.diameter() }
-	fn distance(&self,origin:usize,destination:usize) -> usize { self.topology.distance(origin,destination) }
-	fn amount_shortest_paths(&self,origin:usize,destination:usize) -> usize { self.topology.amount_shortest_paths(origin,destination) }
-	fn average_amount_shortest_paths(&self) -> f32 { self.topology.average_amount_shortest_paths() }
-	fn maximum_degree(&self) -> usize { self.topology.maximum_degree() }
-	fn minimum_degree(&self) -> usize { self.topology.minimum_degree() }
-	fn degree(&self, router_index: usize) -> usize { self.topology.degree(router_index) }
+	fn diameter(&self) -> usize { todo!() }
+	fn distance(&self,origin:usize,destination:usize) -> usize { todo!() }
+	fn amount_shortest_paths(&self,origin:usize,destination:usize) -> usize { todo!() }
+	fn average_amount_shortest_paths(&self) -> f32 { todo!() }
+	fn maximum_degree(&self) -> usize { todo!() }
+	fn minimum_degree(&self) -> usize { todo!() }
+	fn degree(&self, router_index: usize) -> usize { todo!() }
 	fn ports(&self, router_index: usize) -> usize { self.topology.ports(router_index) }
-	fn neighbour_router_iter<'a>(&'a self, router_index:usize) -> Box<dyn Iterator<Item=NeighbourRouterIteratorItem> + 'a>
-	{
-		self.topology.neighbour_router_iter(router_index)
-	}
 	fn cartesian_data(&self) -> Option<&CartesianData> { self.topology.cartesian_data() }
 	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], rng:Option<&mut StdRng>)->Vec<i32>
 	{
+		// XXX what happens with broken links?
 		self.topology.coordinated_routing_record(coordinates_a,coordinates_b,rng)
 	}
 	fn is_direction_change(&self, router_index:usize, input_port: usize, output_port: usize) -> bool
@@ -233,46 +230,9 @@ impl Topology for RandomLinkFaults
 	}
 	fn up_down_distance(&self,origin:usize,destination:usize) -> Option<(usize,usize)>
 	{
+		// XXX what happens with broken links?
 		self.topology.up_down_distance(origin,destination)
 	}
-	// Noone really overrides this...
-	fn bfs(&self, origin:usize, class_weight:Option<&[usize]>) -> Vec<usize>
-	{
-		self.topology.bfs(origin,class_weight)
-	}
-	// Noone really overrides this...
-	fn compute_distance_matrix(&self, class_weight:Option<&[usize]>) -> Matrix<usize>
-	{
-		self.topology.compute_distance_matrix(class_weight)
-	}
-	// Noone really overrides this...
-	fn floyd(&self) -> Matrix<usize>
-	{
-		self.topology.floyd()
-	}
-	// Noone really overrides this...
-	fn compute_amount_shortest_paths(&self) -> (Matrix<usize>,Matrix<usize>)
-	{
-		self.topology.compute_amount_shortest_paths()
-	}
-	// Noone really overrides this...
-	fn components(&self,allowed_classes:&[bool]) -> Vec<Vec<usize>>
-	{
-		self.topology.components(allowed_classes)
-	}
-	// Noone really overrides this...
-	fn compute_near_far_matrices(&self) -> (Matrix<usize>,Matrix<usize>)
-	{
-		self.topology.compute_near_far_matrices()
-	}
-	// Noone really overrides this...
-	fn eccentricity(&self, router_index:usize) -> usize
-	{
-		self.topology.eccentricity(router_index)
-	}
-	// Are these even correct to override?
-	// fn check_adjacency_consistency(&self,amount_link_classes: Option<usize>)
-	// fn write_adjacencies_to_file(&self, file:&mut File, _format:usize)->Result<(),std::io::Error>
 }
 
 

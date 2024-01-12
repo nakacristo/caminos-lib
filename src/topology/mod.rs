@@ -896,6 +896,7 @@ pub fn new_topology(arg:TopologyBuilderArgument) -> Box<dyn Topology>
 			"Megafly" => Box::new(megafly::Megafly::new(arg)),
 			"RemappedServers" => Box::new(operations::RemappedServersTopology::new(arg)),
 			"AsCartesianTopology" => Box::new(AsCartesianTopology::new(arg)),
+			"RandomLinkFaults" => Box::new(operations::RandomLinkFaults::new(arg)),
 			_ => panic!("Unknown topology {}",cv_name),
 		}
 	}
