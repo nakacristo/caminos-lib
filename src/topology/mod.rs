@@ -567,6 +567,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 		for router_index in 0..n
 		{
 			let deg = self.degree(router_index);
+			let mut router_port_count = 0;
 			for port_index in 0..self.ports(router_index)
 			{
 				let (neighbour_location, link_class) = self.neighbour(router_index, port_index);
@@ -585,6 +586,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 						router_port: neighbour_port,
 					} =>
 					{
+						router_port_count += 1;
 						if let Some(bound) = amount_link_classes
 						{
 							if link_class+1==bound
@@ -613,7 +615,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 						}
 						if port_index>=max_deg
 						{
-							panic!("port {} at router {} connects to another router and it is >=maximum_degree={}>=degree={}",port_index,router_index,max_deg,deg);
+							println!("WARNING: port {} at router {} connects to another router and it is >=maximum_degree={}>=degree={}",port_index,router_index,max_deg,deg);
 						}
 					},
 					Location::ServerPort(server_index) =>
@@ -644,6 +646,18 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 					},
 					Location::None => println!("WARNING: disconnected port {} at router {}",port_index,router_index),
 				}
+			}
+			if router_port_count != deg {
+				panic!("Reported degree {deg} for router {router} when {count} neighbours have been found.",deg=deg,router=router_index,count=router_port_count);
+			}
+			if deg > max_deg {
+				panic!("The degree (actual and measured) {deg} for router {router} is greater than reported maximum {max}.",deg=deg,router=router_index,max=max_deg);
+			}
+			if deg < min_deg {
+				panic!("The degree (actual and measured) {deg} for router {router} is lower than reported minimum {min}.",deg=deg,router=router_index,min=min_deg);
+			}
+			if deg==0 {
+				println!("WARNING: *** router {} has no link to other routers!! ***",router_index);
 			}
 		}
 		if let Some(bound)=amount_link_classes
