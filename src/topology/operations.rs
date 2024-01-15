@@ -1,7 +1,7 @@
 
 use super::prelude::*;
-use crate::pattern::prelude::*;
 use super::NeighbourRouterIteratorItem;
+use crate::pattern::prelude::*;
 use crate::matrix::Matrix;
 use crate::match_object_panic;
 use crate::config_parser::ConfigurationValue;
@@ -192,6 +192,12 @@ pub struct RandomLinkFaults
 	topology: Box<dyn Topology>,
 	//rng: Option<StdRng>,
 	removed_links: HashMap< Location, Location >,
+	///Cached distances. `distance_matrix.get(i,j)` is the distance from router i to router j.
+	distance_matrix:Matrix<usize>,
+	///amount_matrix.get(i,j) = amount of shortest paths from router i to router j
+	amount_matrix:Matrix<usize>,
+	///Average of the amount_matrix entries.
+	average_amount: f32,
 }
 
 impl Topology for RandomLinkFaults
@@ -210,13 +216,23 @@ impl Topology for RandomLinkFaults
 	{
 		self.topology.server_neighbour(server_index)
 	}
-	fn diameter(&self) -> usize { todo!() }
-	fn distance(&self,origin:usize,destination:usize) -> usize { todo!() }
-	fn amount_shortest_paths(&self,origin:usize,destination:usize) -> usize { todo!() }
-	fn average_amount_shortest_paths(&self) -> f32 { todo!() }
-	fn maximum_degree(&self) -> usize { todo!() }
-	fn minimum_degree(&self) -> usize { todo!() }
-	fn degree(&self, router_index: usize) -> usize { todo!() }
+	fn diameter(&self) -> usize { self.compute_diameter() }
+	fn distance(&self,origin:usize,destination:usize) -> usize {
+		*self.distance_matrix.get(origin,destination)
+	}
+	fn amount_shortest_paths(&self,origin:usize,destination:usize) -> usize
+	{
+		*self.amount_matrix.get(origin,destination)
+	}
+	fn average_amount_shortest_paths(&self) -> f32
+	{
+		self.average_amount
+	}
+	fn degree(&self, router_index: usize) -> usize {
+		self.neighbour_router_iter(router_index).filter(|NeighbourRouterIteratorItem{port_index,..}|
+			self.removed_links.get( &Location::RouterPort{router_index,router_port:*port_index} ).is_none()
+		).count()
+	}
 	fn ports(&self, router_index: usize) -> usize { self.topology.ports(router_index) }
 	fn cartesian_data(&self) -> Option<&CartesianData> { self.topology.cartesian_data() }
 	fn coordinated_routing_record(&self, coordinates_a:&[usize], coordinates_b:&[usize], rng:Option<&mut StdRng>)->Vec<i32>
@@ -294,10 +310,41 @@ impl RandomLinkFaults
 			removed_links.insert( left_loc.clone(), right_loc.clone() );
 			removed_links.insert( right_loc, left_loc );
 		}
-		RandomLinkFaults{
+		let mut topo = RandomLinkFaults{
 			topology,
 			removed_links,
-		}
+			distance_matrix:Matrix::constant(0,0,0),
+			amount_matrix:Matrix::constant(0,0,0),
+			average_amount: 0f32,
+		};
+		let (distance_matrix,amount_matrix)=topo.compute_amount_shortest_paths();
+		topo.distance_matrix=distance_matrix;
+		topo.amount_matrix=amount_matrix;
+		topo.average_amount={
+			//vertex_index n=size();
+			let n=topo.num_routers();
+			//long r=0,count=0;
+			let mut r=0;
+			let mut count=0;
+			//for(vertex_index i=0;i<n;i++)
+			for i in 0..n
+			{
+				//if(!isInput(i))continue;
+				//for(vertex_index j=0;j<n;j++)
+				for j in 0..n
+				{
+					//if(!isOutput(j) || i==j)continue;
+					if i!=j
+					{
+						r+=topo.amount_shortest_paths(i,j);
+						count+=1;
+					}
+				}
+			}
+			//return (double)r/(double)count;
+			r as f32/count as f32
+		};
+		topo
 	}
 }
 

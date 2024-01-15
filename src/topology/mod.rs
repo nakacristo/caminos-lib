@@ -98,8 +98,20 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 	//fn get_arc_betweenness_matrix(&self) -> ??
 	//fn distance_distribution(&self,origin:usize) -> Vec<usize>;
 	//fn eigenvalue_powerdouble(&self) -> f32
-	fn maximum_degree(&self) -> usize;
-	fn minimum_degree(&self) -> usize;
+	/**
+	The maximum value returned by [degree]. You possibly want to override the default method to avoid its O(n) cost.
+	**/
+	fn maximum_degree(&self) -> usize
+	{
+		(0..self.num_routers()).map(|router_index|self.degree(router_index)).max().expect("calling maximum_degree without routers")
+	}
+	/**
+	The minimum value returned by [degree]. You possibly want to override the default method to avoid its O(n) cost.
+	**/
+	fn minimum_degree(&self) -> usize
+	{
+		(0..self.num_routers()).map(|router_index|self.degree(router_index)).min().expect("calling minimum_degree without routers")
+	}
 	/// Number of ports used to other routers.
 	/// This does not include non-connected ports.
 	/// This should not be used as a range of valid ports. A non-connected port can be before some other valid port to a router.
@@ -248,6 +260,27 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 			}
 		}
 		return R;
+	}
+	
+	/**
+	Computes the diameter by checking all switch pairs.
+	**/
+	fn compute_diameter(&self) -> usize
+	{
+		let mut maximum=0;
+		let n=self.num_routers();
+		for source in 0..n
+		{
+			for target in 0..n
+			{
+				let d=self.distance(source,target);
+				if d>maximum
+				{
+					maximum=d;
+				}
+			}
+		}
+		maximum
 	}
 	
 	//Matrix<length>* Graph::computeDistanceMatrix()

@@ -2,6 +2,10 @@
 
 ## next, [0.6.4]
 
+### 2024-01-15
+Finished RandomLinkFaults.
+Added default implementation for `Topology::{maximum_degree,minimum_degree}`, and algorithm `Topology::compute_diameter`.
+
 ### 2024-01-12
 Added `ConfigurationValue::as_rng`.
 Added optional seed to RandomPermutation.
