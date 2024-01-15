@@ -176,13 +176,21 @@ impl RemappedServersTopology
 /**
 Deletes `amount` links selected randomly. May employ a pattern to select on what switches they fault may occur.
 
+The following example takes a 6x6 [Hamming] and breaks 30 links randomly selected with both enpoints inside a 4x4 block. The `seed` is fixed so the same fault set is employed even if the global RNG changes.
 ```ignore
-RandomLinkFaults
-	topology: ...,
-	amount:...,
-	switch_pattern: ...,
-	switch_pattern_input_size: ...,
-	random_seed: ...,
+topology: RandomLinkFaults{
+	topology: Hamming{
+		sides: [6,6],
+		servers_per_router: 6,
+	},
+	amount:30,
+	switch_pattern_input_size: 16,
+	switch_pattern: CartesianEmbedding{
+		source_sides: [4,4],
+		destination_sides: [6,6],
+	},
+	seed: 0,
+},
 ```
 **/
 #[derive(Debug,Quantifiable)]
@@ -266,12 +274,12 @@ impl RandomLinkFaults
 			"amount" => amount = Some( value.as_i32().expect("bad value for amount") ),
 			"seed" => rng = Some( value.as_rng().expect("bad value for seed") ),
 			"switch_pattern" => switch_pattern = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
-			"switch_pattern_input_sze" => switch_pattern_input_size = Some( value.as_usize().expect("bad value for amount") ),
+			"switch_pattern_input_size" => switch_pattern_input_size = Some( value.as_usize().expect("bad value for amount") ),
 		);
 		let topology = topology.expect("There were no topology in configuration of RemappedServersTopology.");
-		let amount = amount.expect("Miising field amount in RandomLinkFaults.");
+		let amount = amount.expect("Missing field amount in RandomLinkFaults.");
 		let rng = rng.as_mut().unwrap_or(arg.rng);
-		let n = topology.num_servers();
+		let n = topology.num_routers();
 		let switch_set : Option<HashSet<usize>> = if let Some(mut pattern) = switch_pattern {
 			let input_size = switch_pattern_input_size.unwrap_or(n);
 			pattern.initialize(input_size,n,&*topology,rng);
@@ -301,6 +309,9 @@ impl RandomLinkFaults
 					}
 				}
 			}
+		}
+		if link_pool.len() < amount as usize {
+			panic!("Not enough link candidates to remove. {} candidates, {} asked to remove.",link_pool.len(),amount);
 		}
 		// We delete amount links.
 		// It is simple to shuffle the array and get the first ones. A bit inefficient, but no relevant.
