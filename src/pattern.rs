@@ -2405,19 +2405,15 @@ impl Pattern for LinearTransform
 {
 	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
-		if source_size!=target_size
-		{
-			panic!("In a LinearTransform source_size({}) must be equal to target_size({}).",source_size,target_size);
-		}
 		if source_size!=self.source_size.size || target_size!=self.target_size.size
 		{
 			panic!("Sizes do not agree on LinearTransform.");
 		}
 		//Check that the number of lines of the matrix is the same as the number of dimensions.
-		// if self.matrix.len()!=self.cartesian_data.sides.len()
-		// {
-		// 	panic!("The matrix has {} lines, but there are {} dimensions.",self.matrix.len(),self.cartesian_data.sides.len());
-		// }
+		if self.matrix.len()!=self.target_size.sides.len()
+		{
+			panic!("The matrix has {} lines, but there are {} dimensions.",self.matrix.len(),self.target_size.sides.len());
+		}
 		//Check that the size of each line of the matrix is the same as the number of dimensions.
 		for (index,line) in self.matrix.iter().enumerate()
 		{
