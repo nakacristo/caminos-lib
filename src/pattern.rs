@@ -346,7 +346,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"CartesianEmbedding" => Box::new(CartesianEmbedding::new(arg)),
 			"CartesianCut" => Box::new(CartesianCut::new(arg)),
 			"RemappedNodes" => Box::new(RemappedNodes::new(arg)),
-			"Concentrator" => Box::new(Concentrator::new(arg)),
+			"Switch" => Box::new(Switch::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -2472,10 +2472,12 @@ impl LinearTransform
 
 /**
 Use a `indexing` pattern to select among several possible patterns from the input to the output.
+The `indexing` is initialized as a pattern from the input size to the number of `patterns`.
+This is a Switch pattern, not a [Router] of packets.
 
 This example keeps the even fixed and send odd input randomly. These odd input select even or odd indistinctly.
 ```ignore
-Concentrator{
+Switch{
 	indexing: LinearTansform{
 		source_size: [2, 10],
 		target_size: [2],
@@ -2494,7 +2496,7 @@ In this example the nodes at `(0,y)` are sent to a `(y,0)` row.
 And the nodes at `(1,y)` are sent to a `(0,y)` column.
 Destination `(0,0)` has both `(0,0)` and `(1,0)` as sources.
 ```ignore
-Concentrator{
+Switch{
 	indexing: LinearTansform{
 		source_size: [2, 10],
 		target_size: [2],
@@ -2534,12 +2536,12 @@ Concentrator{
 ```
 **/
 #[derive(Debug,Quantifiable)]
-pub struct Concentrator {
+pub struct Switch {
 	indexing: Box<dyn Pattern>,
 	patterns: Vec<Box<dyn Pattern>>,
 }
 
-impl Pattern for Concentrator {
+impl Pattern for Switch {
 	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		self.indexing.initialize(source_size,self.patterns.len(),topology,rng);
@@ -2554,20 +2556,20 @@ impl Pattern for Concentrator {
 	}
 }
 
-impl Concentrator {
-	fn new(arg:PatternBuilderArgument) -> Concentrator
+impl Switch {
+	fn new(arg:PatternBuilderArgument) -> Switch
 	{
 		let mut indexing = None;
 		let mut patterns = None;
 
-		match_object_panic!(arg.cv,"Concentrator",value,
+		match_object_panic!(arg.cv,"Switch",value,
 			"indexing" => indexing = Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
 			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
 				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
 		);
-		let indexing = indexing.expect("Missing indexing in Concentrator.");
-		let patterns = patterns.expect("Missing patterns in Concentrator.");
-		Concentrator{
+		let indexing = indexing.expect("Missing indexing in Switch.");
+		let patterns = patterns.expect("Missing patterns in Switch.");
+		Switch{
 			indexing,
 			patterns,
 		}

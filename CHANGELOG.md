@@ -4,7 +4,7 @@
 
 ### 2024-01-16
 Fix journal message on shell action.
-Added Concentrator pattern.
+Added Switch pattern.
 
 ### 2024-01-15
 Finished RandomLinkFaults.
