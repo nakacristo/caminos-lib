@@ -1064,6 +1064,7 @@ impl CartesianTiling
 The pattern resulting of composing a list of patterns.
 `destination=patterns[len-1]( patterns[len-2] ( ... (patterns[1] ( patterns[0]( origin ) )) ) )`.
 The intermediate sizes along the composition can be stated by `middle_sizes`, otherwise they are set equal to the `target_size` of the whole.
+Thus in a composition of two patterns in which the midddle size is `x`and not equal to `target_size`, it should be set `middle_sizes=[x]`.
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -2488,47 +2489,47 @@ Switch{
 }
 ```
 
-In this example the nodes at `(0,y)` are sent to a `(y,0)` row.
-And the nodes at `(1,y)` are sent to a `(0,y)` column.
-Destination `(0,0)` has both `(0,0)` and `(1,0)` as sources.
+In this example the nodes at `(0,y)` are sent to a `(y,0,0)` row.
+And the nodes at `(1,y)` are sent to a `(0,y,0)` column.
+Destination `(0,0,0)` has both `(0,0)` and `(1,0)` as sources.
 ```ignore
 Switch{
-	indexing: LinearTansform{
-		source_size: [2, 10],
+	indexing: LinearTransform{
+		source_size: [2, 8],
 		target_size: [2],
 		matrix: [
 			[1, 0],
 		],
 	},
 	patterns: [
-		Composition{
-			LinearTansform{
-				source_size: [2, 10],
-				target_size: [10],
+		Composition{patterns:[
+			LinearTransform{
+				source_size: [2, 8],
+				target_size: [8],
 				matrix: [
 					[0, 1],
 				],
 			},
 			CartesianEmbedding{
-				source_sides: [10,1],
-				destination_sides: [10,10],
+				source_sides: [8,1,1],
+				destination_sides: [8,8,8],
 			},
-		},
-		Composition{
-			LinearTansform{
-				source_size: [2, 10],
-				target_size: [10],
+		],middle_sizes:[8]},
+		Composition{patterns:[
+			LinearTransform{
+				source_size: [2, 8],
+				target_size: [8],
 				matrix: [
 					[0, 1],
 				],
 			},
 			CartesianEmbedding{
-				source_sides: [1,10],
-				destination_sides: [10,10],
+				source_sides: [1,8,1],
+				destination_sides: [8,8,8],
 			},
-		},
+		],middle_sizes:[8]},
 	],
-}
+},
 ```
 **/
 #[derive(Debug,Quantifiable)]
