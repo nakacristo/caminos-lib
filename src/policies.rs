@@ -323,8 +323,8 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"Chain" => Box::new(Chain::new(arg)),
 			"VOQ" => Box::new(VOQ::new(arg)),
 			"CycleIntoNetwork" => Box::new(CycleIntoNetwork::new(arg)),
-			"LinkExitLabel" => Box::new(LinkExitLabel::new(arg)),
-			"LinkEntryLabel" => Box::new(LinkEntryLabel::new(arg)),
+			"NextLinkLabel" => Box::new(NextLinkLabel::new(arg)),
+			"CurrentLinkLabel" => Box::new(CurrentLinkLabel::new(arg)),
 			"ChannelHop" => Box::new(ChannelHop::new(arg)),
 			"CartesianSpaceLabel" => Box::new(CartesianSpaceLabel::new(arg)),
 			_ => panic!("Unknown policy {}",cv_name),
@@ -2200,11 +2200,11 @@ impl CycleIntoNetwork
 
 
 #[derive(Debug)]
-pub struct LinkEntryLabel
+pub struct CurrentLinkLabel
 {
 }
 
-impl VirtualChannelPolicy for LinkEntryLabel
+impl VirtualChannelPolicy for CurrentLinkLabel
 {
 	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
@@ -2244,14 +2244,14 @@ impl VirtualChannelPolicy for LinkEntryLabel
 
 }
 
-impl LinkEntryLabel
+impl CurrentLinkLabel
 {
-	pub fn new(arg:VCPolicyBuilderArgument) -> LinkEntryLabel
+	pub fn new(arg:VCPolicyBuilderArgument) -> CurrentLinkLabel
 	{
-		match_object_panic!(arg.cv,"LinkEntryLabel",_value,
+		match_object_panic!(arg.cv,"CurrentLinkLabel",_value,
 
 		);
-		LinkEntryLabel {
+		CurrentLinkLabel {
 
 		}
 	}
@@ -2259,11 +2259,11 @@ impl LinkEntryLabel
 
 
 #[derive(Debug)]
-pub struct LinkExitLabel
+pub struct NextLinkLabel
 {
 }
 
-impl VirtualChannelPolicy for LinkExitLabel
+impl VirtualChannelPolicy for NextLinkLabel
 {
 	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, _info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
@@ -2303,14 +2303,14 @@ impl VirtualChannelPolicy for LinkExitLabel
 
 }
 
-impl LinkExitLabel
+impl NextLinkLabel
 {
-	pub fn new(arg:VCPolicyBuilderArgument) -> LinkExitLabel
+	pub fn new(arg:VCPolicyBuilderArgument) -> NextLinkLabel
 	{
-		match_object_panic!(arg.cv,"LinkExitLabel",_value,
+		match_object_panic!(arg.cv,"NextLinkLabel",_value,
 
 		);
-		LinkExitLabel {
+		NextLinkLabel {
 
 		}
 	}
