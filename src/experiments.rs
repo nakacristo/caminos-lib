@@ -1023,7 +1023,7 @@ impl<'a> Experiment<'a>
 				let path_remote = self.files.root.as_ref().unwrap().join("remote");
 				if let Some(ref path) = self.options.external_source
 				{
-					self.write_journal_entry("Copying shell from the provided path: {path}.");
+					self.write_journal_entry(&format!("Copying shell from the provided path: {}.",path.display()));
 					//Copy files from the source path.
 					//fs::copy(path.join("main.cfg"),&cfg).expect("error copying main.cfg");
 					//fs::copy(path.join("main.cfg"),&cfg).map_err(|e|Error::could_not_generate_file(source_location!(),cfg,e).with_message(format!("trying to copy it from {path:?}")))?;

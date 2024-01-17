@@ -2,6 +2,9 @@
 
 ## next, [0.6.4]
 
+### 2024-01-16
+Fix journal message on shell action.
+
 ### 2024-01-15
 Finished RandomLinkFaults.
 Added default implementation for `Topology::{maximum_degree,minimum_degree}`, and algorithm `Topology::compute_diameter`.
