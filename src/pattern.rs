@@ -346,6 +346,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"CartesianEmbedding" => Box::new(CartesianEmbedding::new(arg)),
 			"CartesianCut" => Box::new(CartesianCut::new(arg)),
 			"RemappedNodes" => Box::new(RemappedNodes::new(arg)),
+			"Concentrator" => Box::new(Concentrator::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -2469,7 +2470,109 @@ impl LinearTransform
 	}
 }
 
+/**
+Use a `indexing` pattern to select among several possible patterns from the input to the output.
 
+This example keeps the even fixed and send odd input randomly. These odd input select even or odd indistinctly.
+```ignore
+Concentrator{
+	indexing: LinearTansform{
+		source_size: [2, 10],
+		target_size: [2],
+		matrix: [
+			[1, 0],
+		],
+	},
+	patterns: [
+		Identity,
+		Uniform,
+	],
+}
+```
+
+In this example the nodes at `(0,y)` are sent to a `(y,0)` row.
+And the nodes at `(1,y)` are sent to a `(0,y)` column.
+Destination `(0,0)` has both `(0,0)` and `(1,0)` as sources.
+```ignore
+Concentrator{
+	indexing: LinearTansform{
+		source_size: [2, 10],
+		target_size: [2],
+		matrix: [
+			[1, 0],
+		],
+	},
+	patterns: [
+		Composition{
+			LinearTansform{
+				source_size: [2, 10],
+				target_size: [10],
+				matrix: [
+					[0, 1],
+				],
+			},
+			CartesianEmbedding{
+				source_sides: [10,1],
+				destination_sides: [10,10],
+			},
+		},
+		Composition{
+			LinearTansform{
+				source_size: [2, 10],
+				target_size: [10],
+				matrix: [
+					[0, 1],
+				],
+			},
+			CartesianEmbedding{
+				source_sides: [1,10],
+				destination_sides: [10,10],
+			},
+		},
+	],
+}
+```
+**/
+#[derive(Debug,Quantifiable)]
+pub struct Concentrator {
+	indexing: Box<dyn Pattern>,
+	patterns: Vec<Box<dyn Pattern>>,
+}
+
+impl Pattern for Concentrator {
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		self.indexing.initialize(source_size,self.patterns.len(),topology,rng);
+		for pattern in self.patterns.iter_mut() {
+			pattern.initialize(source_size,target_size,topology,rng);
+		}
+	}
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		let index = self.indexing.get_destination(origin,topology,rng);
+		self.patterns[index].get_destination(origin,topology,rng)
+	}
+}
+
+impl Concentrator {
+	fn new(arg:PatternBuilderArgument) -> Concentrator
+	{
+		let mut indexing = None;
+		let mut patterns = None;
+
+		match_object_panic!(arg.cv,"Concentrator",value,
+			"indexing" => indexing = Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+		);
+		let indexing = indexing.expect("Missing indexing in Concentrator.");
+		let patterns = patterns.expect("Missing patterns in Concentrator.");
+		Concentrator{
+			indexing,
+			patterns,
+		}
+	}
+}
 
 #[cfg(test)]
 mod tests {
