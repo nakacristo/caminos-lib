@@ -443,6 +443,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"Dragonfly2Colors" => Box::new(crate::topology::dragonfly::Dragonfly2ColorsRouting::new(arg)),
 			"UpDownDerouting" => Box::new(UpDownDerouting::new(arg)),
 			"MegaflyAD" => Box::new(MegaflyAD::new(arg)),
+			"AdaptiveStart" => Box::new(AdaptiveStart::new(arg)),
 			_ => panic!("Unknown Routing {}",cv_name),
 		}
 	}

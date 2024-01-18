@@ -7,7 +7,7 @@ see [`new_pattern`](fn.new_pattern.html) for documentation on the configuration 
 */
 
 use std::cell::{RefCell};
-use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom,SeedableRng};
+use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom};
 use std::fs::File;
 use std::io::{BufRead,BufReader};
 
@@ -346,6 +346,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"CartesianEmbedding" => Box::new(CartesianEmbedding::new(arg)),
 			"CartesianCut" => Box::new(CartesianCut::new(arg)),
 			"RemappedNodes" => Box::new(RemappedNodes::new(arg)),
+			"Switch" => Box::new(Switch::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -461,15 +462,19 @@ impl UniformPattern
 	}
 }
 
-///Build a random permutation on initialization, which is then kept constant.
-///This allows self-messages; with a reasonable probability of having one.
-///See `RandomInvolution` and `FileMap`.
+/**
+Build a random permutation on initialization, which is then kept constant.
+This allows self-messages; with a reasonable probability of having one.
+Has `random_seed` as optional configuration to use an internal random-number generator instead of the simulation-wide one.
+
+See [RandomInvolution] and [FileMap].
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct RandomPermutation
 {
 	permutation: Vec<usize>,
-	seed: Option<usize>,
+	rng: Option<StdRng>,
 }
 
 impl Pattern for RandomPermutation
@@ -481,14 +486,8 @@ impl Pattern for RandomPermutation
 			panic!("In a permutation source_size({}) must be equal to target_size({}).",source_size,target_size);
 		}
 		self.permutation=(0..source_size).collect();
-		if let Some(seed) = self.seed
-		{
-			let mut rng = StdRng::seed_from_u64(seed as u64);
-			self.permutation.shuffle(&mut rng);
-		}
-		else {
-			self.permutation.shuffle(rng);
-		}
+		let rng= self.rng.as_mut().unwrap_or(rng);
+		self.permutation.shuffle(rng);
 	}
 	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
@@ -500,13 +499,13 @@ impl RandomPermutation
 {
 	fn new(arg:PatternBuilderArgument) -> RandomPermutation
 	{
-		let mut seed = None;
+		let mut rng = None;
 		match_object_panic!(arg.cv,"RandomPermutation",value,
-			"seed" => seed = Some(value.as_f64().expect("bad value for seed") as usize),
+			"seed" => rng = Some( value.as_rng().expect("bad value for seed") ),
 		);
 		RandomPermutation{
 			permutation: vec![],
-			seed,
+			rng,
 		}
 	}
 }
@@ -1083,6 +1082,7 @@ impl CartesianTiling
 The pattern resulting of composing a list of patterns.
 `destination=patterns[len-1]( patterns[len-2] ( ... (patterns[1] ( patterns[0]( origin ) )) ) )`.
 The intermediate sizes along the composition can be stated by `middle_sizes`, otherwise they are set equal to the `target_size` of the whole.
+Thus in a composition of two patterns in which the midddle size is `x`and not equal to `target_size`, it should be set `middle_sizes=[x]`.
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -2426,11 +2426,7 @@ impl Pattern for LinearTransform
 {
 	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
-		// if source_size!=target_size
-		// {
-		// 	panic!("In a LinearTransform source_size({}) must be equal to target_size({}).",source_size,target_size);
-		// }
-		if source_size!=self.source_size.size  || target_size!=self.target_size.size
+		if source_size!=self.source_size.size || target_size!=self.target_size.size
 		{
 			println!("source_size({})!=self.source_size.size({}) || target_size({})!=self.target_size.size({})",source_size,self.source_size.size,target_size,self.target_size.size);
 			panic!("Sizes do not agree on LinearTransform.");
@@ -2448,8 +2444,6 @@ impl Pattern for LinearTransform
 				panic!("Line {} of the matrix has {} elements, but there are {} dimensions.",index,line.len(),self.source_size.sides.len());
 			}
 		}
-
-
 	}
 	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
@@ -2502,6 +2496,91 @@ impl LinearTransform
 	}
 }
 
+/**
+Use a `indexing` pattern to select among several possible patterns from the input to the output.
+The `indexing` is initialized as a pattern from the input size to the number of `patterns`.
+This is a Switch pattern, not a [Router] of packets.
+
+This example keeps the even fixed and send odd input randomly. These odd input select even or odd indistinctly.
+```ignore
+Switch{
+	indexing: LinearTansform{
+		source_size: [2, 10],
+		target_size: [2],
+		matrix: [
+			[1, 0],
+		],
+	},
+	patterns: [
+		Identity,
+		Uniform,
+	],
+}
+```
+
+In this example the nodes at `(0,y)` are sent to a `(y,0,0)` row.
+And the nodes at `(1,y)` are sent to a `(0,y,0)` column.
+Destination `(0,0,0)` has both `(0,0)` and `(1,0)` as sources.
+```ignore
+Switch{
+	indexing: LinearTransform{
+		source_size: [2, 8],
+		target_size: [2],
+		matrix: [
+			[1, 0],
+		],
+	},
+	patterns: [
+		Composition{patterns:[
+			LinearTransform{
+				source_size: [2, 8],
+				target_size: [8],
+				matrix: [
+					[0, 1],
+				],
+			},
+			CartesianEmbedding{
+				source_sides: [8,1,1],
+				destination_sides: [8,8,8],
+			},
+		],middle_sizes:[8]},
+		Composition{patterns:[
+			LinearTransform{
+				source_size: [2, 8],
+				target_size: [8],
+				matrix: [
+					[0, 1],
+				],
+			},
+			CartesianEmbedding{
+				source_sides: [1,8,1],
+				destination_sides: [8,8,8],
+			},
+		],middle_sizes:[8]},
+	],
+},
+```
+**/
+#[derive(Debug,Quantifiable)]
+pub struct Switch {
+	indexing: Box<dyn Pattern>,
+	patterns: Vec<Box<dyn Pattern>>,
+}
+
+impl Pattern for Switch {
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		self.indexing.initialize(source_size,self.patterns.len(),topology,rng);
+		for pattern in self.patterns.iter_mut() {
+			pattern.initialize(source_size,target_size,topology,rng);
+		}
+	}
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		let index = self.indexing.get_destination(origin,topology,rng);
+		self.patterns[index].get_destination(origin,topology,rng)
+	}
+}
 
 /**
 Method to calculate the determinant of a matrix.
@@ -2542,6 +2621,25 @@ fn laplace_determinant(matrix: &Vec<Vec<i32>>) -> i32
 }
 
 
+impl Switch {
+	fn new(arg:PatternBuilderArgument) -> Switch
+	{
+		let mut indexing = None;
+		let mut patterns = None;
+
+		match_object_panic!(arg.cv,"Switch",value,
+			"indexing" => indexing = Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+		);
+		let indexing = indexing.expect("Missing indexing in Switch.");
+		let patterns = patterns.expect("Missing patterns in Switch.");
+		Switch{
+			indexing,
+			patterns,
+		}
+	}
+}
 
 #[cfg(test)]
 mod tests {

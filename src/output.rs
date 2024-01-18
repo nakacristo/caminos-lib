@@ -1765,8 +1765,15 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 \usetikzlibrary{{calc,external,patterns}}
 \usepgfplotslibrary{{statistics}}%for boxplots
 \tikzexternaldisable
+\ifnum\pdfshellescape=1
+% -shell-escape is enabled. We may generate figures.
 \tikzexternalize
-%\tikzexternalize[prefix=externalized/]
+\else
+% -shell-escape is disabled (or 2=restricted?). We cannot generate figures, but we may read them.
+\tikzexternalize[
+	mode=graphics if exists,% does not require -shell-escape, does not generate figures but uses them if available
+]
+\fi
 
 \usepackage[bookmarks=true]{{hyperref}}
 

@@ -2,8 +2,25 @@
 
 ## next, [0.6.4]
 
+### 2024-01-16
+Fix journal message on shell action.
+Added Switch pattern.
+
+### 2024-01-15
+Finished RandomLinkFaults.
+Added default implementation for `Topology::{maximum_degree,minimum_degree}`, and algorithm `Topology::compute_diameter`.
+
+### 2024-01-12
+Added `ConfigurationValue::as_rng`.
+Added optional seed to RandomPermutation.
+Added meta-topology RandomLinkFaults.
+
+### 2023-12-21
+Tuned usage of tikzexternalize to behave reasonably when using `-no-shell-escape`.
+
 ### 2023-12-05
 Sanitize some generated latex comment.
+Added routing AdaptiveStart.
 
 ## [0.6.3]
 

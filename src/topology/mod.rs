@@ -35,14 +35,14 @@ use crate::Plugs;
 /// Some things most uses of the topology module will use.
 pub mod prelude
 {
-	pub use super::{Topology,Location,cartesian::CartesianData,TopologyBuilderArgument,new_topology};
+	pub use super::{Topology,Location,cartesian::CartesianData,TopologyBuilderArgument,new_topology,NeighbourRouterIteratorItem};
 	pub use std::cell::{RefCell};
 	pub use ::rand::rngs::StdRng;
 }
 
 ///A location where a phit can be inserted.
 ///None is used for disconnected ports, for example in the `Mesh` topology.
-#[derive(Clone,Debug,Quantifiable)]
+#[derive(Clone,Debug,Quantifiable,Hash,Eq,PartialEq)]
 pub enum Location
 {
 	RouterPort{
@@ -98,8 +98,20 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 	//fn get_arc_betweenness_matrix(&self) -> ??
 	//fn distance_distribution(&self,origin:usize) -> Vec<usize>;
 	//fn eigenvalue_powerdouble(&self) -> f32
-	fn maximum_degree(&self) -> usize;
-	fn minimum_degree(&self) -> usize;
+	/**
+	The maximum value returned by [degree]. You possibly want to override the default method to avoid its O(n) cost.
+	**/
+	fn maximum_degree(&self) -> usize
+	{
+		(0..self.num_routers()).map(|router_index|self.degree(router_index)).max().expect("calling maximum_degree without routers")
+	}
+	/**
+	The minimum value returned by [degree]. You possibly want to override the default method to avoid its O(n) cost.
+	**/
+	fn minimum_degree(&self) -> usize
+	{
+		(0..self.num_routers()).map(|router_index|self.degree(router_index)).min().expect("calling minimum_degree without routers")
+	}
 	/// Number of ports used to other routers.
 	/// This does not include non-connected ports.
 	/// This should not be used as a range of valid ports. A non-connected port can be before some other valid port to a router.
@@ -248,6 +260,27 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 			}
 		}
 		return R;
+	}
+	
+	/**
+	Computes the diameter by checking all switch pairs.
+	**/
+	fn compute_diameter(&self) -> usize
+	{
+		let mut maximum=0;
+		let n=self.num_routers();
+		for source in 0..n
+		{
+			for target in 0..n
+			{
+				let d=self.distance(source,target);
+				if d>maximum
+				{
+					maximum=d;
+				}
+			}
+		}
+		maximum
 	}
 	
 	//Matrix<length>* Graph::computeDistanceMatrix()
@@ -534,6 +567,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 		for router_index in 0..n
 		{
 			let deg = self.degree(router_index);
+			let mut router_port_count = 0;
 			for port_index in 0..self.ports(router_index)
 			{
 				let (neighbour_location, link_class) = self.neighbour(router_index, port_index);
@@ -552,6 +586,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 						router_port: neighbour_port,
 					} =>
 					{
+						router_port_count += 1;
 						if let Some(bound) = amount_link_classes
 						{
 							if link_class+1==bound
@@ -580,7 +615,7 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 						}
 						if port_index>=max_deg
 						{
-							panic!("port {} at router {} connects to another router and it is >=maximum_degree={}>=degree={}",port_index,router_index,max_deg,deg);
+							println!("WARNING: port {} at router {} connects to another router and it is >=maximum_degree={}>=degree={}",port_index,router_index,max_deg,deg);
 						}
 					},
 					Location::ServerPort(server_index) =>
@@ -611,6 +646,18 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 					},
 					Location::None => println!("WARNING: disconnected port {} at router {}",port_index,router_index),
 				}
+			}
+			if router_port_count != deg {
+				panic!("Reported degree {deg} for router {router} when {count} neighbours have been found.",deg=deg,router=router_index,count=router_port_count);
+			}
+			if deg > max_deg {
+				panic!("The degree (actual and measured) {deg} for router {router} is greater than reported maximum {max}.",deg=deg,router=router_index,max=max_deg);
+			}
+			if deg < min_deg {
+				panic!("The degree (actual and measured) {deg} for router {router} is lower than reported minimum {min}.",deg=deg,router=router_index,min=min_deg);
+			}
+			if deg==0 {
+				println!("WARNING: *** router {} has no link to other routers!! ***",router_index);
 			}
 		}
 		if let Some(bound)=amount_link_classes
@@ -896,6 +943,7 @@ pub fn new_topology(arg:TopologyBuilderArgument) -> Box<dyn Topology>
 			"Megafly" => Box::new(megafly::Megafly::new(arg)),
 			"RemappedServers" => Box::new(operations::RemappedServersTopology::new(arg)),
 			"AsCartesianTopology" => Box::new(AsCartesianTopology::new(arg)),
+			"RandomLinkFaults" => Box::new(operations::RandomLinkFaults::new(arg)),
 			_ => panic!("Unknown topology {}",cv_name),
 		}
 	}

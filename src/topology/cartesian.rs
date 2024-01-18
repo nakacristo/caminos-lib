@@ -3,7 +3,8 @@ use std::cell::RefCell;
 use ::rand::{Rng,rngs::StdRng};
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::config_parser::ConfigurationValue;
-use crate::topology::{Topology,Location,NeighbourRouterIteratorItem,TopologyBuilderArgument,new_topology};
+//use topology::{Topology,Location,NeighbourRouterIteratorItem,TopologyBuilderArgument,new_topology};
+use super::prelude::*;
 //use crate::routing::{RoutingInfo,Routing,CandidateEgress,RoutingBuilderArgument,RoutingNextCandidates};
 use crate::routing::prelude::*;
 use crate::matrix::Matrix;

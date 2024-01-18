@@ -89,22 +89,7 @@ impl Topology for NeighboursLists
 	}
 	fn diameter(&self) -> usize
 	{
-		//XXX we could try to cache it.
-		//XXX this is generic and could be in the Topology trait itself.
-		let mut maximum=0;
-		let n=self.num_routers();
-		for source in 0..n
-		{
-			for target in 0..n
-			{
-				let d=self.distance(source,target);
-				if d>maximum
-				{
-					maximum=d;
-				}
-			}
-		}
-		maximum
+		self.compute_diameter()
 	}
 	fn distance(&self,origin:usize,destination:usize) -> usize
 	{

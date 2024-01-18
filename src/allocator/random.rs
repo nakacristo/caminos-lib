@@ -1,5 +1,4 @@
 
-use rand::SeedableRng;
 use rand::rngs::StdRng;
 use rand::prelude::SliceRandom;
 
@@ -44,15 +43,10 @@ impl RandomAllocator {
             panic!("Invalid arguments")
         }
         // Get the seed from the configuration
-        let mut seed = None;
+        let mut rng = None;
         match_object_panic!(args.cv, "Random", value,
-        "seed" => match value
-        {
-            &ConfigurationValue::Number(s) => seed = Some(s as u64),
-            _ => panic!("Bad value for seed"),
-        }
+			"seed" => rng = Some(value.as_rng().expect("bad value for seed")),
         );
-        let rng = seed.map(|s| StdRng::seed_from_u64(s));
         // Create the allocator
         RandomAllocator {
             num_resources: args.num_resources,
