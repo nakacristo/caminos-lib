@@ -17,6 +17,7 @@ use crate::topology::cartesian::CartesianData;//for CartesianTransform
 use crate::topology::{Topology,Location};
 use crate::quantify::Quantifiable;
 use crate::{Plugs,match_object_panic};
+use rand::SeedableRng;
 
 /// Some things most uses of the pattern module will use.
 pub mod prelude
