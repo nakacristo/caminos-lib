@@ -347,6 +347,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"CartesianCut" => Box::new(CartesianCut::new(arg)),
 			"RemappedNodes" => Box::new(RemappedNodes::new(arg)),
 			"Switch" => Box::new(Switch::new(arg)),
+			"Debug" => Box::new(DebugPattern::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -2569,6 +2570,79 @@ impl Switch {
 		Switch{
 			indexing,
 			patterns,
+		}
+	}
+}
+
+/**
+A transparent meta-pattern to help debug other [Pattern].
+
+```ignore
+Debug{
+	pattern: ...,
+	check_permutation: true,
+}
+```
+**/
+#[derive(Debug,Quantifiable)]
+struct DebugPattern {
+	/// The pattern being applied transparently.
+	pattern: Box<dyn Pattern>,
+	/// Whether to consider an error not being a permutation.
+	check_permutation: bool,
+	/// Size of source cached at initialization.
+	source_size: usize,
+	/// Size of target cached at initialization.
+	target_size: usize,
+}
+
+impl Pattern for DebugPattern{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		self.source_size = source_size;
+		self.target_size = target_size;
+		self.pattern.initialize(source_size,target_size,topology,rng);
+		if self.check_permutation {
+			if source_size != target_size {
+				panic!("cannot be a permutation is source size {} and target size {} do not agree.",source_size,target_size);
+			}
+			let mut hits = vec![false;target_size];
+			for origin in 0..source_size {
+				let dst = self.pattern.get_destination(origin,topology,rng);
+				if hits[dst] {
+					panic!("Destination {} hit at least twice.",dst);
+				}
+				hits[dst] = true;
+			}
+		}
+	}
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		if origin >= self.source_size {
+			panic!("Received an origin {origin} beyond source size {size}",size=self.source_size);
+		}
+		let dst = self.pattern.get_destination(origin,topology,rng);
+		if dst >= self.target_size {
+			panic!("The destination {dst} is beyond the target size {size}",size=self.target_size);
+		}
+		dst
+	}
+}
+
+impl DebugPattern{
+	fn new(arg:PatternBuilderArgument) -> DebugPattern{
+		let mut pattern = None;
+		let mut check_permutation = false;
+		match_object_panic!(arg.cv,"Debug",value,
+			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"check_permutation" => check_permutation = value.as_bool().expect("bad value for check_permutation"),
+		);
+		let pattern = pattern.expect("Missing pattern in configuration of Debug.");
+		DebugPattern{
+			pattern,
+			check_permutation,
+			source_size:0,
+			target_size:0,
 		}
 	}
 }

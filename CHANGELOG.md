@@ -2,6 +2,9 @@
 
 ## next, [0.6.4]
 
+### 2024-01-19
+Added a Debug pattern.
+
 ### 2024-01-16
 Fix journal message on shell action.
 Added Switch pattern.
