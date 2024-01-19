@@ -4,6 +4,7 @@
 
 ### 2024-01-19
 Added a Debug pattern.
+Put CartesianCut in quarantine.
 
 ### 2024-01-16
 Fix journal message on shell action.

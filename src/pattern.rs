@@ -2206,7 +2206,7 @@ impl Pattern for CartesianCut
 		if origin >= self.uncut_cartesian_data.size
 		{
 			let base = origin - cut_size;
-			return self.remainder_pattern.get_destination(base,topology,rng);
+			return self.from_remainder(self.remainder_pattern.get_destination(base,topology,rng));
 		}
 		let coordinates = self.uncut_cartesian_data.unpack(origin);
 		let mut cut_count = 0;
@@ -2215,7 +2215,7 @@ impl Pattern for CartesianCut
 			if coordinates[dim] < self.cut_offsets[dim]
 			{
 				// Coordinate within margin
-				return self.remainder_pattern.get_destination(origin - cut_count,topology,rng);
+				return self.from_remainder(self.remainder_pattern.get_destination(origin - cut_count,topology,rng));
 			}
 			// how many 'rows' of cut are included.
 			let hypercut_instances = (coordinates[dim] - self.cut_offsets[dim] + self.cut_strides[dim] -1 ) / self.cut_strides[dim];
@@ -2225,16 +2225,16 @@ impl Pattern for CartesianCut
 			{
 				// Beyond the cut
 				cut_count += self.cut_cartesian_data.sides[dim]*hypercut_size;
-				return self.remainder_pattern.get_destination(origin - cut_count,topology,rng);
+				return self.from_remainder(self.remainder_pattern.get_destination(origin - cut_count,topology,rng));
 			}
 			cut_count += hypercut_instances*hypercut_size;
 			if (coordinates[dim] - self.cut_offsets[dim]) % self.cut_strides[dim] != 0
 			{
 				// Space between stripes
-				return self.remainder_pattern.get_destination(origin - cut_count,topology,rng);
+				return self.from_remainder(self.remainder_pattern.get_destination(origin - cut_count,topology,rng));
 			}
 		}
-		self.cut_pattern.get_destination(cut_count,topology,rng)
+		self.from_cut(self.cut_pattern.get_destination(cut_count,topology,rng))
 	}
 }
 
@@ -2278,6 +2278,54 @@ impl CartesianCut
 			cut_pattern,
 			remainder_pattern,
 		}
+	}
+	/**
+	From an index in the cut region `(0..self.cut_cartesian_data.size)` get the whole index `0..target_size`.
+	**/
+	pub fn from_cut(&self, cut_index:usize) -> usize {
+		//let hypercut_size : usize = self.cut_cartesian_data.sides[0..dim].iter().product();
+		let n = self.cut_cartesian_data.sides.len();
+		//let hpercut_sizes : Vec<usize> = Vec::with_capacity(n);
+		//hypercut_sizes.push(1);
+		//for dim in 1..n {
+		//	hypercut_sizes.push( hypercut_sizes[dim-1]*self.cut_cartesian_data.sides[dim-1] );
+		//}
+		let coordinates = self.cut_cartesian_data.unpack(cut_index);
+		let mut whole_index = 0;
+		let mut hypersize = 1;
+		for dim in 0..n {
+			let coordinate = coordinates[dim]*self.cut_strides[dim] + self.cut_offsets[dim];
+			whole_index += coordinate*hypersize;
+			hypersize *= self.uncut_cartesian_data.sides[dim];
+		}
+		whole_index
+	}
+	/**
+	From an index in the remainder region `(0..(target_size-self.cut_cartesian_data.size))` get the whole index.
+	**/
+	pub fn from_remainder(&self, remainder_index:usize) -> usize {
+		if remainder_index >= self.uncut_cartesian_data.size {
+			return remainder_index;
+		}
+		//let n = self.cut_cartesian_data.sides.len();
+		//let hpercut_sizes : Vec<usize> = Vec::with_capacity(n);
+		//hypercut_sizes.push(1);
+		//for dim in 1..n {
+		//	hypercut_sizes.push( hypercut_sizes[dim-1]*self.cut_cartesian_data.sides[dim-1] );
+		//}
+		//let mut whole_index = 0;
+		////for dim in (0..n).rev() {
+		////	let remaining_size = hyperuncut_sizes[dim]
+		////	let coordinate = remainder_index - hypercut_sizes[dim];
+		////	whole_index += coordinate*hypersize;
+		////}
+		//let mut remaining_size = 0;
+		//for dim in 0..n {
+		//	// Check if we are in this margin
+		//	remaining_size += self.
+		//}
+		//whole_index
+		todo!()
 	}
 }
 
@@ -2584,6 +2632,7 @@ Debug{
 }
 ```
 **/
+//TODO: admissible, orders/cycle-finding, suprajective,
 #[derive(Debug,Quantifiable)]
 struct DebugPattern {
 	/// The pattern being applied transparently.
