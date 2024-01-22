@@ -8,10 +8,11 @@ see [`new_virtual_channel_policy`](fn.new_virtual_channel_policy.html) for docum
 
 */
 
+use std::cell::RefCell;
 use crate::config_parser::ConfigurationValue;
 use crate::routing::CandidateEgress;
 use crate::router::Router;
-use crate::topology::{Topology, Location, NeighbourRouterIteratorItem};
+use crate::topology::{Topology, Location, NeighbourRouterIteratorItem, new_topology, TopologyBuilderArgument};
 use crate::{Plugs,Phit,match_object_panic};
 use crate::event::Time;
 
@@ -19,7 +20,9 @@ use std::fmt::Debug;
 use std::convert::TryInto;
 use std::rc::Rc;
 
-use ::rand::{Rng,rngs::StdRng};
+use rand::{Rng,rngs::StdRng,SeedableRng};
+// use ::rand::{Rng,rngs::StdRng};
+use crate::pattern::{new_pattern, Pattern, PatternBuilderArgument};
 use crate::topology::prelude::CartesianData;
 
 ///Extra information to be used by the policies of virtual channels.
@@ -326,6 +329,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"NextLinkLabel" => Box::new(NextLinkLabel::new(arg)),
 			"CurrentLinkLabel" => Box::new(CurrentLinkLabel::new(arg)),
 			"ChannelHop" => Box::new(ChannelHop::new(arg)),
+			"ValiantIntermediate" => Box::new(ValiantIntermediate::new(arg)),
 			"CartesianSpaceLabel" => Box::new(CartesianSpaceLabel::new(arg)),
 			_ => panic!("Unknown policy {}",cv_name),
 		}
@@ -2379,31 +2383,103 @@ impl ChannelHop
 }
 
 
+/*
+	Performed Hops in the Label.
+ */
+#[derive(Debug)]
+pub struct ValiantIntermediate
+{
+
+}
+
+impl VirtualChannelPolicy for ValiantIntermediate
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		let intermediate = if let Some(selections) = info.phit.packet.routing_info.borrow().selections.as_ref()
+		{
+			selections[0] as usize
+
+		}else {
+			info.target_router_index
+		};
+
+		candidates.into_iter().map(|f|{
+
+			let CandidateEgress{
+				port,
+				virtual_channel,//: virtual_channel,
+				estimated_remaining_hops,//: estimated_remaining_hops,
+				label: _l,//: _label,
+				router_allows,//: router_allows,
+				annotation,//: annotation
+			} = f;
+
+			CandidateEgress {
+				port: port,
+				virtual_channel:virtual_channel,
+				label: intermediate as i32,
+				estimated_remaining_hops: estimated_remaining_hops,
+				router_allows: router_allows,
+				annotation: annotation
+			}
+		}).collect::<Vec<_>>()
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl ValiantIntermediate
+{
+	pub fn new(_arg:VCPolicyBuilderArgument) -> ValiantIntermediate
+	{
+		ValiantIntermediate {
+		}
+	}
+}
+
 #[derive(Debug)]
 pub struct CartesianSpaceLabel
 {
 	policies: Vec<Box<dyn VirtualChannelPolicy>>,
-	// sizes: Vec<usize>,
-	cartesian_space:CartesianData,
+	source_space:CartesianData,
+	target_space: CartesianData,
+	pattern: Box<dyn Pattern>,
 }
 
 impl VirtualChannelPolicy for CartesianSpaceLabel
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
+		// let mut patron = self.pattern.borrow_mut();
+		//patron.initialize(self.source_space.size, self.destination_space.size, topology, rng); //FIXME: This shouldn't be done like this
 
 		candidates.iter().map(|cand|{
 
-			let mut coord = vec![0usize; self.cartesian_space.sides.len()];
+			let mut coord = vec![0usize; self.source_space.sides.len()];
 
 			for (index,p) in self.policies.iter().enumerate()
 			{
 				let cand2 = cand.clone();
-				let candidate = p.filter(vec![cand2], router,info, topology, _rng);
+				let candidate = p.filter(vec![cand2], router,info, topology, rng);
 				coord[index] = candidate[0].label as usize;
 			}
 			let mut cand_def = cand.clone();
-			cand_def.label = self.cartesian_space.pack(&coord) as i32;
+			cand_def.label = self.pattern.get_destination( self.source_space.pack(&coord), topology, rng ) as i32;
 			cand_def
 		}
 
@@ -2439,22 +2515,52 @@ impl CartesianSpaceLabel
 	pub fn new(arg:VCPolicyBuilderArgument) -> CartesianSpaceLabel
 	{
 		let mut policies=None;
-		let mut sizes=None;
+		let mut source_size=None;
+		let mut target_size=None;
+		let mut pattern = None;
+		//new_pattern(PatternBuilderArgument{cv: &ConfigurationValue::Object("Identity".to_string(), vec![]),plugs:arg.plugs});
 		match_object_panic!(arg.cv,"CartesianSpaceLabel",value,
 			"values" => policies=Some(value.as_array().expect("bad value for policies").iter()
 				.map(|v|new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg})).collect::<Vec<Box<dyn VirtualChannelPolicy>>>()),
-			"sizes" => sizes=Some(value.as_array().expect("bad value for sizes").iter()
+			"source_size" => source_size=Some(value.as_array().expect("bad value for sizes").iter()
 				.map(|v|v.as_usize().expect("bad value in sizes")).collect::<Vec<usize>>()),
+			"target_size" => target_size=Some(value.as_array().expect("bad value for sizes").iter()
+				.map(|v|v.as_usize().expect("bad value in sizes")).collect::<Vec<usize>>()),
+			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv: value, plugs: arg.plugs})),
 		);
 		let policies=policies.expect("There were no policies");
-		let sizes=sizes.expect("There were no sizes");
-		if policies.len() != sizes.len()
+		let source_size=source_size.expect("There were no sizes");
+		let target_size=target_size.expect("There were no sizes");
+		if policies.len() != source_size.len()
 		{
 			panic!("The number of policies must be the same as the number of dimensions");
 		}
+		let source_space = CartesianData::new(&source_size);
+		let target_space =if let Some(_) = pattern
+		{
+			 CartesianData::new(&target_size)
+		}else{
+			pattern = Some(new_pattern(PatternBuilderArgument{cv: &ConfigurationValue::Object("Identity".to_string(), vec![]),plugs:arg.plugs}));
+			CartesianData::new(&source_size)
+		};
+		//dummy hamming
+		let cv = ConfigurationValue::Object("Hamming".to_string(), vec![
+			("sides".to_string(),ConfigurationValue::Array(vec![ConfigurationValue::Number(1f64)])),
+			("servers_per_router".to_string(),ConfigurationValue::Number(1f64))
+		]);
+		let mut rng = StdRng::seed_from_u64(1);
+		let topo_builder = TopologyBuilderArgument{cv: &cv, plugs: arg.plugs, rng: &mut rng };
+		let mut pattern = pattern.expect("There were no pattern");
+		let binding = new_topology(topo_builder);
+  		let topology = binding.as_ref();
+
+
+		pattern.initialize(source_space.size, target_space.size, topology, &mut rng);//RefCell::new(pattern.unwrap());
 		CartesianSpaceLabel{
 			policies,
-			cartesian_space: CartesianData::new(&sizes),
+			source_space,
+			target_space,
+			pattern,
 		}
 	}
 }
