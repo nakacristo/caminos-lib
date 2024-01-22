@@ -2,6 +2,9 @@
 
 ## next, [0.6.4]
 
+### 2024-01-22
+Generate more parametrized symbol tex outputs, which are easier to manipulate from LaTeX side.
+
 ### 2024-01-19
 Added a Debug pattern.
 Put CartesianCut in quarantine.

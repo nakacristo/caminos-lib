@@ -11,7 +11,7 @@ use std::fs::{self,File};
 use std::io::{Write};
 use std::cmp::Ordering;
 use std::process::Command;
-use std::collections::{HashSet,BTreeMap};
+use std::collections::{HashSet,BTreeMap,HashMap};
 use std::rc::Rc;
 use std::fmt::Debug;
 use std::path::PathBuf;
@@ -972,7 +972,10 @@ pub fn latex_protect_text(text:&str) -> String
 	}).collect::<String>()
 }
 
-///Make a command name trying to include all of `text`, replacing all non-alphabetic characters.
+/**
+Make a command name trying to include all of `text`, replacing all non-alphabetic characters.
+Does not include latex leading backslash.
+**/
 fn latex_make_command_name(text:&str) -> String
 {
 	text.chars().map(|c|match c{
@@ -1073,6 +1076,9 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 	let mut all_legend_tex_id_vec:Vec<String> = Vec::new();
 	let mut all_legend_tex_id_set:HashSet<String> = HashSet::new();
 	let mut all_legend_tex_entry:HashSet<String> = HashSet::new();
+	let mut all_symbols: HashMap<String,usize> = HashMap::new();
+	let mut all_symbols_vec: Vec<String> = Vec::new();
+	let mut all_symbols_commands: Vec<String> = Vec::new();
 	let folder=root.canonicalize().expect("path does not have canonical form").file_name().expect("could not get name of the root folder").to_str().unwrap().to_string();
 	let folder_id = latex_make_command_name(&folder);
 	//while index<averaged.len()
@@ -1140,7 +1146,8 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 			let mut raw_plots_data = vec![];
 			//let mut raw_plots=String::new();
 			let mut good_plots=0;
-			let mut symbols:Vec<String> = vec![];
+			//let mut symbols:Vec<String> = vec![];
+			let mut local_symbols: HashSet<usize> = HashSet::new();
 			let boxplot:bool = kd.upper_box_limit.is_some();
 			while *koffset<kaverages.len() && *selector_value_to_use==kaverages[*koffset].selector
 			{
@@ -1176,13 +1183,26 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 						{
 							let symbol = kaverages[*koffset].shared_abscissa.as_ref().expect("no abscissa found");
 							let str_symbol: String = latex_protect_text(&format!("{}",symbol));
-							if let Some(symbol_index) = symbols.iter().enumerate().find_map(|(index,s)|if s==&str_symbol {Some(index)} else {None})
-							{
-								symbol_index as f32
+							//if let Some(symbol_index) = symbols.iter().enumerate().find_map(|(index,s)|if s==&str_symbol {Some(index)} else {None})
+							//{
+							//	symbol_index as f32
+							//} else {
+							//	symbols.push(str_symbol);
+							//	(symbols.len()-1) as f32
+							//}
+							let symbol_index = if let Some(&symbol_index) = all_symbols.get(&str_symbol) {
+								symbol_index
 							} else {
-								symbols.push(str_symbol);
-								(symbols.len()-1) as f32
+								let symbol_index = all_symbols.len();
+								all_symbols.insert(str_symbol.clone(),symbol_index);
+								all_symbols_commands.push(latex_make_command_name(&str_symbol));
+								all_symbols_vec.push(str_symbol);
+								symbol_index
+							};
+							if local_symbols.get(&symbol_index).is_none() {
+								local_symbols.insert(symbol_index);
 							}
+							symbol_index as f32
 						};
 						x += -0.3 + legend_index as f32*0.1;
 						to_box.push( (x,
@@ -1289,13 +1309,27 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 						//{
 						//	symbols.push(symbol);
 						//}
-						let symbol_index= if let Some(symbol_index) = symbols.iter().enumerate().find_map(|(index,s)|if *s==symbol {Some(index)} else {None})
-						{
-							symbol_index as f32
+						//let symbol_index= if let Some(symbol_index) = symbols.iter().enumerate().find_map(|(index,s)|if *s==symbol {Some(index)} else {None})
+						//{
+						//	symbol_index as f32
+						//} else {
+						//	symbols.push(symbol);
+						//	(symbols.len()-1) as f32
+						//};
+						let symbol_index = if let Some(&symbol_index) = all_symbols.get(&symbol) {
+							symbol_index
 						} else {
-							symbols.push(symbol);
-							(symbols.len()-1) as f32
+							let symbol_index = all_symbols.len();
+							all_symbols.insert(symbol.clone(),symbol_index);
+							all_symbols_commands.push(latex_make_command_name(&symbol));
+							all_symbols_vec.push(symbol);
+							symbol_index
 						};
+						if local_symbols.get(&symbol_index).is_none() {
+							local_symbols.insert(symbol_index);
+						}
+						let command = &all_symbols_commands[symbol_index];
+						let symbol_index = symbol_index as f32;
 						if let Some(xlimit) = to_draw_x_min
 						{
 							if symbol_index < xlimit
@@ -1313,12 +1347,12 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 						if dy.abs()*20f32 > y_range
 						{
 							//current_raw_plot.push_str(&format!("({},{}) +- ({},{})",symbol_index,y,0,dy));
-							current_raw_plot_data.push(format!("({},{}) +- ({},{})",symbol_index,y,0,dy));
+							current_raw_plot_data.push(format!("(\\{},{}) +- ({},{})",command,y,0,dy));
 						}
 						else
 						{
 							//current_raw_plot.push_str(&format!("({},{})",symbol_index,y));
-							current_raw_plot_data.push(format!("({},{})",symbol_index,y));
+							current_raw_plot_data.push(format!("(\\{},{})",command,y));
 						}
 						if to_draw_y_min<=y && y<=to_draw_y_max
 						{
@@ -1414,17 +1448,26 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 			let tikzname=format!("{}-{}-selector{}-kind{}",folder_id,prefix,selectorcode,kind_index);
 			let mut axis = "axis";
 			let mut extra = "".to_string();
-			if !symbols.is_empty()
+			if !local_symbols.is_empty()
 			{
 				axis = "symbolic";
-				let first_tick = kd.min_abscissa.map(|x|x as usize).unwrap_or(0);
-				let last_tick = match kd.max_abscissa
-				{
-					Some(x) => (x as usize).min(symbols.len()) -1,
-					None => symbols.len()-1,
-				};
+				//let first_tick = kd.min_abscissa.map(|x|x as usize).unwrap_or(0);
+				//let last_tick = match kd.max_abscissa
+				//{
+				//	Some(x) => (x as usize).min(symbols.len()) -1,
+				//	None => symbols.len()-1,
+				//};
+				let mut first_tick = local_symbols.iter().map(|&x|x).min().unwrap();
+				let mut last_tick = local_symbols.iter().map(|&x|x).max().unwrap();
+				if let Some(x) = kd.min_abscissa {
+					first_tick = first_tick.max(x as usize);
+				}
+				if let Some(x) = kd.max_abscissa {
+					last_tick = last_tick.min(x as usize);
+				}
 				//let symbolic_coords = symbols[first_tick..=last_tick].join(",");
-				let symbolic_coords = symbols[first_tick..=last_tick].iter().map(|tick|format!("{{{}}}",tick)).collect::<Vec<_>>().join(",");
+				//let symbolic_coords = symbols[first_tick..=last_tick].iter().map(|tick|format!("{{{}}}",tick)).collect::<Vec<_>>().join(",");
+				let symbolic_coords = (first_tick..=last_tick).map(|symbol_index|format!("{{\\{}txt}}",all_symbols_commands[symbol_index])).collect::<Vec<_>>().join(",");
 				extra += &format!("xtick={{{firsttick},...,{lasttick}}}, xticklabels = {{{symbolic_coords}}},",firsttick=first_tick,lasttick=last_tick,symbolic_coords=symbolic_coords);
 				//extra += &format!("xtick={{0,...,{lastsymbol}}}, xticklabels = {{{symbolic_coords}}},",lastsymbol=symbols.len()-1,symbolic_coords=symbolic_coords);
 				//if boxplot
@@ -1689,6 +1732,12 @@ fn tikz_backend(backend: &ConfigurationValue, averages: Vec<PlotData>, kind:Vec<
 		{
 			mark_index-=tikz_marks.len();
 		}
+	}
+	for symbol_index in 0..all_symbols_vec.len() {
+		let symbol_name = &all_symbols_vec[symbol_index];
+		let command_name = &all_symbols_commands[symbol_index];
+		local_prelude.push_str(&format!("\\def\\{command}txt{{{text}}}\n",command=command_name,text=symbol_name));
+		local_prelude.push_str(&format!("\\def\\{command_name}{{{symbol_index}}}\n"));
 	}
 	for legend_tex_entry in all_legend_tex_entry
 	{
