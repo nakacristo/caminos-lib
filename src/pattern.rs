@@ -2466,6 +2466,7 @@ impl LinearTransform
 		let mut source_size:Option<Vec<_>>=None;
 		let mut matrix:Option<Vec<Vec<i32>>>=None;
 		let mut target_size:Option<Vec<_>>=None;
+		let mut check_admisible = false;
 
 		match_object_panic!(arg.cv,"LinearTransform",value,
 			"source_size" => source_size = Some(value.as_array().expect("bad value for sides").iter()
@@ -2474,7 +2475,7 @@ impl LinearTransform
 				.map(|v|v.as_array().expect("bad value in matrix").iter().map(|n|n.as_i32().unwrap()).collect() ).collect() ),
 			"target_size" => target_size = Some(value.as_array().expect("bad value for sides").iter()
 				.map(|v|v.as_usize().expect("bad value in sides")).collect()),
-
+			"check_admisible" => check_admisible = value.as_bool().expect("bad value for check_admisible"),
 		);
 		let source_size=source_size.expect("There were no sides");
 		let matrix=matrix.expect("There were no matrix");
@@ -2482,11 +2483,13 @@ impl LinearTransform
 		//let permute=permute.expect("There were no permute");
 		//let complement=complement.expect("There were no complement");
 		//calculate the derminant of the matrix
-		let determinant = laplace_determinant(&matrix);
-		if determinant == 0
-		{
-			//print warning
-			println!("WARNING: The determinant of the matrix in the LinearTransform is 0.");
+		if check_admisible{
+			let determinant = laplace_determinant(&matrix);
+			if determinant == 0
+			{
+				//print warning
+				println!("WARNING: The determinant of the matrix in the LinearTransform is 0.");
+			}
 		}
 
 		LinearTransform{

@@ -6,8 +6,9 @@ use rand::prelude::SliceRandom;
 //use quantifiable_derive::Quantifiable;//the derive macro
 use crate::allocator::{Allocator, Request, GrantedRequests, AllocatorBuilderArgument};
 use crate::config_parser::ConfigurationValue;
-use crate::config_parser::Token::True;
 use crate::match_object_panic;
+use crate::pattern::{new_pattern, Pattern, PatternBuilderArgument};
+use crate::topology::{new_topology, Topology, TopologyBuilderArgument};
 
 
 #[derive(Default, Clone)]
@@ -30,7 +31,11 @@ pub struct LabelReduction {
     /// The requests of the clients
     requests: Vec<Request>,
     ///Labels to be reduced
-    labels: Vec<usize>,
+    labels: Vec<Vec<usize>>,
+    /// The patterns to be reduced
+    patterns: Vec< Box<dyn Pattern>>,
+    ///dummy topology
+    topology: Box<dyn Topology>,
     /// The RNG or None if the seed is not set
     rng: Option<StdRng>,
 }
@@ -49,32 +54,74 @@ impl LabelReduction {
         // Get the seed from the configuration
         let mut seed = None;
         let mut labels = vec![];
+        let mut patterns = vec![];
         match_object_panic!(args.cv, "LabelReduction", value,
-        "seed" => match value
-        {
-            &ConfigurationValue::Number(s) => seed = Some(s as u64),
-            _ => panic!("Bad value for seed"),
-        },
-        "labels" => match value
-        {
-            &ConfigurationValue::Array(ref s) => {
-                for i in s {
-                    match i {
-                        &ConfigurationValue::Number(n) => labels.push(n as usize),
-                        _ => panic!("Bad value for labels"),
-                    }
-                }
+            "seed" => match value
+            {
+                &ConfigurationValue::Number(s) => seed = Some(s as u64),
+                _ => panic!("Bad value for seed"),
             },
-            _ => panic!("Bad value for labels"),
-        },
+            "labels" => match value
+            {
+                &ConfigurationValue::Array(ref s) => {
+                    for i in s {
+                        match i {
+                            &ConfigurationValue::Array(ref n) => {
+                                let mut label = vec![];
+                                for j in n {
+                                    match j {
+                                        &ConfigurationValue::Number(m) => label.push(m as usize),
+                                        _ => panic!("Bad value for labels"),
+                                    }
+                                }
+                                labels.push(label);
+                            },
+                            _ => panic!("Bad value for labels"),
+                        }
+                    }
+                },
+                _ => { panic!("Bad value for labels") },
+            },
+            "patterns" => match value
+            {
+                &ConfigurationValue::Array(ref s) => {
+                    for p in s {
+                        patterns.push(new_pattern(PatternBuilderArgument{cv: p, plugs: args.plugs}));
+                    }
+                },
+                _ => panic!("Bad value for patterns"),
+            },
         );
+
         let rng = seed.map(|s| StdRng::seed_from_u64(s));
+
+        if labels.len() != patterns.len() {
+            println!("labels: {:?}, patterns: {}", labels, patterns.len());
+            panic!("The number of labels and patterns must be the same");
+        }
+        if labels.len() == 0 {
+            panic!("The number of labels and patterns must be greater than 0");
+        }
+
+        //dummy hamming
+        let cv = ConfigurationValue::Object("Hamming".to_string(), vec![
+            ("sides".to_string(),ConfigurationValue::Array(vec![ConfigurationValue::Number(1f64)])),
+            ("servers_per_router".to_string(),ConfigurationValue::Number(1f64))
+        ]);
+        let mut rng_top = StdRng::seed_from_u64(1);
+        let topo_builder = TopologyBuilderArgument{cv: &cv, plugs: args.plugs, rng: &mut rng_top };
+        let topology = new_topology(topo_builder);
+
+
+
         // Create the allocator
-        LabelReduction {
+        LabelReduction{
             num_resources: args.num_resources,
             num_clients: args.num_clients,
             requests: Vec::new(),
             labels,
+            patterns,
+            topology,
             rng,
         }
     }
@@ -136,25 +183,48 @@ impl Allocator for LabelReduction {
         }else {
             self.requests.shuffle(&mut self.rng.as_mut().unwrap());
         }
+
         // let rng = self.rng.as_mut().unwrap_or(rng);
         // self.requests.shuffle(rng);
+        let mut request_clone = self.requests.clone();
+        for (index, p) in self.patterns.iter().enumerate()
+        {
+            let mut map = self.labels[index].iter().map(|label| (*label, 0usize)).collect::<std::collections::HashMap<_, _>>();
+            let pat_ref = p.as_ref();
 
-        let mut map = self.labels.iter().map(|&label| (label, 0usize)).collect::<std::collections::HashMap<_, _>>();
-
-        let mut cleaned_requests = self.requests.clone().into_iter().filter(|r|{
-            if self.labels.contains(&r.priority.unwrap())
-            {
-                if *map.get(&r.priority.unwrap()).unwrap() == 0usize {
-                   map.insert(r.priority.unwrap(), 1);
-                    true
+            request_clone = request_clone.clone().into_iter().filter(|r|{
+                let lab = pat_ref.get_destination(r.priority.unwrap(),self.topology.as_ref(), rng).clone();
+                if self.labels[index].contains(&lab)
+                {
+                    if *map.get(&lab).unwrap() == 0usize {
+                        map.insert(lab, 1);
+                        true
+                    }else {
+                        false
+                    }
                 }else {
-                    false
+                    true
                 }
-            }else {
-                true
-            }
 
-        }).collect::<Vec<_>>();
+            }).collect::<Vec<_>>();
+        }
+        // let mut map = self.labels.iter().map(|&label| (label, 0usize)).collect::<std::collections::HashMap<_, _>>();
+
+        // let mut cleaned_requests = self.requests.clone().into_iter().filter(|r|{
+        //     if self.labels.contains(&r.priority.unwrap())
+        //     {
+        //         if *map.get(&r.priority.unwrap()).unwrap() == 0usize {
+        //            map.insert(r.priority.unwrap(), 1);
+        //             true
+        //         }else {
+        //             false
+        //         }
+        //     }else {
+        //         true
+        //     }
+        //
+        // }).collect::<Vec<_>>();
+        let mut cleaned_requests = request_clone;
         // Sort the requests by priority (least is first)
         //self.requests.sort_by(|a, b| a.priority.unwrap().cmp(&b.priority.unwrap()));
 
