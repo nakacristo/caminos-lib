@@ -330,6 +330,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"CurrentLinkLabel" => Box::new(CurrentLinkLabel::new(arg)),
 			"ChannelHop" => Box::new(ChannelHop::new(arg)),
 			"ValiantIntermediate" => Box::new(ValiantIntermediate::new(arg)),
+			"ValiantLastRouterPalmTree" => Box::new(ValiantLastRouterPalmTree::new(arg)),
 			"CartesianSpaceLabel" => Box::new(CartesianSpaceLabel::new(arg)),
 			_ => panic!("Unknown policy {}",cv_name),
 		}
@@ -2452,6 +2453,125 @@ impl ValiantIntermediate
 	}
 }
 
+
+
+/*
+	Performed Hops in the Label.
+ */
+#[derive(Debug)]
+pub struct ValiantLastRouterPalmTree
+{
+	pub global_connections_per_switch: Option<i32>,
+}
+
+pub fn get_index_router_connection_palmtree(global_connections_per_switch: i32, num_groups: i32, source_group: i32, destination_group: i32) -> i32
+{
+	if source_group == destination_group
+	{
+		panic!("The source and destination are in the same group");
+	}
+	let difference = (source_group - destination_group).rem_euclid(num_groups);
+	(difference-1)/global_connections_per_switch
+}
+
+impl VirtualChannelPolicy for ValiantLastRouterPalmTree
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		let intermediate = if let Some(selections) = info.phit.packet.routing_info.borrow().selections.as_ref()
+		{
+			selections[0] as usize
+
+		}else {
+			info.target_router_index
+		};
+
+		let target_router = info.target_router_index;
+
+		// let source_router = if let Location::RouterPort { router_port: _, router_index} = topology.server_neighbour(info.phit.packet.message.origin).0
+		// {
+		// 	router_index
+		//
+		// }else {
+		// 	panic!("The source router is not a router");
+		// };
+
+		let cartesian_data = topology.cartesian_data().expect("The topology doesnt have cartesian data");
+		let num_groups = cartesian_data.sides[1] as i32;
+		let switches_per_group = cartesian_data.sides[0] as i32;
+
+		let intermediate_group = cartesian_data.unpack(intermediate)[1] as i32;
+		let target_group = cartesian_data.unpack(target_router)[1] as i32;
+		let global_connections_per_switch = if let Some(global_connections_per_switch) = self.global_connections_per_switch
+		{
+			global_connections_per_switch
+		}else {
+			switches_per_group/2
+		};
+		// let source_group = cartesian_data.unpack(source_router)[1] as i32;
+
+		let intermediate_exit = if intermediate_group == target_group
+		{
+			intermediate as i32 //this is the intermediate switch...
+		}else{
+			get_index_router_connection_palmtree(global_connections_per_switch,num_groups,intermediate_group,target_group)
+		};
+		let destination_entry = (-intermediate_exit - 1).rem_euclid(switches_per_group);
+
+
+		candidates.into_iter().map(|f|{
+
+			let CandidateEgress{
+				port,
+				virtual_channel,//: virtual_channel,
+				estimated_remaining_hops,//: estimated_remaining_hops,
+				label: _l,//: _label,
+				router_allows,//: router_allows,
+				annotation,//: annotation
+			} = f;
+
+			CandidateEgress {
+				port: port,
+				virtual_channel:virtual_channel,
+				label: destination_entry,
+				estimated_remaining_hops: estimated_remaining_hops,
+				router_allows: router_allows,
+				annotation: annotation
+			}
+		}).collect::<Vec<_>>()
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl ValiantLastRouterPalmTree
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> ValiantLastRouterPalmTree
+	{
+		let mut global_connections_per_switch = None;
+		match_object_panic!(arg.cv,"ValiantLastRouterPalmTree",value,
+			"global_connections_per_switch" => global_connections_per_switch = Some(value.as_i32().expect("bad value for global_connections_per_switch")),
+		);
+		ValiantLastRouterPalmTree {
+			global_connections_per_switch,
+		}
+	}
+}
+
 #[derive(Debug)]
 pub struct CartesianSpaceLabel
 {
@@ -2530,7 +2650,7 @@ impl CartesianSpaceLabel
 		);
 		let policies=policies.expect("There were no policies");
 		let source_size=source_size.expect("There were no sizes");
-		let target_size=target_size.expect("There were no sizes");
+		// let target_size=target_size.expect("There were no sizes");
 		if policies.len() != source_size.len()
 		{
 			panic!("The number of policies must be the same as the number of dimensions");
@@ -2538,7 +2658,7 @@ impl CartesianSpaceLabel
 		let source_space = CartesianData::new(&source_size);
 		let target_space =if let Some(_) = pattern
 		{
-			 CartesianData::new(&target_size)
+			 CartesianData::new(&(target_size.expect("There were no sizes")))
 		}else{
 			pattern = Some(new_pattern(PatternBuilderArgument{cv: &ConfigurationValue::Object("Identity".to_string(), vec![]),plugs:arg.plugs}));
 			CartesianData::new(&source_size)
@@ -2562,5 +2682,30 @@ impl CartesianSpaceLabel
 			target_space,
 			pattern,
 		}
+	}
+}
+
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use std::cell::RefCell;
+	use std::rc::Rc;
+	use crate::router::basic::Basic;
+	use crate::topology::cartesian::Mesh;
+
+	#[test]
+	fn test_valiant_dragonfly_last_router() {
+		//DF
+		assert_eq!(get_index_router_connection_palmtree(4,33,0,4), 7);
+		assert_eq!(get_index_router_connection_palmtree(4,33,0,5), 6);
+		assert_eq!(get_index_router_connection_palmtree(4,33,0,28), 1);
+		assert_eq!(get_index_router_connection_palmtree(4,33,0,32), 0);
+		assert_eq!(get_index_router_connection_palmtree(4,33,1,0), 0);
+		assert_eq!(get_index_router_connection_palmtree(4,33,1,32), 0);
+
+		//DF+
+		assert_eq!(get_index_router_connection_palmtree(4,17,0,4), 3);
+		assert_eq!(get_index_router_connection_palmtree(4,17,1,0), 0);
 	}
 }
