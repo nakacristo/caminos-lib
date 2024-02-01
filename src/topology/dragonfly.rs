@@ -694,6 +694,7 @@ pub struct Valiant4Dragonfly
 	second: Box<dyn Routing>,
 	//pattern to select intermideate nodes
 	pattern:Box<dyn Pattern>,
+	distance_middle_destination: usize,
 	first_reserved_virtual_channels: Vec<usize>,
 	second_reserved_virtual_channels: Vec<usize>,
 	//exclude_h_groups:bool,
@@ -849,7 +850,8 @@ impl Routing for Valiant4Dragonfly
 			middle = cartesian_data.pack(&middle_coord);
 
 		}else{ //general missrouting
-			while src_coord[1] == middle_coord[1] || trg_coord[1] == middle_coord[1] {
+			while src_coord[1] == middle_coord[1] || trg_coord[1] == middle_coord[1] || topology.distance(middle, target_router) < self.distance_middle_destination
+			{
 				//||(self.exclude_h_groups && (((middle_coord[1] - (degree/2)*middle_coord[0]) % cartesian_data.sides[1])  > trg_coord[1]  &&  ((middle_coord[1] - (degree/2)*middle_coord[0] - (degree/2)) % cartesian_data.sides[1] ) <= trg_coord[1] ))  {
 
 				//	middle = rng.gen_range(0..topology.num_routers());
@@ -973,6 +975,7 @@ impl Valiant4Dragonfly
 		let mut first=None;
 		let mut second=None;
 		let mut pattern: Box<dyn Pattern> = Box::new(UniformPattern::uniform_pattern(true)); //pattern to intermideate node
+		let mut distance_middle_destination=0;
 		// let mut exclude_h_groups=false;
 		let mut first_reserved_virtual_channels=vec![];
 		let mut second_reserved_virtual_channels=vec![];
@@ -983,6 +986,7 @@ impl Valiant4Dragonfly
 			"first" => first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
 			"second" => second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
 			"pattern" => pattern= Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})).expect("pattern not valid for Valiant4Dragonfly"),
+			"distance_middle_destination" => distance_middle_destination=value.as_f64().expect("bad value for distance_middle_destination") as usize,
 			// "exclude_h_groups"=> exclude_h_groups=value.as_bool().expect("bad value for exclude_h_groups"),
 			"first_reserved_virtual_channels" => first_reserved_virtual_channels=value.
 				as_array().expect("bad value for first_reserved_virtual_channels").iter()
@@ -1001,6 +1005,7 @@ impl Valiant4Dragonfly
 			first,
 			second,
 			pattern,
+			distance_middle_destination,
 			first_reserved_virtual_channels,
 			second_reserved_virtual_channels,
 			intermediate_bypass,

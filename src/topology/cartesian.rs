@@ -2321,7 +2321,7 @@ It removes switches from source and target groups as intermediate switches.
 See Valiant, L. G. (1982). A scheme for fast parallel communication. SIAM journal on computing, 11(2), 350-361.
 
 ```ignore
-Valiant4Dragonfly{
+Valiant4Hamming{
 	first: Shortest,
 	second: Shortest,
 	first_reserved_virtual_channels: [0],//optional parameter, defaults to empty. Reserves some VCs to be used only in the first stage
@@ -2329,7 +2329,7 @@ Valiant4Dragonfly{
 	remove_target_dimensions_aligment:[[0],[1]], //remove intermediate aligned with the target in the 0 and 1 dimensions
 	remove_source_dimensions_aligment:[[0],[1]]  //remove intermediate aligned with the source in the 0 and 1 dimensions
 	allow_unaligned: false, //To go through unaligned dimensions
-	legend_name: "Using Valiant4Dragonfly scheme, shortest to intermediate and shortest to destination",
+	legend_name: "Using Valiant4Hamming scheme, shortest to intermediate and shortest to destination",
 }
 ```
  **/
