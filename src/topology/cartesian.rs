@@ -2317,7 +2317,8 @@ impl DimWAR
 
 /**
 This is an adapted Valiant version for the Hamming topology, suitable for source adaptive routings, as UGAL.
-It removes switches from source and target groups as intermediate switches.
+It removes intermediate switches aligned with source or destination selected dimensions.
+It also can forbid to missroute in a dimension if the source is already aligned.
 See Valiant, L. G. (1982). A scheme for fast parallel communication. SIAM journal on computing, 11(2), 350-361.
 
 ```ignore
@@ -2664,6 +2665,10 @@ impl Valiant4Hamming
 }
 
 
+/**
+	Non-minimal routing of Clos-AD routing from the Flattened Butterfly paper.
+	Similar to Valiant, it missroutes to a switch in a dimension with the queue more empty.
+ **/
 #[derive(Debug)]
 pub struct AdaptiveValiantClos
 {

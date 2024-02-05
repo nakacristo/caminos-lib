@@ -1,7 +1,6 @@
 
 
 use crate::PatternBuilderArgument;
-use crate::pattern::{new_pattern};
 use crate::pattern::new_optional_pattern;
 use quantifiable_derive::Quantifiable;//the derive macro
 use super::prelude::*;

@@ -6,7 +6,6 @@ use rand::prelude::SliceRandom;
 //use quantifiable_derive::Quantifiable;//the derive macro
 use crate::allocator::{Allocator, Request, GrantedRequests, AllocatorBuilderArgument};
 use crate::config_parser::ConfigurationValue;
-use crate::config_parser::Token::True;
 use crate::match_object_panic;
 
 

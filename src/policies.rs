@@ -8,7 +8,6 @@ see [`new_virtual_channel_policy`](fn.new_virtual_channel_policy.html) for docum
 
 */
 
-use std::cell::RefCell;
 use crate::config_parser::ConfigurationValue;
 use crate::routing::CandidateEgress;
 use crate::router::Router;
@@ -2203,7 +2202,9 @@ impl CycleIntoNetwork
 	}
 }
 
-
+/**
+	Current link class
+**/
 #[derive(Debug)]
 pub struct CurrentLinkLabel
 {
@@ -2262,7 +2263,9 @@ impl CurrentLinkLabel
 	}
 }
 
-
+/**
+	Label of the link in the next hop
+**/
 #[derive(Debug)]
 pub struct NextLinkLabel
 {
@@ -2384,9 +2387,9 @@ impl ChannelHop
 }
 
 
-/*
-	Performed Hops in the Label.
- */
+/**
+	Valiant intermediate Switch in the label
+**/
 #[derive(Debug)]
 pub struct ValiantIntermediate
 {
@@ -2455,9 +2458,9 @@ impl ValiantIntermediate
 
 
 
-/*
-	Performed Hops in the Label.
- */
+/**
+	Put the index of the last-last router of a Valiant route in the label.
+ **/
 #[derive(Debug)]
 pub struct ValiantLastRouterPalmTree
 {
@@ -2572,12 +2575,20 @@ impl ValiantLastRouterPalmTree
 	}
 }
 
+/**
+	Convert the label of the packet into a Vec Space, with the fields indicated.
+
+**/
 #[derive(Debug)]
 pub struct CartesianSpaceLabel
 {
+	///Policies with the value to insert in the vector
 	policies: Vec<Box<dyn VirtualChannelPolicy>>,
+	///Size for the vector space
 	source_space:CartesianData,
-	target_space: CartesianData,
+	// Size for the vector space after applyin the transformation (If any)
+	// target_space: CartesianData,
+	///Transformation to apply to the vector
 	pattern: Box<dyn Pattern>,
 }
 
@@ -2679,7 +2690,7 @@ impl CartesianSpaceLabel
 		CartesianSpaceLabel{
 			policies,
 			source_space,
-			target_space,
+			// target_space,
 			pattern,
 		}
 	}
