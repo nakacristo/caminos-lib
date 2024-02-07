@@ -14,7 +14,7 @@ use std::io::{BufRead,BufReader};
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::config_parser::ConfigurationValue;
 use crate::topology::cartesian::CartesianData;//for CartesianTransform
-use crate::topology::{Topology,Location};
+use crate::topology::{Topology, Location};
 use crate::quantify::Quantifiable;
 use crate::{Plugs,match_object_panic};
 use rand::SeedableRng;
@@ -349,6 +349,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"RemappedNodes" => Box::new(RemappedNodes::new(arg)),
 			"Switch" => Box::new(Switch::new(arg)),
 			"Debug" => Box::new(DebugPattern::new(arg)),
+			"DestinationSets" => Box::new(DestinationSets::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -1572,6 +1573,79 @@ impl GroupShufflingDestinations
 	}
 }
 
+
+
+///For each group, it keeps a shuffled list of destinations to which send. Once all have sent it is rebuilt and shuffled again.
+///Independently of past requests, decisions or origin.
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct DestinationSets
+{
+	///Patterns to get the set of destinations
+	patterns: Vec<Box<dyn Pattern>>,
+	///Weights for each pattern
+	weights: Vec<usize>,
+	///Set of destinations.
+	destination_set: Vec<Vec<usize>>,
+}
+
+impl Pattern for DestinationSets
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		for (index,pattern) in self.patterns.iter_mut().enumerate()
+		{
+			pattern.initialize(source_size,target_size,topology,rng);
+			for source in 0..source_size
+			{
+				let destination = pattern.get_destination(source,topology,rng);
+				self.destination_set[index].push(destination);
+			}
+		}
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		let total_weight=self.weights.iter().sum();
+		let mut w = rng.gen_range(0..total_weight);
+		let mut index = 0;
+		while w>self.weights[index]
+		{
+			w-=self.weights[index];
+			index+=1;
+		}
+		self.destination_set[index][origin]
+	}
+}
+
+impl DestinationSets
+{
+	fn new(arg:PatternBuilderArgument) -> DestinationSets
+	{
+		let mut patterns=None;
+		let mut weights: Option<Vec<usize>>=None;
+		match_object_panic!(arg.cv,"DestinationSets",value,
+			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+			"weights" => weights=Some(value.as_array().expect("bad value for weights").iter()
+				.map(|v|v.as_f64().expect("bad value in weights") as usize).collect()),
+		);
+		let patterns:Vec<Box<dyn Pattern>>=patterns.expect("There were no patterns");
+		let weights = if let Some(ref weights)=weights
+		{
+			assert_eq!(patterns.len(),weights.len(),"The number of patterns must match the number of weights");
+			weights.clone()
+		}else {
+			vec![1usize; patterns.len()]
+		};
+		let size = patterns.len();
+
+		DestinationSets{
+			patterns,
+			weights,
+			destination_set:vec![vec![];size],//to be filled in initialization
+		}
+	}
+}
 
 /**
 Each message gets its destination sampled uniformly at random among the servers attached to neighbour routers.
