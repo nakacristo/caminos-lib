@@ -73,9 +73,10 @@ pub trait Traffic : Quantifiable + Debug
 	///Should coincide with having the `Generating` state for deterministic traffics.
 	fn should_generate(&self, task:usize, _cycle:Time, rng: &mut StdRng) -> bool
 	{
-		let p=self.probability_per_cycle(task);
-		let r=rng.gen_range(0f32..1f32);
-		r<p
+		panic!("should_generate not implemented for this traffic");
+		// let p=self.probability_per_cycle(task);
+		// let r=rng.gen_range(0f32..1f32);
+		// r<p
 	}
 	///Indicates the state of the task within the traffic.
 	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState;
@@ -399,6 +400,9 @@ impl Traffic for Sum
 		let probs:Vec<f32>  = traffics.iter().map(|t|t.probability_per_cycle(origin)).collect();
 
 		//let mut r=rng.gen_range(0f32,probs.iter().sum());//rand-0.4
+		if traffics.len() == 0{
+			panic!("This origin is not generating messages in any Traffic")
+		}
 		if traffics.len() > 1{
 			println!("Warning: Multiple traffics are generating messages in the same task.");
 		}
@@ -848,6 +852,12 @@ impl Traffic for Burst
 			0.0
 		}
 	}
+
+	fn should_generate(&self, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
+	{
+		self.pending_messages[task]>0
+	}
+
 	fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
 	{
 		let message_ptr=message.as_ref() as *const Message;
