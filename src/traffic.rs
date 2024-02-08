@@ -1493,9 +1493,9 @@ impl Traffic for PeriodicBurst
 			TaskTrafficState::Generating
 		} else {
 			//We do not know whether someone is sending us data.
-			//if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
+			if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
 			// Sometimes it could be Finished, but it is not worth computing...
-			TaskTrafficState::UnspecifiedWait
+			// TaskTrafficState::UnspecifiedWait
 		}
 	}
 
