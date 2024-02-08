@@ -394,14 +394,20 @@ impl Traffic for Sum
 {
 	fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
 	{
-		let probs:Vec<f32> =self.list.iter().map(|t|t.probability_per_cycle(origin)).collect();
+
+		let mut traffics: Vec<&mut Box<dyn Traffic>> = self.list.iter_mut().filter(|t|t.should_generate(origin, cycle, rng)).collect();
+		let probs:Vec<f32>  = traffics.iter().map(|t|t.probability_per_cycle(origin)).collect();
+
 		//let mut r=rng.gen_range(0f32,probs.iter().sum());//rand-0.4
+		if traffics.len() > 1{
+			println!("Warning: Multiple traffics are generating messages in the same task.");
+		}
 		let mut r=rng.gen_range(0f32..probs.iter().sum());//rand-0.8
-		for i in 0..self.list.len()
+		for i in 0..traffics.len()
 		{
 			if r<probs[i]
 			{
-				return self.list[i].generate_message(origin,cycle,topology,rng);
+				return traffics[i].generate_message(origin,cycle,topology,rng);
 			}
 			else
 			{
@@ -457,6 +463,10 @@ impl Traffic for Sum
 			}
 		}
 		state
+	}
+	fn should_generate(&self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	{
+		self.list.iter().map(|t|t.should_generate(task,cycle,rng)).any(|b|b)
 	}
 
 	fn number_tasks(&self) -> usize {
@@ -1476,8 +1486,8 @@ impl Traffic for PeriodicBurst
 		// 	false
 		// }
 		let mut pending_messages = self.pending_messages.borrow_mut();
-
 		let mut times = self.times_to_generate.borrow_mut();
+
 		if !times.is_empty() && cycle >= times[0] {
 			times.remove(0);
 			for i in 0..pending_messages.len() {

@@ -35,7 +35,7 @@ fn periodic_burst_traffic_test()
     let message_size = 2;
     let period = 10usize;
     let offset = 50usize;
-    let finish= 100usize;
+    let finish= 1000usize;
     let periodic_burst_traffic_builder = PeriodicBurstTrafficBuilder{
         pattern,
         period,
@@ -77,7 +77,7 @@ fn periodic_burst_traffic_test()
     };
 
 
-    let cycles = 107; //+3 is because of the switch-Nic + switch-switch + Nic-switch links which take one cycle each
+    let cycles = 1007; //+3 is because of the switch-Nic + switch-switch + Nic-switch links which take one cycle each
     let maximum_packet_size=16;
 
     let topology = create_hamming_topology(hamming_builder);
