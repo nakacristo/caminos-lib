@@ -8,6 +8,7 @@ see [`new_traffic`](fn.new_traffic.html) for documentation on the configuration 
 */
 
 use std::boxed::Box;
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::collections::{BTreeSet,BTreeMap,VecDeque};
 //use std::mem::{size_of};
@@ -72,9 +73,10 @@ pub trait Traffic : Quantifiable + Debug
 	///Should coincide with having the `Generating` state for deterministic traffics.
 	fn should_generate(&self, task:usize, _cycle:Time, rng: &mut StdRng) -> bool
 	{
-		let p=self.probability_per_cycle(task);
-		let r=rng.gen_range(0f32..1f32);
-		r<p
+		panic!("should_generate not implemented for this traffic");
+		// let p=self.probability_per_cycle(task);
+		// let r=rng.gen_range(0f32..1f32);
+		// r<p
 	}
 	///Indicates the state of the task within the traffic.
 	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState;
@@ -247,6 +249,7 @@ pub fn new_traffic(arg:TrafficBuilderArgument) -> Box<dyn Traffic>
 			"BoundedDifference" => Box::new(BoundedDifference::new(arg)),
 			"TrafficMap" => Box::new(TrafficMap::new(arg)),
 			"Sweep" => Box::new(Sweep::new(arg)),
+			"PeriodicBurst" => Box::new(PeriodicBurst::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -392,14 +395,29 @@ impl Traffic for Sum
 {
 	fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
 	{
-		let probs:Vec<f32> =self.list.iter().map(|t|t.probability_per_cycle(origin)).collect();
+
+		let mut traffics: Vec<&mut Box<dyn Traffic>> = self.list.iter_mut().filter(|t|t.should_generate(origin, cycle, rng)).collect();
+		let probs:Vec<f32>  = traffics.iter().map(|t|t.probability_per_cycle(origin)).collect();
+
 		//let mut r=rng.gen_range(0f32,probs.iter().sum());//rand-0.4
-		let mut r=rng.gen_range(0f32..probs.iter().sum());//rand-0.8
-		for i in 0..self.list.len()
+		if traffics.len() == 0{
+			panic!("This origin is not generating messages in any Traffic")
+		}
+		if traffics.len() > 1{
+			println!("Warning: Multiple traffics are generating messages in the same task.");
+		}
+		// if (0f32..probs.iter().sum::<f32>()).is_empty(){
+		// 	println!("Probs: {:?}", probs);
+		// 	println!("Warning: The probability of generating a message is 0.0");
+		// 	println!("Origin: {}, traffic: {:?}", origin, traffics[0]);
+		// 	panic!("This origin is not generating messages in any Traffic")
+		// }
+		let mut r=rng.gen_range(0f32..probs.iter().sum::<f32>());//rand-0.8
+		for i in 0..traffics.len()
 		{
 			if r<probs[i]
 			{
-				return self.list[i].generate_message(origin,cycle,topology,rng);
+				return traffics[i].generate_message(origin,cycle,topology,rng);
 			}
 			else
 			{
@@ -455,6 +473,10 @@ impl Traffic for Sum
 			}
 		}
 		state
+	}
+	fn should_generate(&self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	{
+		self.list.iter().map(|t|t.should_generate(task,cycle,rng)).any(|b|b)
 	}
 
 	fn number_tasks(&self) -> usize {
@@ -836,6 +858,12 @@ impl Traffic for Burst
 			0.0
 		}
 	}
+
+	fn should_generate(&self, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
+	{
+		self.pending_messages[task]>0
+	}
+
 	fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
 	{
 		let message_ptr=message.as_ref() as *const Message;
@@ -966,7 +994,7 @@ impl Traffic for Sweep
 	fn probability_per_cycle(&self, task:usize) -> f32
 	{
         if task >= self.general_to_receive.len(){
-            
+
            return  0.0;
         }
 
@@ -1016,6 +1044,11 @@ impl Traffic for Sweep
 			// Sometimes it could be Finished, but it is not worth computing...
 			TaskTrafficState::FinishedGenerating
 		}
+	}
+
+	fn should_generate(&self, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
+	{
+		self.probability_per_cycle(task) == 1.0
 	}
 
 	fn number_tasks(&self) -> usize {
@@ -1356,6 +1389,192 @@ impl TimeSequenced
 		TimeSequenced{
 			traffics,
 			times,
+		}
+	}
+}
+
+
+/**
+Selects the traffic from a sequence depending on current cycle. This traffics is useful to make sequences of traffics that do no end by themselves.
+
+All the subtraffics in `traffics` must give the same value for `number_tasks`, which is also used for TimeSequenced. At least one such subtraffic must be provided.
+
+```ignore
+PeriodicBurst{
+	pattern:Uniform,
+	period: 2000,
+	offset: 0,
+	finish: 100000,
+	tasks:1000,
+	messages_per_task:200,
+	message_size: 16,
+}
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct PeriodicBurst
+{
+	///times at which the burst will happen
+	times_to_generate: RefCell<VecDeque<Time>>,
+	///Number of tasks applying this traffic.
+	tasks: usize,
+	///The pattern of the communication.
+	pattern: Box<dyn Pattern>,
+	///The size of each sent message.
+	message_size: usize,
+	///Messages to send per period
+	messages_per_task_per_period: usize,
+	///The number of messages each task has pending to sent.
+	pending_messages: RefCell<Vec<usize>>,
+	///Set of generated messages.
+	generated_messages: BTreeSet<*const Message>,
+}
+
+impl Traffic for PeriodicBurst
+{
+	fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
+	{
+		if origin>=self.tasks
+		{
+			//panic!("origin {} does not belong to the traffic",origin);
+			return Err(TrafficError::OriginOutsideTraffic);
+		}
+		let mut pending_messages = self.pending_messages.borrow_mut();
+		pending_messages[origin]-=1;
+		let destination=self.pattern.get_destination(origin,topology,rng);
+		if origin==destination
+		{
+			return Err(TrafficError::SelfMessage);
+		}
+		let message=Rc::new(Message{
+			origin,
+			destination,
+			size:self.message_size,
+			creation_cycle: cycle,
+		});
+		self.generated_messages.insert(message.as_ref() as *const Message);
+		Ok(message)
+	}
+	fn probability_per_cycle(&self, task:usize) -> f32
+	{
+		let pending_messages = self.pending_messages.borrow();
+		if pending_messages[task]>0
+		{
+			1.0
+		}
+		else
+		{
+			0.0
+		}
+	}
+	fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+	{
+		let message_ptr=message.as_ref() as *const Message;
+		self.generated_messages.remove(&message_ptr)
+	}
+	fn is_finished(&self) -> bool
+	{
+		let pending_messages = self.pending_messages.borrow();
+		let times_to_generate = self.times_to_generate.borrow();
+
+		if !self.generated_messages.is_empty() || !times_to_generate.is_empty()
+		{
+			return false;
+		}
+		for &pm in pending_messages.iter()
+		{
+			if pm>0
+			{
+				return false;
+			}
+		}
+		true
+	}
+
+	fn should_generate(&self, task:usize, cycle:Time, _rng: &mut StdRng) -> bool
+	{
+		// let mut offset = cycle;
+		// let mut traffic_index = 0;
+		// while traffic_index<self.traffics.len() && offset >= self.times[traffic_index]
+		// {
+		// 	offset -= self.times[traffic_index];
+		// 	traffic_index += 1;
+		// }
+		// if traffic_index<self.traffics.len(){
+		// 	self.traffics[traffic_index].should_generate(task,cycle,rng)
+		// } else {
+		// 	false
+		// }
+		let mut pending_messages = self.pending_messages.borrow_mut();
+		let mut times = self.times_to_generate.borrow_mut();
+
+		if !times.is_empty() && cycle >= times[0] {
+			times.pop_front();
+			for i in 0..pending_messages.len() {
+				pending_messages[i] += self.messages_per_task_per_period;
+			}
+		}
+		pending_messages[task] > 0
+	}
+	fn task_state(&self, task:usize, _cycle:Time) -> TaskTrafficState
+	{
+		let pending_messages = self.pending_messages.borrow();
+		if pending_messages[task]>0 {
+			TaskTrafficState::Generating
+		} else {
+			//We do not know whether someone is sending us data.
+			if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
+			// Sometimes it could be Finished, but it is not worth computing...
+			// TaskTrafficState::UnspecifiedWait
+		}
+	}
+
+
+	fn number_tasks(&self) -> usize {
+		self.tasks
+	}
+}
+
+impl PeriodicBurst
+{
+	pub fn new(arg:TrafficBuilderArgument) -> PeriodicBurst
+	{
+		let mut pattern=None;
+		let mut period=None;
+		let mut offset=None;
+		let mut finish=None;
+		let mut tasks=None;
+		let mut messages_per_task_per_period=None;
+		let mut message_size=None;
+		match_object_panic!(arg.cv,"PeriodicBurst",value,
+			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"period" => period = Some(value.as_usize().expect("bad value in period")),
+			"offset" => offset = Some(value.as_usize().expect("bad value in offset")),
+			"finish" => finish=Some(value.as_usize().expect("bad value for finish")),
+			"tasks" => tasks=Some(value.as_f64().expect("bad value for tasks") as usize),
+			"messages_per_task_per_period" => messages_per_task_per_period=Some(value.as_f64().expect("bad value for messages_per_task_per_period") as usize),
+			"message_size" => message_size=Some(value.as_f64().expect("bad value for message_size") as usize),
+		);
+		let mut pattern =pattern.expect("There were no pattern");
+		let period=period.expect("There were no period");
+		let offset=offset.expect("There were no offset");
+		let finish=finish.expect("There were no finish");
+		let tasks=tasks.expect("There were no tasks");
+		let message_size=message_size.expect("There were no message_size");
+		let messages_per_task_per_period=messages_per_task_per_period.expect("There were no messages_per_task_per_period");
+
+		let times_to_generate = RefCell::new(VecDeque::from((0..((finish-offset)/period +1)).into_iter().map(|i| (i*period + offset) as Time).collect::<Vec<Time>>()));
+		println!("times_to_generate: {:?}", times_to_generate.borrow());
+		pattern.initialize(tasks, tasks, arg.topology, arg.rng);
+		PeriodicBurst {
+			pattern,
+			times_to_generate,
+			tasks,
+			message_size,
+			messages_per_task_per_period,
+			pending_messages: RefCell::new(vec![0;tasks]),
+			generated_messages: BTreeSet::new(),
 		}
 	}
 }
