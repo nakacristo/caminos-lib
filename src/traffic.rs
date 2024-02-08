@@ -978,7 +978,7 @@ impl Traffic for Sweep
 	fn probability_per_cycle(&self, task:usize) -> f32
 	{
         if task >= self.general_to_receive.len(){
-            
+
            return  0.0;
         }
 
@@ -1028,6 +1028,11 @@ impl Traffic for Sweep
 			// Sometimes it could be Finished, but it is not worth computing...
 			TaskTrafficState::FinishedGenerating
 		}
+	}
+
+	fn should_generate(&self, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
+	{
+		self.probability_per_cycle(task) == 1.0
 	}
 
 	fn number_tasks(&self) -> usize {
