@@ -306,6 +306,29 @@ pub fn create_burst_traffic(arg: BurstTrafficBuilder) -> ConfigurationValue
                                                          ("message_size".to_string(), ConfigurationValue::Number(arg.message_size as f64))])
 }
 
+/// Encapsulates the parameters needed to create a Burst traffic pattern.
+pub struct PeriodicBurstTrafficBuilder
+{
+    pub pattern: ConfigurationValue,
+    pub period: usize,
+    pub offset: usize,
+    pub finish: usize,
+    pub tasks: usize,
+    pub messages_per_task_per_period: usize,
+    pub message_size: usize,
+}
+/// Creates a Configuration Value with the parameters for the Burst traffic pattern
+pub fn create_periodic_burst_traffic(arg:PeriodicBurstTrafficBuilder) -> ConfigurationValue
+{
+    ConfigurationValue::Object("PeriodicBurst".to_string(), vec![("pattern".to_string(), arg.pattern ),
+                                                         ("tasks".to_string(), ConfigurationValue::Number(arg.tasks as f64)),
+                                                         ("messages_per_task_per_period".to_string(), ConfigurationValue::Number(arg.messages_per_task_per_period as f64)),
+                                                         ("message_size".to_string(), ConfigurationValue::Number(arg.message_size as f64)),
+                                                         ("period".to_string(), ConfigurationValue::Number(arg.period as f64)),
+                                                         ("offset".to_string(), ConfigurationValue::Number(arg.offset as f64)),
+                                                         ("finish".to_string(), ConfigurationValue::Number(arg.finish as f64))])
+}
+
 /// Creates a Configuration Value for Shortest routing
 pub fn create_shortest_routing() -> ConfigurationValue
 {

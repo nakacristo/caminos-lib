@@ -363,6 +363,24 @@ impl Routing for MegaflyAD
 								continue;
 							}
 
+							// if pos_target_group {
+							// 		if let Some(ref pattern) = self.source_group_pattern[0][0]
+							// 		{
+							// 			let port = if let Some(ref pattern) = self.source_group_pattern[0][1]
+							// 			{
+							// 				pattern.get_destination(port_index, topology, _rng)
+							// 			} else {
+							// 				port_index
+							// 			};
+							//
+							// 			let destination = pattern.get_destination(index_pair, topology, _rng);
+							// 			if destination != port {
+							// 				continue;
+							// 			}
+							// 		}
+							// }
+
+
 							// if minimal == 1
 							// {
 							// 	if let Some(ref pattern) = self.local_pattern_per_hop[0][0]
