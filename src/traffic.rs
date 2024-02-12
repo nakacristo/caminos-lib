@@ -323,6 +323,10 @@ impl Traffic for Homogeneous
 			r
 		}
 	}
+
+	fn should_generate(&self, _task: usize, _cycle: Time, _rng: &mut StdRng) -> bool {
+		true
+	}
 	fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
 	{
 		let message_ptr=message.as_ref() as *const Message;

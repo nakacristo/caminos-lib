@@ -177,7 +177,14 @@ impl Routing for SumRouting
 		};
 		let mut bri=routing_info.borrow_mut();
 		//bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
-		bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
+		let mut routing_info_1 = RoutingInfo::new();
+		routing_info_1.source_server = Some(bri.source_server.unwrap());
+
+		let mut routing_info_2 = RoutingInfo::new();
+		routing_info_2.source_server = Some(bri.source_server.unwrap());
+
+		bri.meta=Some(vec![RefCell::new(routing_info_1),RefCell::new(routing_info_2)]);
+
 		for &s in all.iter()
 		{
 			//let routing=if s==0 { &self.first_routing } else { &self.second_routing };
