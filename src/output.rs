@@ -191,13 +191,14 @@ pub struct OutputEnvironment<'a>
 	pub targets: &'a Option<Vec<String>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct OutputEnvironmentEntry
 {
 	experiment_index: usize,
 	pub experiment: Option<ConfigurationValue>,
 	pub result: Option<ConfigurationValue>,
 	pub csv: Option<ConfigurationValue>,
+	pub extra: Option<ConfigurationValue>,
 }
 
 impl OutputEnvironmentEntry
@@ -209,6 +210,7 @@ impl OutputEnvironmentEntry
 			experiment:None,
 			result:None,
 			csv:None,
+			extra:None,
 		}
 	}
 	pub fn with_experiment(mut self,experiment:ConfigurationValue) -> Self
@@ -224,6 +226,11 @@ impl OutputEnvironmentEntry
 	pub fn with_csv(mut self,csv:ConfigurationValue) -> Self
 	{
 		self.csv=Some(csv);
+		self
+	}
+	pub fn with_extra(mut self,extra:ConfigurationValue) -> Self
+	{
+		self.extra=Some(extra);
 		self
 	}
 	/// Much like config::combine ...
@@ -243,6 +250,10 @@ impl OutputEnvironmentEntry
 		if let Some(csv) = &self.csv
 		{
 			attrs.push( (String::from("csv"),csv.clone()) );
+		}
+		if let Some(extra) = &self.extra
+		{
+			attrs.push( (String::from("extra"),extra.clone()) );
 		}
 		ConfigurationValue::Object(String::from("Context"),attrs)
 	}
@@ -647,12 +658,14 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 	let mut backend=None;
 	let mut prefix=None;
 	let mut kind:Option<Vec<Plotkind>>=None;
+	let mut extra: Option<Vec<ConfigurationValue>> =None;
 	match_object!(description,"Plots",value,
 		"selector" => selector=Some(value),
 		"legend" => legend=Some(value),
 		"backend" => backend=Some(value),
 		"kind" => kind = Some(value.as_array()?.iter().map(Plotkind::new).collect()),
 		"prefix" => prefix=Some(value.as_str()?.to_string()),
+		"extra" => extra=Some(value.as_array()?.clone()),
 	);
 	let selector = selector.ok_or_else(||description.ill("There were no selector"))?;
 	let legend=legend.ok_or_else(||description.ill("There were no legend"))?;
@@ -665,6 +678,15 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 	//let git_id_expr = Expr::Ident("git_id".to_string());
 	let git_id_expr = Expr::Member( Rc::new(Expr::Ident("result".to_string())) , "git_id".to_string() );
 	let version_number_expr = Expr::Member( Rc::new(Expr::Ident("result".to_string())) , "version_number".to_string() );
+	if let Some(extra) = extra {
+		// replicate each entry.
+		let old = std::mem::take(&mut environment.results);
+		for entry in old {
+			for ev in extra.iter() {
+				environment.results.push(entry.clone().with_extra(ev.clone()));
+			}
+		}
+	};
 	//let mut selector_map = EnumeratedMap::default();
 	//let mut legend_map = EnumeratedMap::default();
 	//let mut selector_map = environment.selector_map;

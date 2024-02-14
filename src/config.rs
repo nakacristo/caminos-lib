@@ -1238,7 +1238,10 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 				}
 				_ => panic!("Unknown function `{}'",function_name),
 			}
-		}
+		},
+		&Expr::Array(ref list) => {
+			Ok(ConfigurationValue::Array(list.iter().map(|e|evaluate(e,context,path)).collect::<Result<Vec<_>,_>>()?))
+		},
 	}
 }
 
