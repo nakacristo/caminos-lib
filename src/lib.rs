@@ -770,7 +770,7 @@ impl<'a> Simulation<'a>
 		let mut statistics_server_percentiles: Vec<u8> = vec![];
 		let mut statistics_packet_percentiles: Vec<u8> = vec![];
 		let mut statistics_packet_definitions:Vec< (Vec<Expr>,Vec<Expr>) > = vec![];
-		let mut temporal_statistics_packet_definitions:Vec< (Vec<Expr>,Vec<Expr>) > = vec![];
+		let mut temporal_defined_statistics:Vec< (Vec<Expr>, Vec<Expr>) > = vec![];
 		let mut server_queue_size = None;
 		let mut memory_report_period = None;
 		let mut general_frequency_divisor = 1;
@@ -824,35 +824,35 @@ impl<'a> Simulation<'a>
 				}).collect(),
 				_ => panic!("bad value for statistics_packet_definitions"),
 			}
-			"temporal_statistics_packet_definitions" => match value
+			"temporal_defined_statistics" | "temporal_statistics_packet_definitions" => match value
 			{
-				&ConfigurationValue::Array(ref l) => temporal_statistics_packet_definitions=l.iter().map(|definition|match definition {
+				&ConfigurationValue::Array(ref l) => temporal_defined_statistics=l.iter().map(|definition|match definition {
 					&ConfigurationValue::Array(ref dl) => {
 						if dl.len()!=2
 						{
-							panic!("Each definition of temporal_statistics_packet_definitions must be composed of [keys,values]");
+							panic!("Each definition of temporal_defined_statistics must be composed of [keys,values]");
 						}
 						let keys = match dl[0]
 						{
 							ConfigurationValue::Array(ref lx) => lx.iter().map(|x|match x{
 								ConfigurationValue::Expression(expr) => expr.clone(),
-								_ => panic!("bad value for temporal_statistics_packet_definitions"),
+								_ => panic!("bad value for temporal_defined_statistics"),
 								}).collect(),
-							_ => panic!("bad value for temporal_statistics_packet_definitions"),
+							_ => panic!("bad value for temporal_defined_statistics"),
 						};
 						let values = match dl[1]
 						{
 							ConfigurationValue::Array(ref lx) => lx.iter().map(|x|match x{
 								ConfigurationValue::Expression(expr) => expr.clone(),
-								_ => panic!("bad value for temporal_statistics_packet_definitions"),
+								_ => panic!("bad value for temporal_defined_statistics"),
 								}).collect(),
-							_ => panic!("bad value for temporal_statistics_packet_definitions"),
+							_ => panic!("bad value for temporal_defined_statistics"),
 						};
 						(keys,values)
 					},
-					_ => panic!("bad value for temporal_statistics_packet_definitions"),
+					_ => panic!("bad value for temporal_defined_statistics"),
 				}).collect(),
-				_ => panic!("bad value for temporal_statistics_packet_definitions"),
+				_ => panic!("bad value for temporal_defined_statistics"),
 			}
 
 			"memory_report_period" => memory_report_period=Some(value.as_time().expect("bad value for memory_report_period")),
@@ -942,7 +942,7 @@ impl<'a> Simulation<'a>
 		{
 			println!("WARNING: Generating traffic over {} tasks when the topology has {} servers.",num_tasks,num_servers);
 		}
-		let statistics=Statistics::new(statistics_temporal_step,statistics_server_percentiles, statistics_packet_percentiles,statistics_packet_definitions,temporal_statistics_packet_definitions, topology.as_ref());
+		let statistics=Statistics::new(statistics_temporal_step, statistics_server_percentiles, statistics_packet_percentiles, statistics_packet_definitions, temporal_defined_statistics, topology.as_ref());
 		Simulation{
 			configuration: cv.clone(),
 			seed,
@@ -1532,9 +1532,9 @@ impl<'a> Simulation<'a>
 			result_content.push( (String::from("packet_defined_statistics"),ConfigurationValue::Array(pds_content)) );
 		}
 
-		if !self.statistics.temporal_server_defined_statistics_measurement.is_empty()
+		if !self.statistics.temporal_defined_statistics_measurement.is_empty() && !self.statistics.temporal_defined_statistics_definitions.is_empty()
 		{
-			let temporal_measurement = self.shared.network.get_temporal_statistics_servers_expr(&self.statistics.temporal_server_defined_statistics_definitions);
+			let temporal_measurement = self.shared.network.get_temporal_statistics_servers_expr(&self.statistics.temporal_defined_statistics_definitions);
 			let mut all_temporal_measurement = vec![];
 			for cycle in temporal_measurement
 			{
@@ -1556,7 +1556,7 @@ impl<'a> Simulation<'a>
 				}
 				all_temporal_measurement.push(ConfigurationValue::Array(pds_content));
 			}
-			result_content.push( (String::from("temporal_packet_defined_statistics"),ConfigurationValue::Array(all_temporal_measurement)) );
+			result_content.push( (String::from("temporal_defined_statistics"),ConfigurationValue::Array(all_temporal_measurement)) );
 		}
 
 		if self.shared.traffic.get_statistics().is_some()

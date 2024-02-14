@@ -386,17 +386,17 @@ pub struct Statistics
 	///Each of these elements have that value of `key`, together with the averages and the count.
 	pub packet_defined_statistics_measurement: Vec< Vec< (Vec<ConfigurationValue>,Vec<f32>,usize) >>,
 	///A list of statistic definitions for server statistics, indexed by the temporal step.
-	pub temporal_server_defined_statistics_definitions: Vec< (Vec<Expr>, Vec<Expr>) >,
+	pub temporal_defined_statistics_definitions: Vec< (Vec<Expr>, Vec<Expr>) >,
 	///For each definition of server statistics, we have a vector with an element for each actual value of `keys`.
-	pub temporal_server_defined_statistics_measurement: Vec< Vec< Vec< (Vec<ConfigurationValue>, Vec<f32>, usize) >>>,
+	pub temporal_defined_statistics_measurement: Vec< Vec< Vec< (Vec<ConfigurationValue>, Vec<f32>, usize) >>>,
 }
 
 impl Statistics
 {
-	pub fn new(statistics_temporal_step:Time, server_percentiles: Vec<u8>, packet_percentiles: Vec<u8>, statistics_packet_definitions:Vec<(Vec<Expr>,Vec<Expr>)>, temporal_statistics_packet_definitions:Vec<(Vec<Expr>,Vec<Expr>)>, topology: &dyn Topology)->Statistics
+	pub fn new(statistics_temporal_step:Time, server_percentiles: Vec<u8>, packet_percentiles: Vec<u8>, packet_defined_statistics_definitions:Vec<(Vec<Expr>, Vec<Expr>)>, temporal_defined_statistics_definitions:Vec<(Vec<Expr>, Vec<Expr>)>, topology: &dyn Topology) ->Statistics
 	{
-		let packet_defined_statistics_measurement = vec![ vec![]; statistics_packet_definitions.len() ];
-		let temporal_packet_defined_statistics_measurement = vec![ vec![ vec![]; temporal_statistics_packet_definitions.len() ] ];
+		let packet_defined_statistics_measurement = vec![vec![]; packet_defined_statistics_definitions.len() ];
+		let temporal_defined_statistics_measurement = vec![ vec![vec![]; temporal_defined_statistics_definitions.len() ] ];
 		Statistics{
 			//begin_cycle:0,
 			//created_phits:0,
@@ -424,10 +424,10 @@ impl Statistics
 				ReportColumnKind::ServerGenerationJainIndex.into(),
 				//ReportColumnKind::ServerConsumptionJainIndex.into(),
 				],
-			packet_defined_statistics_definitions:statistics_packet_definitions,
+			packet_defined_statistics_definitions,
 			packet_defined_statistics_measurement,
-			temporal_server_defined_statistics_definitions:temporal_statistics_packet_definitions,
-			temporal_server_defined_statistics_measurement: temporal_packet_defined_statistics_measurement,
+			temporal_defined_statistics_definitions,
+			temporal_defined_statistics_measurement,
 		}
 	}
 	///Print in stdout a header showing the statistical columns to be periodically printed.
