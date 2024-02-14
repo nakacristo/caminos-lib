@@ -73,7 +73,7 @@ pub trait Traffic : Quantifiable + Debug
 	fn is_finished(&self) -> bool;
 	///Returns true if a task should generate a message this cycle
 	///Should coincide with having the `Generating` state for deterministic traffics.
-	fn should_generate(&self, _task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
+	fn should_generate(&mut self, _task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
 	{
 		panic!("should_generate not implemented for this traffic");
 		// let p=self.probability_per_cycle(task);
@@ -87,7 +87,7 @@ pub trait Traffic : Quantifiable + Debug
 	/// A task is a process that generates traffic.
 	fn number_tasks(&self) -> usize;
 
-	fn get_statistics(&self) -> Option<Vec<RefCell<TrafficStatistics>>> {
+	fn get_statistics(&self) -> Option<TrafficStatistics> {
 		None
 	}
 }
@@ -330,7 +330,7 @@ impl Traffic for Homogeneous
 		}
 	}
 
-	fn should_generate(&self, _task: usize, _cycle: Time, _rng: &mut StdRng) -> bool {
+	fn should_generate(self: &mut Homogeneous, _task: usize, _cycle: Time, _rng: &mut StdRng) -> bool {
 		true
 	}
 	fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
@@ -399,8 +399,12 @@ pub struct Sum
 {
 	///List of traffic summands
 	list: Vec<Box<dyn Traffic>>,
-	index_to_generate: RefCell<Vec<Vec<usize>>>,
-	statistics: Vec<RefCell<TrafficStatistics>>,
+	///For each task, the index of the traffic that is generating messages.
+	index_to_generate: Vec<Vec<usize>>,
+	///Statistics for the traffic
+	statistics: TrafficStatistics,
+	///Total number of tasks
+	tasks:usize,
 }
 
 impl Traffic for Sum
@@ -418,22 +422,21 @@ impl Traffic for Sum
 		// if traffics.len() > 1{
 		// 	panic!("Warning: Multiple traffics are generating messages in the same task.");
 		// }
-		let mut index_traffics = self.index_to_generate.borrow_mut();
-		if index_traffics[origin].len() == 0{
+		if self.index_to_generate[origin].len() == 0{
 			panic!("This origin is not generating messages in any Traffic")
 		}
-		if index_traffics[origin].len() > 1 && index_traffics[origin].iter().min().unwrap() != index_traffics[origin].iter().max().unwrap(){
+		if self.index_to_generate[origin].len() > 1 && self.index_to_generate[origin].iter().min().unwrap() != self.index_to_generate[origin].iter().max().unwrap(){
 			panic!("Warning: Multiple traffics are generating messages in the same task.");
 		}
 
-		let r=rng.gen_range(0..index_traffics[origin].len());//rand-0.8
-		let message = self.list[index_traffics[origin][r]].generate_message(origin,cycle,topology,rng);
+		let r=rng.gen_range(0..self.index_to_generate[origin].len());//rand-0.8
+		let index = self.index_to_generate[origin][r];
+		let message = self.list[index].generate_message(origin,cycle,topology,rng);
 
 		if !message.is_err(){
-			self.statistics[index_traffics[origin][r]].borrow_mut().track_created_message(cycle);
+			let size_msg = message.as_ref().unwrap().size;
+			self.statistics.track_created_message(cycle, size_msg, Some( index ));
 		}
-		index_traffics[origin].clear(); //FIXME: This may not be the best way.
-
 		message
 
 		// for i in 0..traffics.len()
@@ -468,7 +471,7 @@ impl Traffic for Sum
 		{
 			if traffic.try_consume(task,message.clone(),cycle,topology,rng)
 			{
-				self.statistics[index].borrow_mut().track_consumed_message(cycle, cycle - message.creation_cycle );
+				self.statistics.track_consumed_message(cycle, cycle - message.creation_cycle, message.size, Some(index) );
 				return true;
 			}
 		}
@@ -485,15 +488,15 @@ impl Traffic for Sum
 		}
 		return true;
 	}
-	fn should_generate(&self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	fn should_generate(&mut self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
 	{
-		let mut lista = self.index_to_generate.borrow_mut();
-		for (index, t) in self.list.iter().enumerate(){
+		self.index_to_generate[task].clear(); //FIXME: This may not be the best way.
+		for (index, t) in self.list.iter_mut().enumerate(){
 			if t.should_generate(task,cycle,rng){
-				lista[task].push(index);
+				self.index_to_generate[task].push(index);
 			}
 		}
-		lista[task].len() > 0
+		self.index_to_generate[task].len() > 0
 	}
 	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
 	{
@@ -515,9 +518,9 @@ impl Traffic for Sum
 
 	fn number_tasks(&self) -> usize {
 		// all traffics have the same number of tasks
-		self.list[0].number_tasks()
+		self.tasks
 	}
-	fn get_statistics(&self) -> Option<Vec<RefCell<TrafficStatistics>>> {
+	fn get_statistics(&self) -> Option<TrafficStatistics> {
 		Some(self.statistics.clone())
 	}
 }
@@ -542,11 +545,14 @@ impl Sum
 		{
 			assert_eq!( traffic.number_tasks(), size , "In SumTraffic all sub-traffics must involve the same number of tasks." );
 		}
-		let statistics = vec![RefCell::new(TrafficStatistics::new(temporal_step)); list.len()];
+		let list_statistics = list.iter().map(|_| TrafficStatistics::new(temporal_step, None)).collect();
+		let statistics = TrafficStatistics::new(temporal_step, Some(list_statistics));
+		let tasks = tasks.unwrap();
 		Sum{
 			list,
-			index_to_generate: RefCell::new(vec![vec![]; tasks.unwrap()]),
+			index_to_generate: vec![vec![]; tasks ],
 			statistics,
+			tasks,
 		}
 	}
 }
@@ -903,7 +909,7 @@ impl Traffic for Burst
 		}
 	}
 
-	fn should_generate(&self, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
+	fn should_generate(self: &mut Burst, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
 	{
 		self.pending_messages[task]>0
 	}
@@ -1090,7 +1096,7 @@ impl Traffic for Sweep
 		}
 	}
 
-	fn should_generate(&self, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
+	fn should_generate(self: &mut Sweep, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
 	{
 		self.probability_per_cycle(task) == 1.0
 	}
@@ -1367,7 +1373,7 @@ impl Traffic for TimeSequenced
 		}
 		return true;
 	}
-	fn should_generate(&self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	fn should_generate(self: &mut TimeSequenced, task:usize, cycle:Time, rng: &mut StdRng) -> bool
 	{
 		let mut offset = cycle;
 		let mut traffic_index = 0;
@@ -1536,7 +1542,7 @@ impl Traffic for PeriodicBurst
 		true
 	}
 
-	fn should_generate(&self, task:usize, cycle:Time, _rng: &mut StdRng) -> bool
+	fn should_generate(self: &mut PeriodicBurst, task:usize, cycle:Time, _rng: &mut StdRng) -> bool
 	{
 		// let mut offset = cycle;
 		// let mut traffic_index = 0;
@@ -1689,7 +1695,7 @@ impl Traffic for Sequence
 		//return current_period == period_limit;
 		return self.current_traffic>=self.traffics.len() || (self.current_traffic==self.traffics.len()-1 && self.traffics[self.current_traffic].is_finished())
 	}
-	fn should_generate(&self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	fn should_generate(self: &mut Sequence, task:usize, cycle:Time, rng: &mut StdRng) -> bool
 	{
 		if self.current_traffic>=self.traffics.len()
 		{
@@ -2183,7 +2189,7 @@ impl Traffic for TrafficMap
 		}).unwrap_or(0.0) // if the task_app has no origin, it has no probability
 	}
 
-	fn should_generate(&self, task: usize, cycle: Time, rng: &mut StdRng) -> bool {
+	fn should_generate(self: &mut TrafficMap, task: usize, cycle: Time, rng: &mut StdRng) -> bool {
 		let task_app = self.from_machine_to_app[task];
 
 		task_app.map(|app| {
