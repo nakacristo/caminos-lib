@@ -7,7 +7,7 @@ use self::gramatica::{Associativity,EarleyKind,State,Parser,ParsingTablesTrait,P
 
 use std::rc::Rc;
 use std::fmt::{Display,Formatter,Error};
-use crate::Quantifiable;
+//use crate::Quantifiable;
 
 #[derive(Clone,Debug,PartialEq,PartialOrd,Quantifiable)]
 pub enum ConfigurationValue
@@ -115,6 +115,15 @@ pub enum Expr
 	///Gets the name of an object: @expr
 	Name(Rc<Expr>),
 	FunctionCall(String,Vec<(String,Expr)>),
+	Array(Vec<Expr>),
+}
+
+impl Default for Expr
+{
+	fn default() -> Expr
+	{
+		Expr::Number(0.0)
+	}
 }
 
 impl Display for Expr
@@ -283,6 +292,7 @@ nonterminal Expression(Expr)
 	#[priority(getname)]
 	(At,Expression(ref expr)) => Expr::Name(Rc::new(expr.clone())),
 	(FunctionCall(ref value)) => value.clone(),
+	(ExprArray(ref mut list)) => Expr::Array(std::mem::take(list)),
 }
 
 nonterminal FunctionCall(Expr)
@@ -308,6 +318,24 @@ nonterminal Arguments(Vec<(String,Expr)>)
 nonterminal ExprPair(String,Expr)
 {
 	(Ident(ref s),Colon,Expression(ref expr)) => (s.clone(),expr.clone()),
+}
+
+nonterminal ExprArray(Vec<Expr>)
+{
+	(LBracket,RBracket) => vec![],
+	(LBracket,ExprElements(ref mut list),RBracket) => std::mem::take(list),
+	(LBracket,ExprElements(ref mut list),Comma,RBracket) => std::mem::take(list),
+}
+
+nonterminal ExprElements(Vec<Expr>)
+{
+	(Expression(ref mut expr)) => vec![std::mem::take(expr)],
+	(ExprElements(ref mut list),Comma,Expression(ref mut expr)) =>
+	{
+		let mut new=(std::mem::take(list));
+		new.push(std::mem::take(expr));
+		new
+	},
 }
 
 ordering!(membership,getname,comparison);

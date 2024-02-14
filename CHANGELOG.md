@@ -2,6 +2,10 @@
 
 ## next, [0.6.4]
 
+### 2024-02-14
+Updated grammar to allow an array of expressions as expression.
+Added `extra` argument to Plots outputs.
+
 ### 2024-01-22
 Generate more parametrized symbol tex outputs, which are easier to manipulate from LaTeX side.
 

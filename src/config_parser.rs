@@ -101,6 +101,15 @@ Member(Rc<Expr>,String),
 Parentheses(Rc<Expr>),
 Name(Rc<Expr>),
 FunctionCall(String,Vec<(String,Expr)>),
+Array(Vec<Expr>),
+}
+
+impl Default for Expr
+{
+	fn default() -> Expr
+	{
+		Expr::Number(0.0)
+	}
 }
 
 impl Display for Expr
@@ -130,7 +139,7 @@ pub fn parse_expression(source:&str) -> Result<Token,ParsingError>
 
 #[derive(Clone,Debug,PartialEq)]
 pub enum Token{DummyStart,
-True,False,Where,Number(f64),LitStr(String),Ident(String),EqualEqual,LBrace,RBrace,LBracket,RBracket,LPar,RPar,Comma,Colon,Bang,At,Equal,Dot,Value(ConfigurationValue),Object(ConfigurationValue),Members(Vec<(String,ConfigurationValue)>),Pair(String,ConfigurationValue),Array(Vec<ConfigurationValue>),Elements(Vec<ConfigurationValue>),Expression(Expr),FunctionCall(Expr),Arguments(Vec<(String,Expr)>),ExprPair(String,Expr),}
+True,False,Where,Number(f64),LitStr(String),Ident(String),EqualEqual,LBrace,RBrace,LBracket,RBracket,LPar,RPar,Comma,Colon,Bang,At,Equal,Dot,Value(ConfigurationValue),Object(ConfigurationValue),Members(Vec<(String,ConfigurationValue)>),Pair(String,ConfigurationValue),Array(Vec<ConfigurationValue>),Elements(Vec<ConfigurationValue>),Expression(Expr),FunctionCall(Expr),Arguments(Vec<(String,Expr)>),ExprPair(String,Expr),ExprArray(Vec<Expr>),ExprElements(Vec<Expr>),}
 impl Default for Token { fn default()->Self{Token::DummyStart} }
 struct ParsingTables { }
 impl ParsingTablesTrait<Token> for ParsingTables {
@@ -235,18 +244,28 @@ parser.sets[index].predict(State::new(27,26,vec![26,19,6],index,EarleyKind::Pred
 parser.sets[index].predict(State::new(28,26,vec![12,26,13],index,EarleyKind::Predict(state_index)));
 parser.sets[index].predict(State::new(29,26,vec![17,26],index,EarleyKind::Predict(state_index)));
 parser.sets[index].predict(State::new(30,26,vec![27],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(31,26,vec![30],index,EarleyKind::Predict(state_index)));
 }
 27 => {
-parser.sets[index].predict(State::new(31,27,vec![6,8,9],index,EarleyKind::Predict(state_index)));
-parser.sets[index].predict(State::new(32,27,vec![6,8,28,9],index,EarleyKind::Predict(state_index)));
-parser.sets[index].predict(State::new(33,27,vec![6,8,28,14,9],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(32,27,vec![6,8,9],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(33,27,vec![6,8,28,9],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(34,27,vec![6,8,28,14,9],index,EarleyKind::Predict(state_index)));
 }
 28 => {
-parser.sets[index].predict(State::new(34,28,vec![29],index,EarleyKind::Predict(state_index)));
-parser.sets[index].predict(State::new(35,28,vec![28,14,29],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(35,28,vec![29],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(36,28,vec![28,14,29],index,EarleyKind::Predict(state_index)));
 }
 29 => {
-parser.sets[index].predict(State::new(36,29,vec![6,15,26],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(37,29,vec![6,15,26],index,EarleyKind::Predict(state_index)));
+}
+30 => {
+parser.sets[index].predict(State::new(38,30,vec![10,11],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(39,30,vec![10,31,11],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(40,30,vec![10,31,14,11],index,EarleyKind::Predict(state_index)));
+}
+31 => {
+parser.sets[index].predict(State::new(41,31,vec![26],index,EarleyKind::Predict(state_index)));
+parser.sets[index].predict(State::new(42,31,vec![31,14,26],index,EarleyKind::Predict(state_index)));
 }
 _ => panic!(""), } }//predict
 #[allow(unused)]
@@ -343,29 +362,48 @@ _ => panic!(""), },
 30 => match &mut state.values[0] {
 Token::FunctionCall(ref value) => Token::Expression(value.clone()),
 _ => panic!(""), },
-31 => match &mut state.values[0..3] {
+31 => match &mut state.values[0] {
+Token::ExprArray(ref mut list) => Token::Expression(Expr::Array(std::mem::take(list))),
+_ => panic!(""), },
+32 => match &mut state.values[0..3] {
 &mut [Token::Ident(ref name),Token::LBrace,Token::RBrace] => Token::FunctionCall(Expr::FunctionCall(name.clone(),vec![])),
 _ => panic!(""), },
-32 => match &mut state.values[0..4] {
+33 => match &mut state.values[0..4] {
 &mut [Token::Ident(ref name),Token::LBrace,Token::Arguments(ref list),Token::RBrace] => Token::FunctionCall(Expr::FunctionCall(name.clone(),list.clone())),
 _ => panic!(""), },
-33 => match &mut state.values[0..5] {
+34 => match &mut state.values[0..5] {
 &mut [Token::Ident(ref name),Token::LBrace,Token::Arguments(ref list),Token::Comma,Token::RBrace] => Token::FunctionCall(Expr::FunctionCall(name.clone(),list.clone())),
 _ => panic!(""), },
-34 => match &mut state.values[0] {
+35 => match &mut state.values[0] {
 Token::ExprPair(ref s,ref value) => Token::Arguments(vec![(s . clone () , value . clone ())]),
 _ => panic!(""), },
-35 => match &mut state.values[0..3] {
+36 => match &mut state.values[0..3] {
 &mut [Token::Arguments(ref list),Token::Comma,Token::ExprPair(ref s,ref value)] => Token::Arguments({let mut new=(list.clone());
 new.push((s.clone(),value.clone())); new}),
 _ => panic!(""), },
-36 => match &mut state.values[0..3] {
+37 => match &mut state.values[0..3] {
 &mut [Token::Ident(ref s),Token::Colon,Token::Expression(ref expr)] => { let (x0,x1)=(s.clone(),expr.clone()); Token::ExprPair(x0,x1) },
+_ => panic!(""), },
+38 => match &mut state.values[0..2] {
+&mut [Token::LBracket,Token::RBracket] => Token::ExprArray(vec![]),
+_ => panic!(""), },
+39 => match &mut state.values[0..3] {
+&mut [Token::LBracket,Token::ExprElements(ref mut list),Token::RBracket] => Token::ExprArray(std::mem::take(list)),
+_ => panic!(""), },
+40 => match &mut state.values[0..4] {
+&mut [Token::LBracket,Token::ExprElements(ref mut list),Token::Comma,Token::RBracket] => Token::ExprArray(std::mem::take(list)),
+_ => panic!(""), },
+41 => match &mut state.values[0] {
+Token::Expression(ref mut expr) => Token::ExprElements(vec![std :: mem :: take (expr)]),
+_ => panic!(""), },
+42 => match &mut state.values[0..3] {
+&mut [Token::ExprElements(ref mut list),Token::Comma,Token::Expression(ref mut expr)] => Token::ExprElements({let mut new=(std::mem::take(list));
+new.push(std::mem::take(expr)); new}),
 _ => panic!(""), },
 _ => panic!(""), }) }//compute_value
 fn table_terminal(token_index:usize)->bool { match token_index {
 1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19 => true,
-0|20|21|22|23|24|25|26|27|28|29 => false,
+0|20|21|22|23|24|25|26|27|28|29|30|31 => false,
 _ => panic!("table_terminal"), } }//table_terminal
 fn table_priority(a:usize, b:usize) -> Option<Ordering> { match (a,b) {
 (23,23) => Some(Ordering::Equal),
@@ -410,5 +448,7 @@ fn to_usize(token:&Token) -> usize { match token { &Token::DummyStart => 0,
 &Token::FunctionCall(_) => 27,
 &Token::Arguments(_) => 28,
 &Token::ExprPair(_,_) => 29,
+&Token::ExprArray(_) => 30,
+&Token::ExprElements(_) => 31,
 } }//to_usize
 }//impl
