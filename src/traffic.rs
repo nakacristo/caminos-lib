@@ -23,7 +23,9 @@ use crate::{Message,Plugs};
 use crate::pattern::{Pattern,new_pattern,PatternBuilderArgument};
 use crate::topology::Topology;
 use crate::event::Time;
-use quantifiable_derive::Quantifiable;//the derive macro
+use quantifiable_derive::Quantifiable;
+use crate::measures::TrafficStatistics;
+//the derive macro
 use crate::quantify::Quantifiable;
 use crate::topology::prelude::CartesianData;
 
@@ -71,7 +73,7 @@ pub trait Traffic : Quantifiable + Debug
 	fn is_finished(&self) -> bool;
 	///Returns true if a task should generate a message this cycle
 	///Should coincide with having the `Generating` state for deterministic traffics.
-	fn should_generate(&self, task:usize, _cycle:Time, rng: &mut StdRng) -> bool
+	fn should_generate(&self, _task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
 	{
 		panic!("should_generate not implemented for this traffic");
 		// let p=self.probability_per_cycle(task);
@@ -84,6 +86,10 @@ pub trait Traffic : Quantifiable + Debug
 	/// Indicates the number of tasks in the traffic.
 	/// A task is a process that generates traffic.
 	fn number_tasks(&self) -> usize;
+
+	fn get_statistics(&self) -> Option<Vec<RefCell<TrafficStatistics>>> {
+		None
+	}
 }
 
 #[derive(Debug)]
@@ -393,6 +399,8 @@ pub struct Sum
 {
 	///List of traffic summands
 	list: Vec<Box<dyn Traffic>>,
+	index_to_generate: RefCell<Vec<Vec<usize>>>,
+	statistics: Vec<RefCell<TrafficStatistics>>,
 }
 
 impl Traffic for Sum
@@ -400,35 +408,50 @@ impl Traffic for Sum
 	fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
 	{
 
-		let mut traffics: Vec<&mut Box<dyn Traffic>> = self.list.iter_mut().filter(|t|t.should_generate(origin, cycle, rng)).collect();
-		let probs:Vec<f32>  = traffics.iter().map(|t|t.probability_per_cycle(origin)).collect();
-
-		//let mut r=rng.gen_range(0f32,probs.iter().sum());//rand-0.4
-		if traffics.len() == 0{
-			panic!("This origin is not generating messages in any Traffic")
-		}
-		if traffics.len() > 1{
-			println!("Warning: Multiple traffics are generating messages in the same task.");
-		}
-		// if (0f32..probs.iter().sum::<f32>()).is_empty(){
-		// 	println!("Probs: {:?}", probs);
-		// 	println!("Warning: The probability of generating a message is 0.0");
-		// 	println!("Origin: {}, traffic: {:?}", origin, traffics[0]);
+		// let mut traffics: Vec<&mut Box<dyn Traffic>> = self.list.iter_mut().filter(|t|t.should_generate(origin, cycle, rng)).collect();
+		// let probs:Vec<f32>  = traffics.iter().map(|t|t.probability_per_cycle(origin)).collect();
+		//
+		// //let mut r=rng.gen_range(0f32,probs.iter().sum());//rand-0.4
+		// if traffics.len() == 0{
 		// 	panic!("This origin is not generating messages in any Traffic")
 		// }
-		let mut r=rng.gen_range(0f32..probs.iter().sum::<f32>());//rand-0.8
-		for i in 0..traffics.len()
-		{
-			if r<probs[i]
-			{
-				return traffics[i].generate_message(origin,cycle,topology,rng);
-			}
-			else
-			{
-				r-=probs[i];
-			}
+		// if traffics.len() > 1{
+		// 	panic!("Warning: Multiple traffics are generating messages in the same task.");
+		// }
+		let mut index_traffics = self.index_to_generate.borrow_mut();
+		if index_traffics[origin].len() == 0{
+			panic!("This origin is not generating messages in any Traffic")
 		}
-		panic!("failed probability");
+		if index_traffics[origin].len() > 1 && index_traffics[origin].iter().min().unwrap() != index_traffics[origin].iter().max().unwrap(){
+			panic!("Warning: Multiple traffics are generating messages in the same task.");
+		}
+
+		let mut r=rng.gen_range(0..index_traffics[origin].len());//rand-0.8
+		let message = self.list[index_traffics[origin][r]].generate_message(origin,cycle,topology,rng);
+
+		if !message.is_err(){
+			self.statistics[index_traffics[origin][r]].borrow_mut().track_created_message(cycle);
+		}
+		index_traffics[origin].clear(); //FIXME: This may not be the best way.
+
+		message
+
+		// for i in 0..traffics.len()
+		// {
+		// 	if r<probs[i]
+		// 	{
+		// 		let message = traffics[i].generate_message(origin,cycle,topology,rng);
+		// 		if !message.is_err(){
+		// 			self.statistics[i].borrow_mut().track_created_message(cycle);
+		// 		}
+		// 		return message;
+		// 	}
+		// 	else
+		// 	{
+		// 		r-=probs[i];
+		// 	}
+		// }
+		// panic!("failed probability");
 	}
 	//fn should_generate(&self, rng: &mut StdRng) -> bool
 	//{
@@ -441,10 +464,11 @@ impl Traffic for Sum
 	}
 	fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
 	{
-		for traffic in self.list.iter_mut()
+		for (index, traffic) in self.list.iter_mut().enumerate()
 		{
 			if traffic.try_consume(task,message.clone(),cycle,topology,rng)
 			{
+				self.statistics[index].borrow_mut().track_consumed_message(cycle, cycle - message.creation_cycle );
 				return true;
 			}
 		}
@@ -460,6 +484,16 @@ impl Traffic for Sum
 			}
 		}
 		return true;
+	}
+	fn should_generate(&self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	{
+		let mut lista = self.index_to_generate.borrow_mut();
+		for (index, t) in self.list.iter().enumerate(){
+			if t.should_generate(task,cycle,rng){
+				lista[task].push(index);
+			}
+		}
+		lista[task].len() > 0
 	}
 	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
 	{
@@ -478,14 +512,13 @@ impl Traffic for Sum
 		}
 		state
 	}
-	fn should_generate(&self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
-	{
-		self.list.iter().map(|t|t.should_generate(task,cycle,rng)).any(|b|b)
-	}
 
 	fn number_tasks(&self) -> usize {
 		// all traffics have the same number of tasks
 		self.list[0].number_tasks()
+	}
+	fn get_statistics(&self) -> Option<Vec<RefCell<TrafficStatistics>>> {
+		Some(self.statistics.clone())
 	}
 }
 
@@ -494,9 +527,13 @@ impl Sum
 	pub fn new(mut arg:TrafficBuilderArgument) -> Sum
 	{
 		let mut list : Option<Vec<_>> =None;
+		let mut temporal_step = 0;
+		let mut tasks = None;
 		match_object_panic!(arg.cv,"TrafficSum",value,
 			"list" => list = Some(value.as_array().expect("bad value for list").iter()
 				.map(|v|new_traffic(TrafficBuilderArgument{cv:v,rng:&mut arg.rng,..arg})).collect()),
+			"statistics_temporal_step" => temporal_step = value.as_f64().expect("bad value for statistics_temporal_step") as Time,
+			"tasks" => tasks = Some(value.as_f64().expect("bad value for tasks") as usize),
 		);
 		let list=list.expect("There were no list");
 		assert!( !list.is_empty() , "cannot sum 0 traffics" );
@@ -505,8 +542,11 @@ impl Sum
 		{
 			assert_eq!( traffic.number_tasks(), size , "In SumTraffic all sub-traffics must involve the same number of tasks." );
 		}
+		let statistics = vec![RefCell::new(TrafficStatistics::new(temporal_step)); list.len()];
 		Sum{
-			list
+			list,
+			index_to_generate: RefCell::new(vec![vec![]; tasks.unwrap()]),
+			statistics,
 		}
 	}
 }

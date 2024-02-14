@@ -2839,7 +2839,7 @@ impl Pattern for DebugPattern{
 		// }
 		panic!("This is just a check.")
 	}
-	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
+	fn get_destination(&self, _origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
 		0
 		// if origin >= self.source_size {

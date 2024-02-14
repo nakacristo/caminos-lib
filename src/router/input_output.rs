@@ -321,6 +321,7 @@ impl InputOutput
 		//let mut servers=None;
 		//let mut load=None;
 		let mut virtual_channels=None;
+		// let mut injection_buffers=None;
 		//let mut routing=None;
 		let mut buffer_size=None;
 		let mut virtual_channel_policies=None;
@@ -343,6 +344,11 @@ impl InputOutput
 				&ConfigurationValue::Number(f) => virtual_channels=Some(f as usize),
 				_ => panic!("bad value for virtual_channels"),
 			},
+			// "injection_buffers" => match value
+			// {
+			// 	&ConfigurationValue::Number(f) => injection_buffers=Some(f as usize),
+			// 	_ => panic!("bad value for injection_buffers"),
+			// },
 			//"routing" => routing=Some(new_routing(value)),
 			//"virtual_channel_policy" => virtual_channel_policy=Some(new_virtual_channel_policy(value)),
 			"virtual_channel_policies" => match value
@@ -417,6 +423,15 @@ impl InputOutput
 		);
 		//let sides=sides.expect("There were no sides");
 		let virtual_channels=virtual_channels.expect("There were no virtual_channels");
+		// let injection_buffers = if let Some(i)=injection_buffers
+		// {
+		// 	i
+		// }
+		// else
+		// {
+		// 	virtual_channels
+		// };
+
 		let virtual_channel_policies=virtual_channel_policies.expect("There were no virtual_channel_policies");
 		//let routing=routing.expect("There were no routing");
 		let buffer_size=buffer_size.expect("There were no buffer_size");

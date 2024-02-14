@@ -142,6 +142,99 @@ impl ServerStatistics
 }
 
 
+#[derive(Clone,Quantifiable, Debug)]
+pub struct TrafficStatistics
+{
+	pub current_measurement: TrafficMeasurement,
+	///The last cycle in which this server created a phit and sent it to a router. Or 0
+	pub cycle_last_created_message: Time,
+	///The last cycle in that the last phit of a message has been consumed by this server. Or 0.
+	pub cycle_last_consumed_message: Time,
+	///If non-zero then creates statistics for intervals of the given number of cycles.
+	pub temporal_step: Time,
+	///The periodic measurements requested by non-zero statistics_temporal_step.
+	pub temporal_statistics: Vec<TrafficMeasurement>,
+	pub total_created_messages: usize,
+	pub total_consumed_messages: usize,
+	pub total_message_delay: Time,
+}
+
+#[derive(Clone,Default,Quantifiable,Debug)]
+pub struct TrafficMeasurement
+{
+	///The number of the first cycle included in the statistics.
+	pub begin_cycle: Time,
+	pub created_messages: usize,
+	pub consumed_messages: usize,
+	pub total_message_delay: Time,
+}
+
+impl TrafficStatistics
+{
+	pub fn new(temporal_step:Time)-> TrafficStatistics
+	{
+		TrafficStatistics {
+			current_measurement: TrafficMeasurement::default(),
+			cycle_last_created_message: 0,
+			cycle_last_consumed_message: 0,
+			temporal_step,
+			temporal_statistics: vec![],
+			total_created_messages: 0,
+			total_consumed_messages: 0,
+			total_message_delay: 0,
+		}
+	}
+	fn reset(&mut self, next_cycle: Time)
+	{
+		self.current_measurement= TrafficMeasurement::default();
+		self.current_measurement.begin_cycle=next_cycle;
+	}
+
+	/// Called when a task recieves a message.
+	pub fn track_consumed_message(&mut self, cycle: Time, delay:Time)
+	{
+		self.cycle_last_consumed_message = cycle;
+		self.total_consumed_messages+=1;
+		self.total_message_delay+=delay;
+		self.current_measurement.consumed_messages+=1;
+		if delay < 0
+		{
+			panic!("negative delay");
+		}
+		if let Some(m) = self.current_temporal_measurement(cycle)
+		{
+			m.consumed_messages+=1;
+			m.total_message_delay+=delay;
+		}
+	}
+	/// Called each time the traffic creates a message.
+	pub fn track_created_message(&mut self, cycle: Time)
+	{
+		self.cycle_last_created_message = cycle;
+		self.total_created_messages+=1;
+		self.current_measurement.created_messages+=1;
+		if let Some(m) = self.current_temporal_measurement(cycle)
+		{
+			m.created_messages+=1;
+		}
+
+	}
+
+	pub fn current_temporal_measurement(&mut self, cycle: Time) -> Option<&mut TrafficMeasurement>
+	{
+		if self.temporal_step>0
+		{
+			let index : usize = (cycle / self.temporal_step).try_into().unwrap();
+			if self.temporal_statistics.len()<=index
+			{
+				self.temporal_statistics.resize_with(index+1,Default::default);
+				self.temporal_statistics[index].begin_cycle = index as Time * self.temporal_step;
+			}
+			Some(&mut self.temporal_statistics[index])
+		} else { None }
+	}
+}
+
 ///Statistics captured for each link.
 #[derive(Debug,Quantifiable)]
 pub struct LinkStatistics

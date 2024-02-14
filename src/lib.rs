@@ -1558,6 +1558,46 @@ impl<'a> Simulation<'a>
 			}
 			result_content.push( (String::from("temporal_packet_defined_statistics"),ConfigurationValue::Array(all_temporal_measurement)) );
 		}
+
+		if self.shared.traffic.get_statistics().is_some()
+		{
+			let mut traffics_results = vec![];
+			let traffic_statistics = self.shared.traffic.get_statistics().unwrap();
+
+			for statistic in traffic_statistics.iter()
+			{
+				let s = statistic.borrow();
+
+
+				let temporal_consumed_messages = s.temporal_statistics.iter().map(|i| ConfigurationValue::Number(i.consumed_messages as f64)).collect::<Vec<_>>();
+				let temporal_generated_messages = s.temporal_statistics.iter().map(|i| ConfigurationValue::Number(i.created_messages as f64)).collect::<Vec<_>>();
+				let temporal_total_message_delay = s.temporal_statistics.iter().map(|i| ConfigurationValue::Number(
+					if i.consumed_messages == 0 {0f64} else{(i.total_message_delay / i.consumed_messages as u64) as f64} )
+				).collect::<Vec<_>>();
+
+				let temporal_statistics = vec![
+					(String::from("consumed_messages"),ConfigurationValue::Array(temporal_consumed_messages.clone())),
+					(String::from("generated_messages"),ConfigurationValue::Array(temporal_generated_messages.clone())),
+					(String::from("total_message_delay"),ConfigurationValue::Array(temporal_total_message_delay.clone())),
+				];
+
+				let total_consumed_messages = s.total_consumed_messages as f64;
+				let total_generated_messages = s.total_created_messages as f64;
+				let average_message_delay = s.total_message_delay / total_consumed_messages as u64;
+
+
+				let traffic_content = vec![
+					(String::from("total_consumed_messages"),ConfigurationValue::Number(total_consumed_messages)),
+					(String::from("total_generated_messages"),ConfigurationValue::Number(total_generated_messages)),
+					(String::from("average_message_delay"),ConfigurationValue::Number(average_message_delay as f64)),
+					(String::from("temporal_statistics"), ConfigurationValue::Object(String::from("temporal"),temporal_statistics)),
+				];
+				traffics_results.push(ConfigurationValue::Object(String::from("TrafficStatistic"),traffic_content));
+			}
+
+				result_content.push((String::from("traffics_statistics"), ConfigurationValue::Array(traffics_results)));
+		}
+
 		ConfigurationValue::Object(String::from("Result"),result_content)
 	}
 
