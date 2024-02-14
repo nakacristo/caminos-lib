@@ -216,6 +216,7 @@ pub fn create_megafly_ad(arg: MegaflyAD) -> ConfigurationValue
 
 /// Encapsulates the parameters needed to create a Cartesian shift pattern (x, y) -> (x + shift_x, y + shift_y)
 /// DEPRECATED - use cartesian_pattern_builder
+#[derive(Clone)]
 pub struct ShiftPatternBuilder
 {
     pub sides: Vec<ConfigurationValue>,
@@ -328,6 +329,26 @@ pub fn create_periodic_burst_traffic(arg:PeriodicBurstTrafficBuilder) -> Configu
                                                          ("offset".to_string(), ConfigurationValue::Number(arg.offset as f64)),
                                                          ("finish".to_string(), ConfigurationValue::Number(arg.finish as f64))])
 }
+
+
+/// Encapsulates the parameters needed to create a Burst traffic pattern.
+pub struct SumTrafficBuilder
+{
+    pub traffics: Vec<ConfigurationValue>,
+    pub tasks: usize,
+    pub temporal_step: usize,
+    // pub message_size: usize,
+}
+/// Creates a Configuration Value with the parameters for the Burst traffic pattern
+pub fn create_sum_traffic(arg: SumTrafficBuilder) -> ConfigurationValue
+{
+    ConfigurationValue::Object("TrafficSum".to_string(), vec![
+        ("list".to_string(), ConfigurationValue::Array(arg.traffics)),
+        ("tasks".to_string(), ConfigurationValue::Number(arg.tasks as f64)),
+        ("statistics_temporal_step".to_string(), ConfigurationValue::Number(arg.temporal_step as f64)),
+    ])
+}
+
 
 /// Creates a Configuration Value for Shortest routing
 pub fn create_shortest_routing() -> ConfigurationValue

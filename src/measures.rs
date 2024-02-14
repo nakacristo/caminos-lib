@@ -286,11 +286,13 @@ impl TrafficStatistics
 			let temporal_consumed_phits = self.temporal_statistics.iter().map(|m|ConfigurationValue::Number(m.consumed_phits as f64)).collect();
 			let temporal_created_messages = self.temporal_statistics.iter().map(|m|ConfigurationValue::Number(m.created_messages as f64)).collect();
 			let temporal_created_phits = self.temporal_statistics.iter().map(|m|ConfigurationValue::Number(m.created_phits as f64)).collect();
-			let temporal_message_delay = self.temporal_statistics.iter().map(|m| if self.total_consumed_messages != 0 {
-				ConfigurationValue::Number((m.total_message_delay/m.consumed_messages as u64)as f64)
-			} else {
-				ConfigurationValue::Number(0f64)
-			}).collect();
+			let temporal_message_delay = self.temporal_statistics.iter().map(|m|
+				if m.consumed_messages != 0 {
+					ConfigurationValue::Number((m.total_message_delay/m.consumed_messages as u64)as f64)
+				} else {
+					ConfigurationValue::Number(0f64)
+				}
+			).collect();
 
 			let temporal_content = vec![
 				(String::from("consumed_messages"),ConfigurationValue::Array(temporal_consumed_messages)),
