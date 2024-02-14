@@ -629,7 +629,7 @@ impl Routing for MegaflyAD
 		{
 			if let Some(ref mut pattern) = self.intermediate_group_pattern[i][0]
 			{
-				pattern.initialize(topology.num_servers()*topology.num_servers(), topology.num_servers()*topology.num_servers(), topology, _rng);
+				pattern.initialize(topology.num_servers()*topology.num_servers()*cartesian_data.sides[1], topology.num_servers()*topology.num_servers()*cartesian_data.sides[1], topology, _rng);
 			}
 			if let Some(ref mut pattern) = self.intermediate_group_pattern[i][1]
 			{

@@ -426,7 +426,7 @@ impl Traffic for Sum
 			panic!("Warning: Multiple traffics are generating messages in the same task.");
 		}
 
-		let mut r=rng.gen_range(0..index_traffics[origin].len());//rand-0.8
+		let r=rng.gen_range(0..index_traffics[origin].len());//rand-0.8
 		let message = self.list[index_traffics[origin][r]].generate_message(origin,cycle,topology,rng);
 
 		if !message.is_err(){

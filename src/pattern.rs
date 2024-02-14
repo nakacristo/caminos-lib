@@ -2623,6 +2623,46 @@ impl LinearTransform
 	}
 }
 
+
+/**
+Method to calculate the determinant of a matrix.
+ **/
+fn laplace_determinant(matrix: &Vec<Vec<i32>>) -> i32
+{
+	let mut determinant = 0;
+	if matrix.len() == 1
+	{
+		return matrix[0][0];
+	}
+	else if matrix.len() == 2
+	{
+		return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0];
+	}
+	else
+	{
+		for i in 0..matrix.len()
+		{
+			let mut sub_matrix = vec![vec![0; matrix.len() - 1]; matrix.len() - 1];
+			for j in 1..matrix.len()
+			{
+				let mut index = 0;
+				for k in 0..matrix.len()
+				{
+					if k == i
+					{
+						continue;
+					}
+					sub_matrix[j - 1][index] = matrix[j][k];
+					index += 1;
+				}
+			}
+			determinant += matrix[0][i] * i32::pow(-1, i as u32) * laplace_determinant(&sub_matrix);
+		}
+	}
+	determinant
+}
+
+
 /**
 Use a `indexing` pattern to select among several possible patterns from the input to the output.
 The `indexing` is initialized as a pattern from the input size to the number of `patterns`.
@@ -2709,58 +2749,32 @@ impl Pattern for Switch {
 	}
 }
 
-/**
-Method to calculate the determinant of a matrix.
-**/
-fn laplace_determinant(matrix: &Vec<Vec<i32>>) -> i32
-{
-	let mut determinant = 0;
-	if matrix.len() == 1
-	{
-		return matrix[0][0];
-	}
-	else if matrix.len() == 2
-	{
-		return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0];
-	}
-	else
-	{
-		for i in 0..matrix.len()
-		{
-			let mut sub_matrix = vec![vec![0; matrix.len() - 1]; matrix.len() - 1];
-			for j in 1..matrix.len()
-			{
-				let mut index = 0;
-				for k in 0..matrix.len()
-				{
-					if k == i
-					{
-						continue;
-					}
-					sub_matrix[j - 1][index] = matrix[j][k];
-					index += 1;
-				}
-			}
-			determinant += matrix[0][i] * i32::pow(-1, i as u32) * laplace_determinant(&sub_matrix);
-		}
-	}
-	determinant
-}
-
-
 impl Switch {
 	fn new(arg:PatternBuilderArgument) -> Switch
 	{
 		let mut indexing = None;
-		let mut patterns = None;
+		let mut patterns= None;//:Option<Vec<Box<dyn Pattern>>> = None;
+		let mut expand: Option<Vec<usize>> = None;
 
 		match_object_panic!(arg.cv,"Switch",value,
 			"indexing" => indexing = Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
-			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
-				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+			"patterns" => patterns=Some( value.as_array().expect("bad value for patterns") ),
+			"expand" => expand = Some(value.as_array().expect("bad value for expand").iter()
+				.map(|v|v.as_usize().expect("bad value in expand")).collect()),
 		);
 		let indexing = indexing.expect("Missing indexing in Switch.");
 		let patterns = patterns.expect("Missing patterns in Switch.");
+		let patterns = if let Some(expand) = expand {
+			let mut new_patterns = vec![];
+			for (index, pattern) in patterns.into_iter().enumerate() {
+				for _ in 0..expand[index] {
+					new_patterns.push(new_pattern(PatternBuilderArgument{cv:pattern,..arg}));
+				}
+			}
+			new_patterns
+		} else {
+			patterns.iter().map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()
+		};
 		Switch{
 			indexing,
 			patterns,
