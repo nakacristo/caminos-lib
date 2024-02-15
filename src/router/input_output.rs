@@ -321,7 +321,7 @@ impl InputOutput
 		//let mut servers=None;
 		//let mut load=None;
 		let mut virtual_channels=None;
-		// let mut injection_buffers=None;
+		let mut injection_buffers=None;
 		//let mut routing=None;
 		let mut buffer_size=None;
 		let mut virtual_channel_policies=None;
@@ -344,11 +344,11 @@ impl InputOutput
 				&ConfigurationValue::Number(f) => virtual_channels=Some(f as usize),
 				_ => panic!("bad value for virtual_channels"),
 			},
-			// "injection_buffers" => match value
-			// {
-			// 	&ConfigurationValue::Number(f) => injection_buffers=Some(f as usize),
-			// 	_ => panic!("bad value for injection_buffers"),
-			// },
+			"injection_buffers" => match value
+			{
+				&ConfigurationValue::Number(f) => injection_buffers=Some(f as usize),
+				_ => panic!("bad value for injection_buffers"),
+			},
 			//"routing" => routing=Some(new_routing(value)),
 			//"virtual_channel_policy" => virtual_channel_policy=Some(new_virtual_channel_policy(value)),
 			"virtual_channel_policies" => match value
@@ -423,14 +423,14 @@ impl InputOutput
 		);
 		//let sides=sides.expect("There were no sides");
 		let virtual_channels=virtual_channels.expect("There were no virtual_channels");
-		// let injection_buffers = if let Some(i)=injection_buffers
-		// {
-		// 	i
-		// }
-		// else
-		// {
-		// 	virtual_channels
-		// };
+		let injection_buffers = if let Some(i)=injection_buffers
+		{
+			i
+		}
+		else
+		{
+			virtual_channels
+		};
 
 		let virtual_channel_policies=virtual_channel_policies.expect("There were no virtual_channel_policies");
 		//let routing=routing.expect("There were no routing");
@@ -467,7 +467,7 @@ impl InputOutput
 		let transmission_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{name:&transmission_mechanism,..transmission_builder_argument});
 		let to_server_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{name:&to_server_mechanism,..transmission_builder_argument});
 		//let from_server_mechanism = TransmissionFromServer::new(virtual_channels,buffer_size,flit_size);
-		let from_server_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{name:&from_server_mechanism,..transmission_builder_argument});
+		let from_server_mechanism = new_transmission_mechanism(TransmissionMechanismBuilderArgument{name:&from_server_mechanism,virtual_channels: injection_buffers,..transmission_builder_argument});
 		let transmission_port_status:Vec<Box<dyn StatusAtEmissor>> = (0..input_ports).map(|p|
 			if let (Location::ServerPort(_server),_link_class)=topology.neighbour(router_index,p)
 			{
@@ -602,9 +602,9 @@ impl Eventful for InputOutput
 		
 		let amount_virtual_channels=self.num_virtual_channels();
 		//-- gather cycle statistics
-		for port_space in self.reception_port_space.iter()
+		for (index, port_space) in self.reception_port_space.iter().enumerate()
 		{
-			for vc in 0..amount_virtual_channels
+			for vc in 0..self.transmission_port_status[index].num_virtual_channels()//amount_virtual_channels
 			{
 				self.statistics_reception_space_occupation_per_vc[vc]+=(port_space.occupied_dedicated_space(vc).unwrap_or(0)*cycles_span as usize) as f64 / self.reception_port_space.len() as f64;
 			}
