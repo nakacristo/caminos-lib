@@ -835,6 +835,10 @@ impl VirtualChannelPolicy for AverageOccupancyFunction
 	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy AverageOccupancyFunction");
+		if candidates.len()==0
+		{
+			return vec![]; //Funny but true.....
+		}
 		let current_router_index = router.get_index().expect("we need routers with index");
 		if current_router_index == info.target_router_index
 		{
