@@ -293,6 +293,7 @@ pub struct MegaflyAD
 	intermediate_group_pattern:  Vec<Vec<Option<Box<dyn Pattern>>>>,
 	destination_group_pattern:  Vec<Vec<Option<Box<dyn Pattern>>>>,
 	global_pattern_per_hop: Vec<Vec<Option<Box<dyn Pattern>>>>,
+	consume_same_channel: bool,
 }
 
 impl Routing for MegaflyAD
@@ -407,7 +408,7 @@ impl Routing for MegaflyAD
 
 							if pos_target_group{
 
-								if minimal == 1
+								if minimal == 1 //non-minimal
 								{
 									if  selections[1] == 0 || selections[1] == 2 || self.minimal_to_deroute[2] == 0{
 										continue;
@@ -458,7 +459,7 @@ impl Routing for MegaflyAD
 								}
 							}
 
-							if selections[1] < 2{
+							if selections[1] < 2 && ((!pos_target_group && self.consume_same_channel) || !self.consume_same_channel) {
 
 								r.extend(self.first_allowed_virtual_channels.iter().map(|v| CandidateEgress{port:port_index,virtual_channel:*v,label:minimal,..Default::default()}));
 
@@ -694,6 +695,7 @@ impl MegaflyAD
 		let mut intermediate_group_pattern= vec![];
 		let mut destination_group_pattern= vec![];
 		let mut global_pattern_per_hop= vec![];
+		let mut consume_same_channel = false;
 		// let mut intermediate_source_minimal_pattern=None;
 		// let mut intermediate_target_minimal_pattern=None;
 		// let mut intermediate_leaf_switch_pattern :Box<dyn Pattern> = new_pattern(PatternBuilderArgument{cv: &ConfigurationValue::Object("Identity".to_string(), vec![]),plugs:arg.plugs});
@@ -727,6 +729,7 @@ impl MegaflyAD
 				.map(|v|v.as_array().expect("bad value for global_pattern_per_hop").iter()
 				.map(|p|new_optional_pattern(PatternBuilderArgument{cv:p,plugs:arg.plugs})).collect()
 			).collect(),
+			"consume_same_channel" => consume_same_channel=value.as_bool().expect("bad value for consume_same_channel"),
 			// "intermediate_source_minimal_pattern" => intermediate_source_minimal_pattern=new_optional_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs}),
 			// "intermediate_target_minimal_pattern" => intermediate_target_minimal_pattern=new_optional_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs}),
 			// "intermediate_leaf_switch_pattern" => intermediate_leaf_switch_pattern=new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs}),
@@ -740,6 +743,7 @@ impl MegaflyAD
 			intermediate_group_pattern,
 			destination_group_pattern,
 			global_pattern_per_hop,
+			consume_same_channel,
 		}
 	}
 }
