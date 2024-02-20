@@ -294,6 +294,7 @@ pub struct MegaflyAD
 	destination_group_pattern:  Vec<Vec<Option<Box<dyn Pattern>>>>,
 	global_pattern_per_hop: Vec<Vec<Option<Box<dyn Pattern>>>>,
 	consume_same_channel: bool,
+	set_global_minimal_channel: bool,
 }
 
 impl Routing for MegaflyAD
@@ -459,7 +460,7 @@ impl Routing for MegaflyAD
 								}
 							}
 
-							if selections[1] < 2 && ((!pos_target_group && self.consume_same_channel) || !self.consume_same_channel) {
+							if selections[1] < 2 && ((!pos_target_group && self.consume_same_channel) || !self.consume_same_channel) { //FIXME: FOR MISSROUTE IN DEST GROUP
 
 								r.extend(self.first_allowed_virtual_channels.iter().map(|v| CandidateEgress{port:port_index,virtual_channel:*v,label:minimal,..Default::default()}));
 
@@ -517,7 +518,14 @@ impl Routing for MegaflyAD
 									}
 								}
 
-								r.extend(self.first_allowed_virtual_channels.iter().map(|v| CandidateEgress{port:port_index,virtual_channel:*v,label:real_minimal,..Default::default()}));
+								if real_minimal == 0 && self.set_global_minimal_channel
+								{
+									r.extend(self.second_allowed_virtual_channels.iter().map(|v| CandidateEgress { port: port_index, virtual_channel: *v, label: real_minimal, ..Default::default() }));
+
+								}else{
+									r.extend(self.first_allowed_virtual_channels.iter().map(|v| CandidateEgress { port: port_index, virtual_channel: *v, label: real_minimal, ..Default::default() }));
+
+								}
 							}
 						}
 
@@ -696,6 +704,7 @@ impl MegaflyAD
 		let mut destination_group_pattern= vec![];
 		let mut global_pattern_per_hop= vec![];
 		let mut consume_same_channel = false;
+		let mut set_global_minimal_channel = false;
 		// let mut intermediate_source_minimal_pattern=None;
 		// let mut intermediate_target_minimal_pattern=None;
 		// let mut intermediate_leaf_switch_pattern :Box<dyn Pattern> = new_pattern(PatternBuilderArgument{cv: &ConfigurationValue::Object("Identity".to_string(), vec![]),plugs:arg.plugs});
@@ -730,6 +739,7 @@ impl MegaflyAD
 				.map(|p|new_optional_pattern(PatternBuilderArgument{cv:p,plugs:arg.plugs})).collect()
 			).collect(),
 			"consume_same_channel" => consume_same_channel=value.as_bool().expect("bad value for consume_same_channel"),
+			"set_global_minimal_channel" => set_global_minimal_channel=value.as_bool().expect("bad value for set_global_minimal_channel"),
 			// "intermediate_source_minimal_pattern" => intermediate_source_minimal_pattern=new_optional_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs}),
 			// "intermediate_target_minimal_pattern" => intermediate_target_minimal_pattern=new_optional_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs}),
 			// "intermediate_leaf_switch_pattern" => intermediate_leaf_switch_pattern=new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs}),
@@ -744,6 +754,7 @@ impl MegaflyAD
 			destination_group_pattern,
 			global_pattern_per_hop,
 			consume_same_channel,
+			set_global_minimal_channel,
 		}
 	}
 }
