@@ -444,6 +444,8 @@ struct AveragedRecord
 	abscissa: (Option<f32>,Option<f32>),
 	///The average value and standard deviation in the ordinates (a.k.a., x-axis).
 	ordinate: (Option<f32>,Option<f32>),
+	///The count of the values used to compute the average.
+	len: usize,
 	///Keep the original value if it is shared by all the averaged.
 	shared_abscissa: Option<ConfigurationValue>,
 	///The value of the upper whisker in box plots.
@@ -875,7 +877,12 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 				let version = version_string(used_git,used_version);
 				version_set.insert(version);
 			}
-			let averaged_record = AveragedRecord{selector:selector_value.clone(),legend:legend_value.clone(),parameter:parameter_value.clone(),abscissa:standard_deviation(&current_abscissas),ordinate:standard_deviation(&current_ordinates),shared_abscissa:shared_element(&mut current_abscissas.iter()).cloned(),
+			let averaged_record = AveragedRecord{selector:selector_value.clone(),
+							legend:legend_value.clone(),parameter:parameter_value.clone(),
+							abscissa:standard_deviation(&current_abscissas),
+							ordinate:standard_deviation(&current_ordinates),
+							len:current_abscissas.len(),
+							shared_abscissa:shared_element(&mut current_abscissas.iter()).cloned(),
 							upper_whisker:if boxplot {standard_deviation(&current_upper_whiskers).0} else {None},
 							bottom_whisker:if boxplot {standard_deviation(&current_bottom_whiskers).0} else {None},
 							upper_box_limit:if boxplot {standard_deviation(&current_upper_box_limits).0} else {None},
@@ -923,6 +930,7 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 					}
 				};
 			}
+			let div = selection_map.len();
 			for (key,indices) in selection_map
 			{
 				//let collection : Vec<f64> = averaged[record_index..collection_end].iter().map(|r|r.ordinate.0.unwrap() as f64).collect();
@@ -936,6 +944,7 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 					let context=ConfigurationValue::Object(String::from("Context"),vec![
 						(String::from("average"),ConfigurationValue::Number(ordinate as f64)),
 						(String::from("all"),collection_cv.clone()),
+						(String::from("count"),ConfigurationValue::Number( record.len as f64 )),
 					]);
 					match evaluate(expression,&context,&outputs_path)?
 					{

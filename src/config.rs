@@ -620,6 +620,41 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 					}
 					Ok(ConfigurationValue::Number(q))
 				}
+				"roundto" =>
+				{
+					let mut value=None;
+					let mut precision=None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"value" =>
+								{
+									value=Some(evaluate(val,context,path)?);
+								},
+							"precision" =>
+								{
+									precision=Some(evaluate(val,context,path)?);
+								},
+
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let value=value.expect("value argument of roundto not given.");
+					let precision=precision.expect("precision argument of roundto not given.");
+					let value=match value
+					{
+						ConfigurationValue::Number(x) => x,
+						_ => panic!("value argument of roundto evaluated to a non-number ({}:?)",value),
+					};
+					let precision=match precision
+					{
+						ConfigurationValue::Number(x) => x,
+						_ => panic!("precision argument of roundto evaluated to a non-number ({}:?)",precision),
+					};
+					Ok(ConfigurationValue::Number((value*10f64.powf(precision)).round()/10f64.powf(precision)))
+
+				}
 				"log" =>
 				{
 					let mut arg=None;
