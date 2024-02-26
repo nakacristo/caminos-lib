@@ -1754,6 +1754,7 @@ pub fn config_relaxed_cmp(a:&ConfigurationValue, b:&ConfigurationValue) -> bool
 		}
 		(Array(xa),Array(xb)) =>
 		{
+			if xa.len() != xb.len() { return false; }
 			//xa==xb
 			for (va,vb) in
 				xa.iter().zip(
@@ -1765,6 +1766,7 @@ pub fn config_relaxed_cmp(a:&ConfigurationValue, b:&ConfigurationValue) -> bool
 		}
 		(Experiments(xa),Experiments(xb)) =>
 		{
+			if xa.len() != xb.len() { return false; }
 			//xa==xb
 			for (va,vb) in
 				xa.iter().zip(
@@ -1778,6 +1780,7 @@ pub fn config_relaxed_cmp(a:&ConfigurationValue, b:&ConfigurationValue) -> bool
 		{
 			//na==nb && xa==xb,
 			if na != nb { return false; }
+			if xa.len() != xb.len() { return false; }
 			for (va,vb) in
 				xa.iter().zip(
 				xb.iter() )
