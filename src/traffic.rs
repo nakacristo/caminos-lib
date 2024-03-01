@@ -959,8 +959,10 @@ impl Burst
 		let mut messages_per_task=None;
 		let mut pattern=None;
 		let mut message_size=None;
+		let mut source_selection = None;
 		match_object_panic!(arg.cv,"Burst",value,
 			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"source_selection" => source_selection=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 			"tasks" | "servers" => tasks=Some(value.as_f64().expect("bad value for tasks") as usize),
 			"messages_per_task" | "messages_per_server" => messages_per_task=Some(value.as_f64().expect("bad value for messages_per_task") as usize),
 			"message_size" => message_size=Some(value.as_f64().expect("bad value for message_size") as usize),
@@ -970,11 +972,21 @@ impl Burst
 		let messages_per_task=messages_per_task.expect("There were no messages_per_task");
 		let mut pattern=pattern.expect("There were no pattern");
 		pattern.initialize(tasks, tasks, arg.topology, arg.rng);
+
+		let pending_messages = if let Some(mut source_selection) = source_selection {
+			source_selection.initialize(tasks, tasks, arg.topology, arg.rng);
+			let mut messages = vec![0;tasks];
+			(0..tasks).for_each(|i| messages[source_selection.get_destination(i, arg.topology, arg.rng)] = messages_per_task);
+			messages
+		}else{
+			vec![messages_per_task;tasks]
+		};
+
 		Burst{
 			tasks,
 			pattern,
 			message_size,
-			pending_messages:vec![messages_per_task;tasks],
+			pending_messages,
 			generated_messages: BTreeSet::new(),
 		}
 	}
