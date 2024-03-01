@@ -39,6 +39,7 @@ Dragonfly{
 	//group_size: 8,
 	/// Number of groups. Denoted by `g` in Dally's paper. Defaults to the canonic dragonfly value of `g = a*h+1`.
 	//number_of_groups: 10,
+	global_lag: 1, //parallel links between groups
 }
 ```
 
@@ -77,7 +78,7 @@ pub struct Dragonfly
 	group_size: usize,
 	/// Number of groups. Denoted by `g` in Dally's paper. In a canonic dragonfly `g = a*h+1`.
 	number_of_groups: usize,
-	/// Link arrangment of the trunking. Wether to group the ports of a switch in LAGs.
+	/// Parallel global links
 	lag: usize,
 	// cached values:
 	// Cartesian data [switch_index, group_index]
@@ -218,7 +219,7 @@ impl Dragonfly
 			"global_arrangement" => global_arrangement=Some(new_arrangement(value.into())),
 			"group_size" => group_size=Some(value.as_usize().expect("bad value for group_size")),
 			"number_of_groups" => number_of_groups=Some(value.as_usize().expect("bad value for number_of_groups")),
-			"lag" => lag=value.as_usize().expect("bad value for lag"),
+			"lag" | "global_lag" => lag=value.as_usize().expect("bad value for lag"),
 		);
 		let global_ports_per_router=global_ports_per_router.expect("There were no global_ports_per_router");
 		let servers_per_router=servers_per_router.expect("There were no servers_per_router");

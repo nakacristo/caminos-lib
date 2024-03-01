@@ -313,6 +313,8 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"LabelTransform" => Box::new(LabelTransform::new(arg)),
 			"OccupancyFunction" => Box::new(OccupancyFunction::new(arg)),
 			"AverageOccupancyFunction" => Box::new(AverageOccupancyFunction::new(arg)),
+			"PortDiscardLabelThreshold" => Box::new(PortDiscardLabelThreshold::new(arg)),
+			"BufferAdvanceRate" => Box::new(BufferAdvanceRate::new(arg)),
 			"NegateLabel" => Box::new(NegateLabel::new(arg)),
 			"VecLabel" => Box::new(VecLabel::new(arg)),
 			"MapLabel" => Box::new(MapLabel::new(arg)),
@@ -988,6 +990,262 @@ impl AverageOccupancyFunction
 		}
 	}
 }
+
+/**Discards candidates whose label is greater (lower) than a threshold after applying a policy.
+	Example configuration:
+```ignore
+PortDiscardLabelThreshold{
+	previous_policy: OccupancyFunction{...}
+	threshold: 80,
+	below: true, //discard if above threshold
+}
+ ```
+ **/
+#[derive(Debug)]
+pub struct PortDiscardLabelThreshold
+{
+	///Explicit policy to apply previous to the evaluation
+	previous_policy: Box<dyn VirtualChannelPolicy>,
+	///threshold which cannot supperate
+	threshold: i32,
+	///discard if below
+	below: bool,
+}
+
+impl VirtualChannelPolicy for PortDiscardLabelThreshold
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		if candidates.len()==0
+		{
+			return vec![]; //Funny but true.....
+		}
+		let cand2 =  self.previous_policy.filter(candidates.clone(), router, info, topology, _rng);
+		if cand2.len()!= candidates.len()
+		{
+			panic!("The previous policy of PortDiscardLabelThreshold has changed the number of candidates");
+		}
+		candidates.into_iter().zip(cand2.into_iter()).filter(
+			| (c1,c2) | {
+				if c1.port != c2.port || c1.virtual_channel != c2.virtual_channel
+				{
+					panic!("The previous policy of PortDiscardLabelThreshold has changed the order of the candidates");
+				}
+				if self.below
+				{
+					c2.label < self.threshold
+				} else {
+					c2.label > self.threshold
+				}
+			}
+		).map(
+			| (c1,_c2) | {
+				c1
+			}
+		).collect::<Vec<_>>()
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		false
+	}
+
+}
+
+impl PortDiscardLabelThreshold
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> PortDiscardLabelThreshold
+	{
+		let mut previous_policy=None;
+		let mut threshold=None;
+		let mut below = true;
+		match_object_panic!(arg.cv,"PortDiscardLabelThreshold",value,
+			"previous_policy" => previous_policy = Some(new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg})),
+			"threshold" => threshold = Some(value.as_f64().expect("bad value for threshold") as i32),
+			"below" => below = value.as_bool().expect("bad value for below"),
+		);
+		let previous_policy=previous_policy.expect("There were no previous_policy");
+		let threshold=threshold.expect("There were no threshold");
+
+		PortDiscardLabelThreshold{
+			previous_policy,
+			threshold,
+			below,
+		}
+	}
+}
+
+
+#[derive(Debug)]
+pub struct Minimal
+{
+	policy: Box<dyn VirtualChannelPolicy>,
+}
+
+impl VirtualChannelPolicy for Minimal
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy AverageOccupancyFunction");
+		if candidates.len()==0
+		{
+			return vec![]; //Funny but true.....
+		}
+		let current_router_index = router.get_index().expect("we need routers with index");
+		if current_router_index == info.target_router_index
+		{
+			//do nothing
+			candidates
+		}
+		else
+		{
+			let distance = topology.distance(current_router_index,info.target_router_index);
+			let mut minimos = candidates.clone().into_iter().filter(
+				|candidate|{
+
+					let CandidateEgress{port,..} = candidate;
+					let (next_router, _link_class) =  topology.neighbour(current_router_index, *port);
+					let neighbour_router_index = match next_router {
+						Location::RouterPort{router_index, router_port:_} => router_index,
+						_ => panic!("We trying to go to the server when we are at distance {} greater than 0.",distance)
+					};
+					let neighbour_distance = topology.distance(neighbour_router_index,info.target_router_index);
+
+					if neighbour_distance < distance
+					{
+						true
+					}else{
+						false
+					}
+				}
+			).collect::<Vec<_>>();
+
+			let non_minimal = candidates.clone().into_iter().filter(
+				|candidate|{
+
+					let CandidateEgress{port,..} = candidate;
+					let (next_router, _link_class) =  topology.neighbour(current_router_index, *port);
+					let neighbour_router_index = match next_router {
+						Location::RouterPort{router_index, router_port:_} => router_index,
+						_ => panic!("We trying to go to the server when we are at distance {} greater than 0.",distance)
+					};
+					let neighbour_distance = topology.distance(neighbour_router_index,info.target_router_index);
+
+					if neighbour_distance >= distance
+					{
+						true
+					}else{
+						false
+					}
+				}
+			).collect::<Vec<_>>();
+
+			minimos = self.policy.filter(minimos,router,info,topology,rng);
+			minimos.extend(non_minimal);
+			minimos
+		}
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		false
+	}
+
+}
+
+impl Minimal
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> Minimal
+	{
+		let mut policy=None;
+		match_object_panic!(arg.cv,"Minimal",value,
+			"policy" => policy = Some(new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg})),
+		);
+		let policy=policy.expect("There were no policies");
+
+		Minimal {
+			policy
+		}
+	}
+}
+
+/**
+	Assigns the label the speed at which a buffer advances
+ **/
+#[derive(Debug)]
+pub struct BufferAdvanceRate{
+	default_value: f64,
+}
+
+impl VirtualChannelPolicy for BufferAdvanceRate
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		candidates.iter().map(
+			|candidate|{
+				let CandidateEgress{port, virtual_channel, estimated_remaining_hops, ..} = *candidate;
+				let new_label = if let Some(buffer_advance_rate) = router.get_rate_output_buffer(port, virtual_channel, info.current_cycle){
+					buffer_advance_rate
+				}else{
+					self.default_value
+				};
+				CandidateEgress{label: new_label as i32, port, virtual_channel, estimated_remaining_hops,..candidate.clone()}
+			}).collect::<Vec<_>>()
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		false
+	}
+
+}
+
+impl BufferAdvanceRate
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> BufferAdvanceRate
+	{
+		let mut default_value = None;
+		match_object_panic!(arg.cv,"BufferAdvanceRate",value,
+			"default_value" => default_value = Some(value.as_f64().expect("bad value for default_value")),
+		);
+		let default_value = default_value.expect("There were no default_value");
+		BufferAdvanceRate {
+			default_value
+		}
+	}
+}
+
+
 
 
 ///Select the egresses with lowest label.
@@ -2149,7 +2407,9 @@ impl VOQ
 
 
 
-///Apply a different policy to candidates with each label.
+/**
+	Set the label with the cycle the packet entered the network
+ **/
 #[derive(Debug)]
 pub struct CycleIntoNetwork
 {
@@ -2162,7 +2422,7 @@ impl VirtualChannelPolicy for CycleIntoNetwork
 		candidates.iter().map(|cand|{
 
 				let mut cand2 = cand.clone();
-				cand2.label = info.phit.packet.cycle_into_network.take() as i32;
+				cand2.label = *info.phit.packet.cycle_into_network.borrow() as i32;
 				cand2
 
 			}
@@ -2328,9 +2588,9 @@ impl NextLinkLabel
 	}
 }
 
-/*
+/**
 	Performed Hops in the Label.
- */
+ **/
 #[derive(Debug)]
 pub struct ChannelHop
 {

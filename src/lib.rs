@@ -770,6 +770,7 @@ impl<'a> Simulation<'a>
 		let mut statistics_server_percentiles: Vec<u8> = vec![];
 		let mut statistics_packet_percentiles: Vec<u8> = vec![];
 		let mut statistics_packet_definitions:Vec< (Vec<Expr>,Vec<Expr>) > = vec![];
+		let mut statistics_message_definitions:Vec< (Vec<Expr>,Vec<Expr>) > = vec![];
 		let mut temporal_defined_statistics:Vec< (Vec<Expr>, Vec<Expr>) > = vec![];
 		let mut server_queue_size = None;
 		let mut memory_report_period = None;
@@ -824,7 +825,37 @@ impl<'a> Simulation<'a>
 				}).collect(),
 				_ => panic!("bad value for statistics_packet_definitions"),
 			}
-			"temporal_defined_statistics" | "temporal_statistics_packet_definitions" => match value
+			"statistics_message_definitions" => match value
+			{
+				&ConfigurationValue::Array(ref l) => statistics_message_definitions=l.iter().map(|definition|match definition {
+					&ConfigurationValue::Array(ref dl) => {
+						if dl.len()!=2
+						{
+							panic!("Each definition of statistics_message_definitions must be composed of [keys,values]");
+						}
+						let keys = match dl[0]
+						{
+							ConfigurationValue::Array(ref lx) => lx.iter().map(|x|match x{
+								ConfigurationValue::Expression(expr) => expr.clone(),
+								_ => panic!("bad value for statistics_message_definitions"),
+								}).collect(),
+							_ => panic!("bad value for statistics_message_definitions"),
+						};
+						let values = match dl[1]
+						{
+							ConfigurationValue::Array(ref lx) => lx.iter().map(|x|match x{
+								ConfigurationValue::Expression(expr) => expr.clone(),
+								_ => panic!("bad value for statistics_message_definitions"),
+								}).collect(),
+							_ => panic!("bad value for statistics_message_definitions"),
+						};
+						(keys,values)
+					},
+					_ => panic!("bad value for statistics_message_definitions"),
+				}).collect(),
+				_ => panic!("bad value for statistics_message_definitions"),
+			}
+			"statistics_temporal_definitions" | "temporal_statistics_packet_definitions" => match value
 			{
 				&ConfigurationValue::Array(ref l) => temporal_defined_statistics=l.iter().map(|definition|match definition {
 					&ConfigurationValue::Array(ref dl) => {
@@ -942,7 +973,7 @@ impl<'a> Simulation<'a>
 		{
 			println!("WARNING: Generating traffic over {} tasks when the topology has {} servers.",num_tasks,num_servers);
 		}
-		let statistics=Statistics::new(statistics_temporal_step, statistics_server_percentiles, statistics_packet_percentiles, statistics_packet_definitions, temporal_defined_statistics, topology.as_ref());
+		let statistics=Statistics::new(statistics_temporal_step, statistics_server_percentiles, statistics_packet_percentiles, statistics_packet_definitions, statistics_message_definitions, temporal_defined_statistics, topology.as_ref());
 		Simulation{
 			configuration: cv.clone(),
 			seed,
@@ -1531,7 +1562,28 @@ impl<'a> Simulation<'a>
 			}
 			result_content.push( (String::from("packet_defined_statistics"),ConfigurationValue::Array(pds_content)) );
 		}
-
+		if !self.statistics.message_defined_statistics_measurement.is_empty()
+		{
+			let mut mds_content=vec![];
+			for definition_measurement in self.statistics.message_defined_statistics_measurement.iter()
+			{
+				let mut dm_list = vec![];
+				for (key,val,count) in definition_measurement
+				{
+					let fcount = *count as f32;
+					//One average for each value field
+					let averages = ConfigurationValue::Array( val.iter().map(|v|ConfigurationValue::Number(f64::from(v/fcount))).collect() );
+					let dm_content: Vec<(String,ConfigurationValue)> = vec![
+						(String::from("key"),ConfigurationValue::Array(key.to_vec())),
+						(String::from("average"),averages),
+						(String::from("count"),ConfigurationValue::Number(*count as f64)),
+					];
+					dm_list.push( ConfigurationValue::Object(String::from("MessageBin"),dm_content) );
+				}
+				mds_content.push(ConfigurationValue::Array(dm_list));
+			}
+			result_content.push( (String::from("message_defined_statistics"),ConfigurationValue::Array(mds_content)) );
+		}
 		if !self.statistics.temporal_defined_statistics_measurement.is_empty() && !self.statistics.temporal_defined_statistics_definitions.is_empty()
 		{
 			let temporal_measurement = self.shared.network.get_temporal_statistics_servers_expr(&self.statistics.temporal_defined_statistics_definitions);

@@ -13,10 +13,10 @@ Implementation of basic routing algorithms.
 use std::cell::RefCell;
 use ::rand::{rngs::StdRng,Rng};
 
-use crate::match_object_panic;
+use crate::{match_object_panic};
 use crate::config_parser::ConfigurationValue;
 use crate::routing::prelude::*;
-use crate::topology::{Topology,Location};
+use crate::topology::{Topology, Location};
 use crate::matrix::Matrix;
 use crate::pattern::prelude::*;
 
@@ -98,6 +98,7 @@ See Valiant, L. G. (1982). A scheme for fast parallel communication. SIAM journa
 Valiant{
 	first: Shortest,
 	second: Shortest,
+	use_min_b: false, //inject minimal packets always in the first VC
 	legend_name: "Using Valiant scheme, shortest to intermediate and shortest to destination",
 	//selection_exclude_indirect_routers: false,//optional parameter
 	//first_reserved_virtual_channels: [0],//optional parameter, defaults to empty. Reserves some VCs to be used only in the first stage
@@ -119,8 +120,8 @@ pub struct Valiant
 	first_reserved_virtual_channels: Vec<usize>,
 	second_reserved_virtual_channels: Vec<usize>,
 	///For using minA, minB or MinBOTH
-	min_src_first:bool,
-	min_target_first:bool,
+	min_src_first:bool, //true means that a packet is injected in the first set of VC if if the source is the intermediate node
+	min_target_first:bool, //true means that a packet is injected in the first set of VC if if the target is the intermediate node
 	/// A pattern on the routers such that when reaching a router `x` with `intermediate_bypass(x)==intermediate_bypass(Valiant_choice)` the first stage is terminated.
 	/// This is intended to use with projecting patterns, for example those that map a whole group to a single representative.
 	/// In such case, upon reaching that intermediate group the packet would change to the second fase, without having to reach the specific router.
