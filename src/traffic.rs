@@ -256,6 +256,7 @@ pub fn new_traffic(arg:TrafficBuilderArgument) -> Box<dyn Traffic>
 			"TrafficMap" => Box::new(TrafficMap::new(arg)),
 			"Sweep" => Box::new(Sweep::new(arg)),
 			"PeriodicBurst" => Box::new(PeriodicBurst::new(arg)),
+			"Sleep" => Box::new(Sleep::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -960,9 +961,11 @@ impl Burst
 		let mut pattern=None;
 		let mut message_size=None;
 		let mut source_selection = None;
+		let mut source_space_size = None;
 		match_object_panic!(arg.cv,"Burst",value,
 			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 			"source_selection" => source_selection=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"source_space_size" => source_space_size=Some(value.as_f64().expect("bad value for source_space_size") as usize),
 			"tasks" | "servers" => tasks=Some(value.as_f64().expect("bad value for tasks") as usize),
 			"messages_per_task" | "messages_per_server" => messages_per_task=Some(value.as_f64().expect("bad value for messages_per_task") as usize),
 			"message_size" => message_size=Some(value.as_f64().expect("bad value for message_size") as usize),
@@ -974,7 +977,8 @@ impl Burst
 		pattern.initialize(tasks, tasks, arg.topology, arg.rng);
 
 		let pending_messages = if let Some(mut source_selection) = source_selection {
-			source_selection.initialize(tasks, tasks, arg.topology, arg.rng);
+			let source_space_size = source_space_size.unwrap_or(tasks);
+			source_selection.initialize(tasks, source_space_size, arg.topology, arg.rng);
 			let mut messages = vec![0;tasks];
 			(0..tasks).for_each(|i| messages[source_selection.get_destination(i, arg.topology, arg.rng)] = messages_per_task);
 			messages
@@ -1455,6 +1459,78 @@ impl TimeSequenced
 	}
 }
 
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct Sleep
+{
+	///Number of tasks applying this traffic.
+	cycle_to_wake: Time,
+	///Number of tasks
+	tasks: usize,
+	/// Is finished
+	finished: bool,
+}
+
+impl Traffic for Sleep
+{
+	fn generate_message(&mut self, _origin:usize, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
+	{
+		return Err(TrafficError::OriginOutsideTraffic);
+	}
+	fn probability_per_cycle(&self, task:usize) -> f32
+	{
+		0.0
+	}
+	fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+	{
+		false
+	}
+	fn is_finished(&self) -> bool
+	{
+		self.finished
+	}
+
+	fn should_generate(self: &mut Sleep, _task:usize, cycle:Time, _rng: &mut StdRng) -> bool
+	{
+		if cycle >= self.cycle_to_wake as u64 {
+			self.finished = true;
+		}
+		false
+	}
+	fn task_state(&self, _task:usize, _cycle:Time) -> TaskTrafficState
+	{
+		TaskTrafficState::UnspecifiedWait
+	}
+
+
+	fn number_tasks(&self) -> usize {
+		self.tasks
+	}
+}
+
+impl Sleep
+{
+	pub fn new(arg:TrafficBuilderArgument) -> Sleep
+	{
+		let mut cycle_to_wake=None;
+		let mut tasks=None;
+
+		match_object_panic!(arg.cv,"Sleep",value,
+			"cycle_to_wake" => cycle_to_wake=Some(value.as_time().expect("bad value for cycle_to_wake")),
+			"tasks" | "servers" => tasks=Some(value.as_f64().expect("bad value for tasks") as usize),
+		);
+		let cycle_to_wake=cycle_to_wake.expect("There were no cycle_to_wake");
+		let tasks=tasks.expect("There were no tasks");
+		Sleep {
+			cycle_to_wake,
+			tasks,
+			finished: false,
+		}
+	}
+}
+
+
+
 
 /**
 Selects the traffic from a sequence depending on current cycle. This traffics is useful to make sequences of traffics that do no end by themselves.
@@ -1709,6 +1785,11 @@ impl Traffic for Sequence
 	}
 	fn should_generate(self: &mut Sequence, task:usize, cycle:Time, rng: &mut StdRng) -> bool
 	{
+		while self.traffics.len() > self.current_traffic && self.traffics[self.current_traffic].is_finished()
+		{
+			self.current_traffic += 1;
+			//self.current_traffic = (self.current_traffic + 1) % self.traffics.len();
+		}
 		if self.current_traffic>=self.traffics.len()
 		{
 			false
