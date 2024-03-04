@@ -2162,7 +2162,7 @@ impl VirtualChannelPolicy for CycleIntoNetwork
 		candidates.iter().map(|cand|{
 
 				let mut cand2 = cand.clone();
-				cand2.label = info.phit.packet.cycle_into_network.take() as i32;
+				cand2.label = *info.phit.packet.cycle_into_network.borrow() as i32;
 				cand2
 
 			}
