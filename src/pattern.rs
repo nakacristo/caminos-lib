@@ -350,6 +350,9 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"Switch" => Box::new(Switch::new(arg)),
 			"Debug" => Box::new(DebugPattern::new(arg)),
 			"DestinationSets" => Box::new(DestinationSets::new(arg)),
+			"ElementComposition" => Box::new(ElementComposition::new(arg)),
+			"CandidatesSelection" => Box::new(CandidatesSelection::new(arg)),
+			"Sum" => Box::new(Sum::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -1139,6 +1142,69 @@ impl Composition
 }
 
 
+/**
+
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct Sum
+{
+	patterns: RefCell<Vec<Box<dyn Pattern>>>,
+	middle_sizes: Vec<usize>,
+	target_size: Option<usize>,
+}
+
+impl Pattern for Sum
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		for (index,pattern) in self.patterns.borrow_mut().iter_mut().enumerate()
+		{
+			let current_source = if index==0 { source_size } else { *self.middle_sizes.get(index-1).unwrap_or(&target_size) };
+			let current_target = *self.middle_sizes.get(index).unwrap_or(&target_size);
+			pattern.initialize(current_source,current_target,topology,rng);
+		}
+		self.target_size = Some(target_size);
+	}
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		let target_size = self.target_size.unwrap();
+		let mut destination=0;
+		let mut next_destination=origin;
+		for pattern in self.patterns.borrow_mut().iter_mut()
+		{
+			next_destination = pattern.get_destination(next_destination,topology,rng);
+			destination+=next_destination;
+		}
+		if destination>=target_size
+		{
+			panic!("Sum pattern overflowed the target size.")
+		}
+		destination
+	}
+}
+
+impl Sum
+{
+	fn new(arg:PatternBuilderArgument) -> Sum
+	{
+		let mut patterns=None;
+		let mut middle_sizes=None;
+		match_object_panic!(arg.cv,"Sum",value,
+			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+			"middle_sizes" => middle_sizes = Some(value.as_array().expect("bad value for middle_sizes").iter()
+				.map(|v|v.as_usize().expect("bad value for middle_sizes")).collect()),
+		);
+		let patterns=RefCell::new(patterns.expect("There were no patterns"));
+		let middle_sizes = middle_sizes.unwrap_or_else(||vec![]);
+		Sum{
+			patterns,
+			middle_sizes,
+			target_size: None,
+		}
+	}
+}
 
 ///The pattern resulting of composing a pattern with itself a number of times..
 #[derive(Quantifiable)]
@@ -2780,6 +2846,115 @@ impl Switch {
 	}
 }
 
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct ElementComposition
+{
+	///Pattern to apply.
+	pattern: Box<dyn Pattern>,
+	///Pending destinations.
+	origin_state: RefCell<Vec<usize>>,
+}
+
+impl Pattern for ElementComposition
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		if source_size!= target_size
+		{
+			panic!("ElementComposition requires source and target sets to have same size.");
+		}
+		self.pattern.initialize(source_size,target_size,_topology,_rng);
+		self.origin_state.replace((0..source_size).collect());
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		if origin >= self.origin_state.borrow().len()
+		{
+			panic!("ElementComposition: origin {} is beyond the source size {}",origin,self.origin_state.borrow().len());
+		}
+		let index = self.origin_state.borrow_mut()[origin];
+		let destination = self.pattern.get_destination(index,_topology,rng);
+		self.origin_state.borrow_mut()[origin] = destination;
+		destination
+	}
+}
+
+impl ElementComposition
+{
+	fn new(arg:PatternBuilderArgument) -> ElementComposition
+	{
+		let mut pattern = None;
+		match_object_panic!(arg.cv,"ElementComposition",value,
+			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+		);
+		let pattern = pattern.expect("There were no pattern in configuration of ElementComposition.");
+		ElementComposition{
+			pattern,
+			origin_state: RefCell::new(vec![]),
+		}
+	}
+}
+
+
+
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct CandidatesSelection
+{
+	///Pattern to apply.
+	selected: Option<Vec<usize>>,
+	///Pattern to apply.
+	pattern: Box<dyn Pattern>,
+	///Pattern destination size.
+	pattern_destination_size: usize,
+}
+
+impl Pattern for CandidatesSelection
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		if target_size != 1
+		{
+			panic!("CandidatesSelection requires target size to be 1.");
+		}
+		self.pattern.initialize(source_size, self.pattern_destination_size, _topology, _rng);
+		let mut selection = vec![0;source_size];
+		for i in 0..source_size
+		{
+			selection[self.pattern.get_destination(i,_topology,_rng)] = 1;
+		}
+		self.selected = Some(selection);
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		if origin >= self.selected.as_ref().unwrap().len()
+		{
+			panic!("CandidatesSelection: origin {} is beyond the source size {}",origin,self.selected.as_ref().unwrap().len());
+		}
+		self.selected.as_ref().unwrap()[origin]
+	}
+}
+
+impl CandidatesSelection
+{
+	fn new(arg:PatternBuilderArgument) -> CandidatesSelection
+	{
+		let mut pattern = None;
+		let mut pattern_destination_size = None;
+		match_object_panic!(arg.cv,"CandidatesSelection",value,
+			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+			"pattern_destination_size" => pattern_destination_size = Some(value.as_usize().expect("bad value for pattern_destination_size")),
+		);
+		let pattern = pattern.expect("There were no pattern in configuration of CandidatesSelection.");
+		let pattern_destination_size = pattern_destination_size.expect("There were no pattern_destination_size in configuration of CandidatesSelection.");
+		CandidatesSelection{
+			selected: None,
+			pattern,
+			pattern_destination_size,
+		}
+	}
+}
 /**
 A transparent meta-pattern to help debug other [Pattern].
 
