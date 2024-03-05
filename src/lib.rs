@@ -824,7 +824,7 @@ impl<'a> Simulation<'a>
 				}).collect(),
 				_ => panic!("bad value for statistics_packet_definitions"),
 			}
-			"temporal_defined_statistics" | "temporal_statistics_packet_definitions" => match value
+			"statistics_temporal_definitions" | "temporal_statistics_packet_definitions" => match value
 			{
 				&ConfigurationValue::Array(ref l) => temporal_defined_statistics=l.iter().map(|definition|match definition {
 					&ConfigurationValue::Array(ref dl) => {

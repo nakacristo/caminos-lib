@@ -1477,11 +1477,11 @@ impl Traffic for Sleep
 	{
 		return Err(TrafficError::OriginOutsideTraffic);
 	}
-	fn probability_per_cycle(&self, task:usize) -> f32
+	fn probability_per_cycle(&self, _task:usize) -> f32
 	{
 		0.0
 	}
-	fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+	fn try_consume(&mut self, _task:usize, _message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
 	{
 		false
 	}
