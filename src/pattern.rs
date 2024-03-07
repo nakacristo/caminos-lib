@@ -3044,7 +3044,7 @@ impl Pattern for CandidatesSelection
 		}
 		self.selected = Some(selection);
 	}
-	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
 		if origin >= self.selected.as_ref().unwrap().len()
 		{

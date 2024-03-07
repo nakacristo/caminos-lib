@@ -930,7 +930,6 @@ fn create_plots(description: &ConfigurationValue, environment:&mut OutputEnviron
 					}
 				};
 			}
-			let div = selection_map.len();
 			for (key,indices) in selection_map
 			{
 				//let collection : Vec<f64> = averaged[record_index..collection_end].iter().map(|r|r.ordinate.0.unwrap() as f64).collect();

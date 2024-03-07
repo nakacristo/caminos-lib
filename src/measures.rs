@@ -33,7 +33,6 @@ use std::convert::TryInto;
 
 use crate::{Quantifiable,Packet,Phit,Network,Topology,ConfigurationValue,Expr,Time};
 use crate::config;
-use crate::traffic::SubRangeTraffic;
 
 #[derive(Clone,Quantifiable)]
 pub struct ServerStatistics
@@ -198,19 +197,19 @@ impl TrafficStatistics
 			sub_traffic_statistics,
 		}
 	}
-	fn reset(&mut self, next_cycle: Time)
-	{
-		self.current_measurement= TrafficMeasurement::default();
-		self.current_measurement.begin_cycle=next_cycle;
-	}
+	// fn reset(&mut self, next_cycle: Time)
+	// {
+	// 	self.current_measurement= TrafficMeasurement::default();
+	// 	self.current_measurement.begin_cycle=next_cycle;
+	// }
 
 	/// Called when a task recieves a message.
 	pub fn track_consumed_message(&mut self, cycle: Time, delay:Time, size: usize, subtraffic: Option<usize>)
 	{
-		if delay < 0
-		{
-			panic!("negative delay");
-		}
+		// if delay < 0
+		// {
+		// 	panic!("negative delay");
+		// }
 
 		self.cycle_last_consumed_message = cycle;
 		self.total_consumed_messages+=1;

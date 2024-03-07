@@ -1262,7 +1262,7 @@ impl TrafficCredit
 		initial_credits.initialize(tasks, tasks, arg.topology, arg.rng);
 		let pending_messages = vec![0;tasks];
 
-		let mut credits = (0..tasks).map(|i| initial_credits.get_destination(i, arg.topology, arg.rng)).collect::<Vec<usize>>();
+		let credits = (0..tasks).map(|i| initial_credits.get_destination(i, arg.topology, arg.rng)).collect::<Vec<usize>>();
 
 		TrafficCredit{
 			tasks,
