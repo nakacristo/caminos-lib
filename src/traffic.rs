@@ -258,6 +258,7 @@ pub fn new_traffic(arg:TrafficBuilderArgument) -> Box<dyn Traffic>
 			"PeriodicBurst" => Box::new(PeriodicBurst::new(arg)),
 			"Sleep" => Box::new(Sleep::new(arg)),
 			"TrafficCredit" => Box::new(TrafficCredit::new(arg)),
+			"Messages" => Box::new(TrafficMessages::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -999,6 +1000,110 @@ impl Burst
 
 /**
 ```ignore
+TrafficMessages{
+	
+}
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct TrafficMessages
+{
+	///Number of tasks applying this traffic.
+	tasks: usize,
+	///Traffic
+	traffic: Box<dyn Traffic>,
+	///The number of messages to send.
+	num_messages: usize,
+	///Total sent
+	total_sent: usize,
+	///Total consumed
+	total_consumed: usize,
+}
+
+impl Traffic for TrafficMessages
+{
+	fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
+	{
+		let message = self.traffic.generate_message(origin,cycle,topology,rng);
+		if !message.is_err(){
+			self.total_sent += 1;
+		}
+		message
+	}
+	fn probability_per_cycle(&self, task:usize) -> f32
+	{
+		if self.num_messages > self.total_sent {
+
+			self.traffic.probability_per_cycle(task)
+
+		} else {
+
+			0.0
+		}
+	}
+
+	fn should_generate(self: &mut TrafficMessages, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	{
+		self.traffic.should_generate(task, cycle, rng) && self.num_messages > self.total_sent
+	}
+
+	fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+	{
+		self.total_consumed += 1;
+		self.traffic.try_consume(task, message, cycle, topology, rng)
+	}
+	fn is_finished(&self) -> bool
+	{
+		// if self.num_messages <= 0 {
+		// 	panic!("TrafficCredit is finished but it should not be.");
+		// }
+		self.num_messages <= self.total_sent && self.total_sent == self.total_consumed
+	}
+	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
+	{
+		if self.num_messages > self.total_sent {
+			self.traffic.task_state(task, cycle)
+		} else {
+			//We do not know whether someone is sending us data.
+			//if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
+			// Sometimes it could be Finished, but it is not worth computing...
+			TaskTrafficState::FinishedGenerating
+		}
+	}
+
+	fn number_tasks(&self) -> usize {
+		self.tasks
+	}
+}
+
+impl TrafficMessages
+{
+	pub fn new(mut arg:TrafficBuilderArgument) -> TrafficMessages
+	{
+		let mut tasks=None;
+		let mut traffic = None;
+		let mut num_messages = None;
+		match_object_panic!(arg.cv,"Messages",value,
+			"traffic" => traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,rng:&mut arg.rng,..arg})),
+			"tasks" | "servers" => tasks=Some(value.as_usize().expect("bad value for tasks")),
+			"num_messages" => num_messages=Some(value.as_usize().expect("bad value for num_messages")),
+		);
+		let tasks=tasks.expect("There were no tasks");
+		let num_messages=num_messages.expect("There were no num_messages");
+		let traffic=traffic.expect("There were no traffic");
+		TrafficMessages{
+			tasks,
+			traffic,
+			num_messages,
+			total_sent: 0,
+			total_consumed: 0,
+		}
+	}
+}
+
+/**
+```ignore
 {
 
 }
@@ -1011,7 +1116,7 @@ pub struct TrafficCredit
 	///Number of tasks applying this traffic.
 	tasks: usize,
 	///The pattern of the communication.
-	com_pattern: Box<dyn Pattern>,
+	pattern: Box<dyn Pattern>,
 	///Credits needed to activate the transition
 	credits_to_activate:usize,
 	///Credit count per origin
@@ -1024,10 +1129,6 @@ pub struct TrafficCredit
 	messages_per_transition:usize,
 	///The number of messages each task has pending to sent.
 	pending_messages: Vec<usize>,
-	///Total messages to send in the traffic
-	total_messages: usize,
-	///Total message count
-	total_message_count: usize,
 	///Set of generated messages.
 	generated_messages: BTreeSet<*const Message>,
 }
@@ -1038,15 +1139,15 @@ impl Traffic for TrafficCredit
 	{
 		if origin>=self.tasks
 		{
-			//panic!("origin {} does not belong to the traffic",origin);
-			return Err(TrafficError::OriginOutsideTraffic);
+			panic!("origin {} does not belong to the traffic",origin);
+			// return Err(TrafficError::OriginOutsideTraffic);
 		}
 		if self.pending_messages[origin] == 0
 		{
 			panic!("origin {} has no pending messages",origin);
 		}
 		self.pending_messages[origin]-=1;
-		let destination=self.com_pattern.get_destination(origin,topology,rng);
+		let destination=self.pattern.get_destination(origin, topology, rng);
 		if origin==destination
 		{
 			return Err(TrafficError::SelfMessage);
@@ -1074,14 +1175,12 @@ impl Traffic for TrafficCredit
 
 	fn should_generate(self: &mut TrafficCredit, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
 	{
-		if self.credits[task] >= self.credits_to_activate && self.total_messages != 0
+		while self.credits[task] >= self.credits_to_activate
 		{
-			self.total_messages -= 1; //VERY IMPORTANT: This is the only place where total_messages is decremented.
 			self.pending_messages[task] += self.messages_per_transition;
 			self.credits[task] -= self.credits_to_activate;
-			return true;
 		}
-		false
+		self.pending_messages[task] > 0
 	}
 
 	fn try_consume(&mut self, task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
@@ -1092,13 +1191,20 @@ impl Traffic for TrafficCredit
 	}
 	fn is_finished(&self) -> bool
 	{
-		if !self.generated_messages.is_empty() || self.total_messages != 0
+		if !self.generated_messages.is_empty() //messages traveling through the network
 		{
 			return false;
 		}
-		for &pm in self.pending_messages.iter()
+
+		if self.pending_messages.iter().sum::<usize>() > 0 //messages waiting to be sent
 		{
-			if pm>0
+			return false;
+		}
+
+		//if there is a task with enough credits to activate, then it is not finished
+		for &c in self.credits.iter()
+		{
+			if c >= self.credits_to_activate
 			{
 				return false;
 			}
@@ -1127,35 +1233,32 @@ impl TrafficCredit
 	pub fn new(arg:TrafficBuilderArgument) -> TrafficCredit
 	{
 		let mut tasks=None;
-		let mut com_pattern=None;
+		let mut pattern =None;
 		let mut credits_to_activate=None;
 		let mut credits_per_received_message=None;
 		let mut message_size=None;
 		let mut messages_per_transition=None;
-		let mut total_messages=None;
 		let mut initial_credits=None;
 		
 		match_object_panic!(arg.cv,"TrafficCredit",value,
-			"com_pattern" => com_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 			"tasks" | "servers" => tasks=Some(value.as_usize().expect("bad value for tasks")),
 			"credits_to_activate" => credits_to_activate=Some(value.as_usize().expect("bad value for credits_to_activate")),
 			"credits_per_received_message" => credits_per_received_message=Some(value.as_usize().expect("bad value for credits_per_received_message")),
 			"message_size" => message_size=Some(value.as_usize().expect("bad value for message_size") ),
 			"messages_per_transition" => messages_per_transition=Some(value.as_usize().expect("bad value for messages_per_transition")),
-			"total_messages" => total_messages=Some(value.as_usize().expect("bad value for total_messages")),
 			"initial_credits" => initial_credits=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 		);
 		
 		let tasks=tasks.expect("There were no tasks");
-		let mut com_pattern =com_pattern.expect("There were no com_pattern");
+		let mut pattern = pattern.expect("There were no pattern");
 		let credits_to_activate=credits_to_activate.expect("There were no credits_to_activate");
 		let credits_per_received_message=credits_per_received_message.expect("There were no credits_per_received_message");
 		let message_size=message_size.expect("There were no message_size");
 		let messages_per_transition=messages_per_transition.expect("There were no messages_per_transition");
-		let total_messages=total_messages.expect("There were no total_messages");
 		let mut initial_credits=initial_credits.expect("There were no initial_credits");
 
-		com_pattern.initialize(tasks, tasks, arg.topology, arg.rng);
+		pattern.initialize(tasks, tasks, arg.topology, arg.rng);
 		initial_credits.initialize(tasks, tasks, arg.topology, arg.rng);
 		let pending_messages = vec![0;tasks];
 
@@ -1163,15 +1266,13 @@ impl TrafficCredit
 
 		TrafficCredit{
 			tasks,
-			com_pattern,
+			pattern,
 			credits_to_activate,
 			credits,
 			credits_per_received_message,
 			message_size,
 			messages_per_transition,
 			pending_messages,
-			total_messages,
-			total_message_count: 0,
 			generated_messages: BTreeSet::new(),
 		}
 	}
