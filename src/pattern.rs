@@ -353,6 +353,8 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"ElementComposition" => Box::new(ElementComposition::new(arg)),
 			"CandidatesSelection" => Box::new(CandidatesSelection::new(arg)),
 			"Sum" => Box::new(Sum::new(arg)),
+			"RoundRobin" => Box::new(RoundRobin::new(arg)),
+			"RecursiveDistanceHalving" => Box::new(RecursiveDistanceHalving::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -1160,9 +1162,9 @@ impl Pattern for Sum
 	{
 		for (index,pattern) in self.patterns.borrow_mut().iter_mut().enumerate()
 		{
-			let current_source = if index==0 { source_size } else { *self.middle_sizes.get(index-1).unwrap_or(&target_size) };
+			// let current_source = if index==0 { source_size } else { *self.middle_sizes.get(index-1).unwrap_or(&target_size) };
 			let current_target = *self.middle_sizes.get(index).unwrap_or(&target_size);
-			pattern.initialize(current_source,current_target,topology,rng);
+			pattern.initialize(source_size,current_target,topology,rng);
 		}
 		self.target_size = Some(target_size);
 	}
@@ -1504,6 +1506,58 @@ impl RandomMix
 		}
 	}
 }
+
+/// Use either of several patterns, with probability proportional to a weight.
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct RoundRobin
+{
+	///The patterns in the pool to be selected.
+	patterns: Vec<Box<dyn Pattern>>,
+	/// Vec pattern origin
+	index: RefCell<Vec<usize>>,
+}
+
+impl Pattern for RoundRobin
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		if self.patterns.is_empty()
+		{
+			panic!("RoundRobin requires at least one pattern (and 2 to be sensible).");
+		}
+		for pat in self.patterns.iter_mut()
+		{
+			pat.initialize(source_size,target_size,topology,rng);
+		}
+		self.index.replace(vec![0;source_size]);
+	}
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		let mut indexes = self.index.borrow_mut();
+		let pattern_index = indexes[origin];
+		indexes[origin] = (pattern_index+1) % self.patterns.len();
+		self.patterns[pattern_index].get_destination(origin,topology,rng)
+	}
+}
+
+impl RoundRobin
+{
+	fn new(arg:PatternBuilderArgument) -> RoundRobin
+	{
+		let mut patterns=None;
+		match_object_panic!(arg.cv,"RoundRobin",value,
+			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+		);
+		let patterns=patterns.expect("There were no patterns");
+		RoundRobin{
+			patterns,
+			index: RefCell::new(Vec::new()),
+		}
+	}
+}
+
 
 ///It keeps a shuffled list, global for all sources, of destinations to which send. Once all have sent it is rebuilt and shuffled again.
 ///Independently of past requests, decisions or origin.
@@ -2896,6 +2950,70 @@ impl ElementComposition
 	}
 }
 
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct RecursiveDistanceHalving
+{
+	///Pending destinations.
+	origin_state: RefCell<Vec<usize>>,
+	///Map for the different states
+	cartesian_data: Vec<CartesianData>,
+}
+
+impl Pattern for RecursiveDistanceHalving
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		if source_size!= target_size
+		{
+			panic!("RecursiveDistanceHalving requires source and target sets to have same size.");
+		}
+		//If the source size is not a power of 2, the pattern will not work.
+		if !source_size.is_power_of_two()
+		{
+			panic!("RecursiveDistanceHalving requires source size to be a power of 2.");
+		}
+		let pow = source_size.ilog2();
+		self.origin_state = RefCell::new(vec![0;source_size]);
+		self.cartesian_data = (0..pow).map(|i| CartesianData::new(&[source_size/2_usize.pow(i), 2_usize.pow(i)]) ).collect();
+		//print the cartesian_data
+		// for i in 0..pow
+		// {
+		// 	println!("cartesian_data[{}]: {:?}",i, self.cartesian_data[i as usize].sides);
+		// }
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		if origin >= self.origin_state.borrow().len()
+		{
+			panic!("RecursiveDistanceHalving: origin {} is beyond the source size {}",origin,self.origin_state.borrow().len());
+		}
+		let index = self.origin_state.borrow()[origin];
+		if index >=self.cartesian_data.len()
+		{
+			return origin; //No more to do...
+			//panic!("RecursiveDistanceHalving: index {} is beyond the cartesian_data size {}",index,self.cartesian_data.len());
+		}
+		//print origin_state
+		// println!("origin_state: {:?}",self.origin_state.borrow());
+		self.origin_state.borrow_mut()[origin]+=1;
+		let source_coord = self.cartesian_data[index].unpack(origin);
+		let partition_size = self.cartesian_data[index].sides[0];
+		self.cartesian_data[index].pack(&[ (source_coord[0] + partition_size/2) % partition_size, source_coord[1]])
+
+	}
+}
+
+impl RecursiveDistanceHalving
+{
+	fn new(_arg:PatternBuilderArgument) -> RecursiveDistanceHalving
+	{
+		RecursiveDistanceHalving{
+			origin_state: RefCell::new(vec![]),
+			cartesian_data: vec![],
+		}
+	}
+}
 
 
 #[derive(Quantifiable)]
@@ -2914,9 +3032,9 @@ impl Pattern for CandidatesSelection
 {
 	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
-		if target_size != 1
+		if target_size != 2
 		{
-			panic!("CandidatesSelection requires target size to be 1.");
+			panic!("CandidatesSelection requires target size to be 2.");
 		}
 		self.pattern.initialize(source_size, self.pattern_destination_size, _topology, _rng);
 		let mut selection = vec![0;source_size];
