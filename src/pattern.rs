@@ -1172,10 +1172,9 @@ impl Pattern for Sum
 	{
 		let target_size = self.target_size.unwrap();
 		let mut destination=0;
-		let mut next_destination=origin;
 		for pattern in self.patterns.borrow_mut().iter_mut()
 		{
-			next_destination = pattern.get_destination(next_destination,topology,rng);
+			let next_destination = pattern.get_destination(origin,topology,rng);
 			destination+=next_destination;
 		}
 		if destination>=target_size
