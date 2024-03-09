@@ -1019,6 +1019,8 @@ pub struct TrafficMessages
 	total_sent: usize,
 	///Total consumed
 	total_consumed: usize,
+	///Restriction to the number of messages to send per task
+	messages_per_task: Option<Vec<usize>>,
 }
 
 impl Traffic for TrafficMessages
@@ -1028,10 +1030,13 @@ impl Traffic for TrafficMessages
 		let message = self.traffic.generate_message(origin,cycle,topology,rng);
 		if !message.is_err(){
 			self.total_sent += 1;
+			if let Some(task_messages) = self.messages_per_task.as_mut() {
+				task_messages[origin] -= 1;
+			}
 		}
 		message
 	}
-	fn probability_per_cycle(&self, task:usize) -> f32
+	fn probability_per_cycle(&self, task:usize) -> f32 //should i check the task?
 	{
 		if self.num_messages > self.total_sent {
 
@@ -1045,7 +1050,11 @@ impl Traffic for TrafficMessages
 
 	fn should_generate(self: &mut TrafficMessages, task:usize, cycle:Time, rng: &mut StdRng) -> bool
 	{
-		self.traffic.should_generate(task, cycle, rng) && self.num_messages > self.total_sent
+		if let Some(task_messages) = self.messages_per_task.as_ref() {
+			self.traffic.should_generate(task, cycle, rng) && task_messages[task] > 0
+		}else {
+			self.traffic.should_generate(task, cycle, rng) && self.num_messages > self.total_sent
+		}
 	}
 
 	fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
@@ -1084,20 +1093,34 @@ impl TrafficMessages
 		let mut tasks=None;
 		let mut traffic = None;
 		let mut num_messages = None;
+		let mut messages_per_task = None;
 		match_object_panic!(arg.cv,"Messages",value,
 			"traffic" => traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,rng:&mut arg.rng,..arg})),
 			"tasks" | "servers" => tasks=Some(value.as_usize().expect("bad value for tasks")),
 			"num_messages" => num_messages=Some(value.as_usize().expect("bad value for num_messages")),
+			"messages_per_task" | "messages_per_server" => messages_per_task=Some(value.as_usize().expect("bad value for messages_per_task")),
 		);
 		let tasks=tasks.expect("There were no tasks");
 		let num_messages=num_messages.expect("There were no num_messages");
 		let traffic=traffic.expect("There were no traffic");
+
+		let messages_per_task = if messages_per_task.is_some() {
+			let mpt = messages_per_task.unwrap();
+			if mpt * tasks != num_messages {
+				panic!("Messages per task and total messages are different.");
+			}
+			Some(vec![mpt;tasks])
+		} else{
+			None
+		};
+
 		TrafficMessages{
 			tasks,
 			traffic,
 			num_messages,
 			total_sent: 0,
 			total_consumed: 0,
+			messages_per_task,
 		}
 	}
 }

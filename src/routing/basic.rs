@@ -13,13 +13,12 @@ Implementation of basic routing algorithms.
 use std::cell::RefCell;
 use ::rand::{rngs::StdRng,Rng};
 
-use crate::{LinkClass, match_object_panic};
+use crate::{match_object_panic};
 use crate::config_parser::ConfigurationValue;
 use crate::routing::prelude::*;
-use crate::topology::{Topology, Location, NeighbourRouterIteratorItem};
+use crate::topology::{Topology, Location};
 use crate::matrix::Matrix;
 use crate::pattern::prelude::*;
-use crate::topology::cartesian::CartesianData;
 
 ///Use the shortest path from origin to destination
 #[derive(Debug)]
