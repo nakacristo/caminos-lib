@@ -617,7 +617,9 @@ impl Routing for PathSelector
 				let link_weight = self.class_weight[link_class];
 				//if distance>*self.distance_matrix.get(router_index,target_router)
 				let new_distance = *self.distance_matrix.get(router_index,target_router);
-				if new_distance + link_weight == distance || (current_weight + link_weight + new_distance <= self.total_max_weight_distance && selections[link_class] +1 <= self.local_max_weight_distance[link_class] as i32 && distance > self.class_weight[1])
+				if new_distance + link_weight == distance || (current_weight + link_weight + new_distance <= self.total_max_weight_distance
+					&& selections[link_class] +1 <= self.local_max_weight_distance[link_class] as i32
+					&& distance > self.class_weight[1] &&  selections[0] == 0) //This is adapted to DF
 				{
 					//if ![(102,1),(1,1),(101,100),(100,100),(101,1)].contains(&(distance,link_weight)){
 					//	println!("distance={} link_weight={}",distance,link_weight);
