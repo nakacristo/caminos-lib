@@ -609,6 +609,7 @@ impl Routing for PathSelector
 		let num_ports=topology.ports(current_router);
 		let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
 		let selections = routing_info.selections.as_ref().unwrap();
+		let current_weight = selections.iter().zip(self.class_weight.iter()).map(|(&s,&w)|s as usize * w).sum::<usize>();
 		for i in 0..num_ports
 		{
 			//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
@@ -617,7 +618,7 @@ impl Routing for PathSelector
 				let link_weight = self.class_weight[link_class];
 				//if distance>*self.distance_matrix.get(router_index,target_router)
 				let new_distance = *self.distance_matrix.get(router_index,target_router);
-				if new_distance + link_weight == distance && new_distance + link_weight <= self.total_max_weight_distance && selections[link_class] +1 <= self.local_max_weight_distance[link_class] as i32
+				if new_distance + link_weight == distance || (current_weight + link_weight + new_distance <= self.total_max_weight_distance && selections[link_class] +1 <= self.local_max_weight_distance[link_class] as i32 && distance > self.class_weight[1])
 				{
 					//if ![(102,1),(1,1),(101,100),(100,100),(101,1)].contains(&(distance,link_weight)){
 					//	println!("distance={} link_weight={}",distance,link_weight);
