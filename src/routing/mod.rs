@@ -17,6 +17,7 @@ pub mod channel_operations;
 pub mod updown;
 pub mod polarized;
 
+use crate::topology::dragonfly::PathSelector;
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::convert::TryFrom;
