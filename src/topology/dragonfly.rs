@@ -1338,6 +1338,10 @@ impl Routing for PathSelector
 			//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
 			if let (Location::RouterPort{router_index,router_port:_},link_class)=topology.neighbour(current_router,i)
 			{
+				if link_class == 0 && selections[0] != 0 && selections[1] == 0
+				{
+					continue
+				}
 				let link_weight = self.class_weight[link_class];
 				//if distance>*self.distance_matrix.get(router_index,target_router)
 				let new_distance = *self.distance_matrix.get(router_index, target_router);
@@ -1387,7 +1391,7 @@ impl Routing for PathSelector
 				if d == self.class_weight[1]
 				{
 					*self.group_matrix.get_mut(i, j) = d;
-					for j_2 in 0..self.local_matrix.get_columns()
+					for j_2 in 0..self.distance_matrix.get_columns()
 					{
 						let d_2 = *distance_matrix.get(j,j_2);
 						if d_2 == self.class_weight[0]
@@ -1398,7 +1402,10 @@ impl Routing for PathSelector
 				}
 			}
 		}
-
+		//print the global matrix and distance matrix
+		// println!("Distance matrix: {:?}",self.distance_matrix);
+		// println!("Local matrix: {:?}",self.local_matrix);
+		// println!("Group matrix: {:?}",self.group_matrix);
 	}
 
 	fn initialize_routing_info(&self, routing_info: &RefCell<RoutingInfo>, _topology: &dyn Topology, _current_router: usize, _target_touter: usize, _target_server: Option<usize>, _rng: &mut StdRng) {
