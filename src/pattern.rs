@@ -1145,7 +1145,9 @@ impl Composition
 
 
 /**
-
+ For a source, it sums the result of applying several patterns.
+ For instance, the destination of a server a would be: dest(a) = p1(a) + p2(a) + p3(a).
+ middle_sizes indicates the size of the intermediate patters.
  **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -1506,7 +1508,7 @@ impl RandomMix
 	}
 }
 
-/// Use either of several patterns, with probability proportional to a weight.
+/// Use a list of patterns in a round robin fashion, for each source.
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct RoundRobin
@@ -1693,7 +1695,13 @@ impl GroupShufflingDestinations
 
 
 
-///For each group, it keeps a shuffled list of destinations to which send.
+/**
+* For each server, it keeps a shuffled list of destinations to which send.
+*	´´´ ignore
+* 	DestinationSets{
+*		patterns: [RandomPermutation, RandomPermutation], //2 random destinations
+*	}
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct DestinationSets
@@ -2898,7 +2906,15 @@ impl Switch {
 		}
 	}
 }
-
+/**
+* For each source, it keeps a state of the last destination used. When applying the pattern, it uses the last destination as the origin for the pattern, and
+* the destination is saved for the next call to the pattern.
+* ´´´ignore
+* ElementComposition{
+* 	pattern: RandomPermutation,
+* }
+* ´´´
+ **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct ElementComposition
@@ -2948,7 +2964,10 @@ impl ElementComposition
 		}
 	}
 }
-
+/**
+* Pattern which simulates an all-gather or all-reduce in log p steps, applying the recursive doubling technique.
+* The communications represent a Hypercube.
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct RecursiveDistanceHalving
@@ -3014,7 +3033,15 @@ impl RecursiveDistanceHalving
 	}
 }
 
-
+/**
+* Boolean function which puts a 1 if the pattern contains the server, and 0 otherwise.
+* ´´´ignore
+* BooleanFunction{
+* 	pattern: Hotspots{selected_destinations: [0]}, //1 if the server is 0, 0 otherwise
+*	pattern_destination_size: 1,
+* 	}
+* ´´´
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct CandidatesSelection

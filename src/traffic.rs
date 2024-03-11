@@ -999,9 +999,15 @@ impl Burst
 }
 
 /**
+Traffic which allows to generate a specific number of messages in total following a specific traffic.
+It finishes when all the messages have been generated and consumed.
+Optionally, messages per task could be indicated to restrict all the tasks to generate the same amount of messages.
 ```ignore
 TrafficMessages{
-	
+	task:1000,
+	traffic: HomogeneousTraffic{...},
+	num_messages: 10000,
+	messages_per_task: 10, //optional
 }
 ```
  **/
@@ -1126,9 +1132,18 @@ impl TrafficMessages
 }
 
 /**
+Traffic which allow tasks to generate messages when they have enough credits.
+After generating the messages, the credits are consumed.
+A task gain credits when it consumes messages, and an initial amount of credits per task can be set.
 ```ignore
-{
-
+TrafficCredit{
+	pattern: RandomPermutation, //specify the pattern of the communication
+	tasks: 1000, //specify the number of tasks
+	credits_to_activate: 10, //specify the number of credits needed to generate messages
+	messages_per_transition: 1, //specify the number of messages each task can sent when consuming credits
+	credits_per_received_message: 1, //specify the number of credits to gain when a message is received
+	message_size: 16, //specify the size of each sent message
+	initial_credits: Hotspots{destinations: [1]}, //specify the initial amount of credits per task
 }
 ```
  **/
@@ -1304,6 +1319,7 @@ impl TrafficCredit
 
 
 /**
+* (DEPRECATED SOMEHOW, TRAFFIC CREDIT COULD BE USED INSTEAD)
 * Sweep traffic communication, defined in a n-cube. Represents the communications of a distributed dynamic programming algorithm.
 * send_to: Vec<Vec<usize>>, a vector of vectors defining the direction of the sweep
 * A server can only start sending when it has received all the messages incoming.
@@ -1766,6 +1782,9 @@ impl TimeSequenced
 	}
 }
 
+/**
+* Do nothing until the cycle_to_wake is reached, where the traffic finishes. It is useful to make a task wait for a certain time.
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Sleep
