@@ -7,6 +7,7 @@ see [`new_pattern`](fn.new_pattern.html) for documentation on the configuration 
 */
 
 use std::cell::{RefCell};
+use std::convert::TryInto;
 use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom};
 use std::fs::File;
 use std::io::{BufRead,BufReader};
@@ -355,6 +356,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"Sum" => Box::new(Sum::new(arg)),
 			"RoundRobin" => Box::new(RoundRobin::new(arg)),
 			"RecursiveDistanceHalving" => Box::new(RecursiveDistanceHalving::new(arg)),
+			"BinomialTree" => Box::new(BinomialTree::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -906,7 +908,7 @@ impl Pattern for CartesianTransform
 		}
 		if source_size!=self.cartesian_data.size
 		{
-			panic!("Sizes do not agree on CartesianTransform.");
+			panic!("In a CartesianTransform source_size({}) must be equal to cartesian size({}).",source_size,self.cartesian_data.size);
 		}
 		if let Some(ref mut patterns) = self.patterns
 		{
@@ -919,7 +921,6 @@ impl Pattern for CartesianTransform
 	}
 	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
-		use std::convert::TryInto;
 		let up_origin=self.cartesian_data.unpack(origin);
 		let up_multiplied=match self.multiplier
 		{
@@ -3032,6 +3033,108 @@ impl RecursiveDistanceHalving
 		}
 	}
 }
+
+
+/**
+* Pattern to simulate communications in a BinomialTree.
+* Going upwards could be seen as a reduction, and going downwards as a broadcast.
+**/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct BinomialTree
+{
+	///How to go through the tree.
+	upwards: bool,
+	///Tree embedded into a Hypercube
+	cartesian_data: CartesianData,
+	///State indicating the neighbour to send downwards
+	state: RefCell<Vec<usize>>,
+}
+
+impl Pattern for BinomialTree
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		if source_size!= target_size
+		{
+			panic!("BinomialTree requires source and target sets to have same size.");
+		}
+
+		if !source_size.is_power_of_two()
+		{
+			panic!("BinomialTree requires source size to be a power of 2.");
+		}
+
+		let mut tree_order = source_size.ilog2();
+
+		if source_size > 2usize.pow(tree_order)
+		{
+			tree_order +=1;
+		}
+		self.cartesian_data = CartesianData::new(&vec![2; tree_order as usize]); // Tree emdebbed into an hypercube
+		self.state = RefCell::new(vec![0; source_size]);
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		if origin >= self.cartesian_data.size
+		{
+			panic!("BinomialTree: origin {} is beyond the source size {}",origin,self.cartesian_data.size);
+		}
+		let mut source_coord = self.cartesian_data.unpack(origin);
+		let first_one_index = source_coord.iter().enumerate().find(|(_index, &value)| value == 1);
+
+		return if self.upwards
+		{
+			if origin == 0 {
+				0
+			} else {
+				let first_one_index = first_one_index.unwrap().0;
+				let state = self.state.borrow()[origin];
+				if state == 1{
+					origin
+				}else{
+					self.state.borrow_mut()[origin] = 1;
+					source_coord[first_one_index] = 0;
+					self.cartesian_data.pack(&source_coord)
+				}
+			}
+		}else{
+			let first_one_index = if origin == 0{
+					self.cartesian_data.sides.len() //log x in base 2... the number of edges in hypercube
+				} else{
+					first_one_index.unwrap().0
+				};
+			let son_index = self.state.borrow()[origin];
+
+			if first_one_index > son_index
+			{
+				self.state.borrow_mut()[origin] += 1;
+				origin + 2usize.pow(son_index as u32)
+			}else{
+				origin // no sons / no more sons to send
+			}
+		}
+	}
+}
+
+impl BinomialTree
+{
+	fn new(arg:PatternBuilderArgument) -> BinomialTree
+	{
+		let mut upwards = None;
+		match_object_panic!(arg.cv,"BinomialTree",value,
+			"upwards" => upwards = Some(value.as_bool().expect("bad value for upwards for pattern BinomialTree")),
+		);
+		let upwards = upwards.expect("There were no upwards in configuration of BinomialTree.");
+		BinomialTree{
+			upwards,
+			cartesian_data: CartesianData::new(&vec![2;2]),
+			state: RefCell::new(vec![]),
+		}
+	}
+}
+
+
 
 /**
 * Boolean function which puts a 1 if the pattern contains the server, and 0 otherwise.
