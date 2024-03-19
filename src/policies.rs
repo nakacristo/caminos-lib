@@ -313,7 +313,8 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"LabelTransform" => Box::new(LabelTransform::new(arg)),
 			"OccupancyFunction" => Box::new(OccupancyFunction::new(arg)),
 			"AverageOccupancyFunction" => Box::new(AverageOccupancyFunction::new(arg)),
-			"PortDiscard" => Box::new(PortDiscard::new(arg)),
+			"PortDiscardLabelThreshold" => Box::new(PortDiscardLabelThreshold::new(arg)),
+			"BufferAdvanceRate" => Box::new(BufferAdvanceRate::new(arg)),
 			"NegateLabel" => Box::new(NegateLabel::new(arg)),
 			"VecLabel" => Box::new(VecLabel::new(arg)),
 			"MapLabel" => Box::new(MapLabel::new(arg)),
@@ -992,112 +993,47 @@ impl AverageOccupancyFunction
 
 
 #[derive(Debug)]
-pub struct PortDiscard
+pub struct PortDiscardLabelThreshold
 {
-	///Which multiplies the label.
-	label_coefficient: i32,
-	///Which multiplies the occupancy.
-	occupancy_coefficient: i32,
-	///Which multiplies the product of label and occupancy.
-	product_coefficient: i32,
-	///Just added.
-	constant_coefficient: i32,
-	///Whether to use internal output space in the calculations instead of the counters relative to the next router.
-	///defaults to false
-	use_internal_space: bool,
-	///Whether to add the neighbour space.
-	///Defaults to true.
-	use_neighbour_space: bool,
-	///Virtual channels we are interested in.
-	virtual_channels: Vec<usize>,
-	///Whether to average the occupation of the virtual channels or add them.
-	average_virtual_channels: bool,
-	///Whether to exclude minimal port from the calculations.
-	exclude_minimal_ports: bool,
-	///A vector with link classes whose ports are excluded from the calculations.
-	exclude_link_classes: Vec<usize>,
+	///Explicit policy to apply previous to the evaluation
+	previous_policy: Box<dyn VirtualChannelPolicy>,
 	///threshold which cannot supperate
 	threshold: i32,
+	///discard if below
+	below: bool,
 }
 
-impl VirtualChannelPolicy for PortDiscard
+impl VirtualChannelPolicy for PortDiscardLabelThreshold
 {
 	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
-		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy AverageOccupancyFunction");
 		if candidates.len()==0
 		{
 			return vec![]; //Funny but true.....
 		}
-		let current_router_index = router.get_index().expect("we need routers with index");
-		if current_router_index == info.target_router_index
+		let cand2 =  self.previous_policy.filter(candidates.clone(), router, info, topology, _rng);
+		if cand2.len()!= candidates.len()
 		{
-			//do nothing
-			candidates
+			panic!("The previous policy of PortDiscardLabelThreshold has changed the number of candidates");
 		}
-		else
-		{
-			let distance = topology.distance(current_router_index,info.target_router_index);
-			let mut vec_por_occ = vec![0; topology.ports(0)];
-			for NeighbourRouterIteratorItem{link_class: neighbour_link_class,port_index: p_avg,neighbour_router:neighbour_router_index,..} in topology.neighbour_router_iter(current_router_index)
-			{
-
-				let neighbour_distance = topology.distance(neighbour_router_index,info.target_router_index);
-
-				if (self.exclude_minimal_ports && neighbour_distance < distance) || self.exclude_link_classes.contains(&neighbour_link_class)
+		candidates.into_iter().zip(cand2.into_iter()).filter(
+			| (c1,c2) | {
+				if c1.port != c2.port || c1.virtual_channel != c2.virtual_channel
 				{
-					continue;
+					panic!("The previous policy of PortDiscardLabelThreshold has changed the order of the candidates");
 				}
-
-
-				let occ= if self.use_internal_space
+				if self.below
 				{
-					let mut occupied_output_space = 0;
-					for i in 0..self.virtual_channels.len()
-					{
-						let virtual_channel_occupied_output_space=info.virtual_channel_occupied_output_space.expect("virtual_channel_occupied_output_space have not been computed for AverageOccupancyFunction");
-						occupied_output_space += virtual_channel_occupied_output_space[p_avg][self.virtual_channels[i]] as i32;
-					}
-
-					if self.average_virtual_channels
-					{
-						occupied_output_space = occupied_output_space/ self.virtual_channels.len() as i32;
-					}
-
-					occupied_output_space
-
+					c2.label < self.threshold
+				} else {
+					c2.label > self.threshold
 				}
-				else {0} + if self.use_neighbour_space
-				{
-					let mut occupied_output_space = 0;
-					let status=router.get_status_at_emisor(p_avg).expect("This router does not have transmission status");
-					for i in 0..self.virtual_channels.len()
-					{
-						let virtual_channel_occupied_output_space=router.get_maximum_credits_towards(p_avg,self.virtual_channels[i]).expect("we need routers with maximum credits") as i32
-							- status.known_available_space_for_virtual_channel(self.virtual_channels[i]).expect("remote available space is not known.") as i32;
-						occupied_output_space += virtual_channel_occupied_output_space;
-					}
-
-					if self.average_virtual_channels
-					{
-						occupied_output_space = occupied_output_space/ self.virtual_channels.len() as i32;
-
-					}
-
-					occupied_output_space
-
-				}
-				else {0};
-				vec_por_occ[p_avg] = occ;
 			}
-
-			candidates.into_iter().filter(
-				|candidate|{
-					let CandidateEgress{port,..} = candidate;
-					vec_por_occ[*port] <= self.threshold
-				}
-			).collect::<Vec<_>>()
-		}
+		).map(
+			| (c1,_c2) | {
+				c1
+			}
+		).collect::<Vec<_>>()
 	}
 
 	fn need_server_ports(&self)->bool
@@ -1117,57 +1053,25 @@ impl VirtualChannelPolicy for PortDiscard
 
 }
 
-impl PortDiscard
+impl PortDiscardLabelThreshold
 {
-	pub fn new(arg:VCPolicyBuilderArgument) -> PortDiscard
+	pub fn new(arg:VCPolicyBuilderArgument) -> PortDiscardLabelThreshold
 	{
-		let mut label_coefficient=None;
-		let mut occupancy_coefficient=None;
-		let mut product_coefficient=None;
-		let mut constant_coefficient=None;
-		let mut use_internal_space=false;
-		let mut use_neighbour_space=false;
-		let mut virtual_channels= None;
-		let mut average_virtual_channels=false;
-		let mut exclude_minimal_ports=false;
-		let mut exclude_link_classes=Vec::new();
-		let mut threshold = None;
-		//let mut only_minimal_link_class=false;
-		match_object_panic!(arg.cv,"PortDiscard",value,
-			"label_coefficient" => label_coefficient=Some(value.as_f64().expect("bad value for label_coefficient") as i32),
-			"occupancy_coefficient" => occupancy_coefficient=Some(value.as_f64().expect("bad value for occupancy_coefficient") as i32),
-			"product_coefficient" => product_coefficient=Some(value.as_f64().expect("bad value for product_coefficient") as i32),
-			"constant_coefficient" => constant_coefficient=Some(value.as_f64().expect("bad value for constant_coefficient") as i32),
-			"use_neighbour_space" => use_neighbour_space=value.as_bool().expect("bad value for use_neighbour_space"),
-			"use_internal_space" => use_internal_space=value.as_bool().expect("bad value for use_internal_space"),
-			"exclude_minimal_ports" => exclude_minimal_ports=value.as_bool().expect("bad value for exclude_minimal_ports"),
-			"virtual_channels" => virtual_channels=Some(value.as_array().expect("bad value for virtual_channels").iter()
-				.map(|v| v.as_f64().expect("bad value for virtual_channels") as usize ).collect::<Vec<_>>()),
-			"average_virtual_channels" => average_virtual_channels=value.as_bool().expect("bad value for average_virtual_channels"),
-			"exclude_link_classes" => exclude_link_classes=value.as_array().expect("bad value for exclude_link_classes").iter()
-                .map(|v| v.as_f64().expect("bad value for exclude_link_classes") as usize ).collect::<Vec<_>>(),
+		let mut previous_policy=None;
+		let mut threshold=None;
+		let mut below = true;
+		match_object_panic!(arg.cv,"PortDiscardLabelThreshold",value,
+			"previous_policy" => previous_policy = Some(new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg})),
 			"threshold" => threshold = Some(value.as_f64().expect("bad value for threshold") as i32),
-			//"only_minimal_link_class" => only_minimal_link_class=value.as_bool().expect("bad value for only_minimal_link_class"),
+			"below" => below = value.as_bool().expect("bad value for below"),
 		);
-		let label_coefficient=label_coefficient.expect("There were no multiplier");
-		let occupancy_coefficient=occupancy_coefficient.expect("There were no multiplier");
-		let product_coefficient=product_coefficient.expect("There were no multiplier");
-		let constant_coefficient=constant_coefficient.expect("There were no multiplier");
-		let virtual_channels=virtual_channels.expect("There were no virtual channels");
-		let threshold = threshold.expect("There were no threshold");
+		let previous_policy=previous_policy.expect("There were no previous_policy");
+		let threshold=threshold.expect("There were no threshold");
 
-		PortDiscard {
-			label_coefficient,
-			occupancy_coefficient,
-			product_coefficient,
-			constant_coefficient,
-			use_internal_space,
-			use_neighbour_space,
-			virtual_channels,
-			average_virtual_channels,
-			exclude_minimal_ports,
-			exclude_link_classes,
-			threshold
+		PortDiscardLabelThreshold{
+			previous_policy,
+			threshold,
+			below,
 		}
 	}
 }
@@ -1176,7 +1080,7 @@ impl PortDiscard
 #[derive(Debug)]
 pub struct Minimal
 {
-	policies: Vec<Box<dyn VirtualChannelPolicy>>,
+	policy: Box<dyn VirtualChannelPolicy>,
 }
 
 impl VirtualChannelPolicy for Minimal
@@ -1201,7 +1105,7 @@ impl VirtualChannelPolicy for Minimal
 				|candidate|{
 
 					let CandidateEgress{port,..} = candidate;
-					let (next_router, _link_class) =  topology.neighbour(current_router_index, port);
+					let (next_router, _link_class) =  topology.neighbour(current_router_index, *port);
 					let neighbour_router_index = match next_router {
 						Location::RouterPort{router_index, router_port:_} => router_index,
 						_ => panic!("We trying to go to the server when we are at distance {} greater than 0.",distance)
@@ -1217,10 +1121,29 @@ impl VirtualChannelPolicy for Minimal
 				}
 			).collect::<Vec<_>>();
 
-			for policy in self.policies.iter()
-			{
-				minimos = policy.as_ref().filter(minimos,router,info,topology,rng);
-			}
+			let non_minimal = candidates.clone().into_iter().filter(
+				|candidate|{
+
+					let CandidateEgress{port,..} = candidate;
+					let (next_router, _link_class) =  topology.neighbour(current_router_index, *port);
+					let neighbour_router_index = match next_router {
+						Location::RouterPort{router_index, router_port:_} => router_index,
+						_ => panic!("We trying to go to the server when we are at distance {} greater than 0.",distance)
+					};
+					let neighbour_distance = topology.distance(neighbour_router_index,info.target_router_index);
+
+					if neighbour_distance >= distance
+					{
+						true
+					}else{
+						false
+					}
+				}
+			).collect::<Vec<_>>();
+
+			minimos = self.policy.filter(minimos,router,info,topology,rng);
+			minimos.extend(non_minimal);
+			minimos
 		}
 	}
 
@@ -1245,13 +1168,65 @@ impl Minimal
 {
 	pub fn new(arg:VCPolicyBuilderArgument) -> Minimal
 	{
-
+		let mut policy=None;
+		match_object_panic!(arg.cv,"Minimal",value,
+			"policy" => policy = Some(new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg})),
+		);
+		let policy=policy.expect("There were no policies");
 
 		Minimal {
-
+			policy
 		}
 	}
 }
+
+#[derive(Debug)]
+pub struct BufferAdvanceRate{}
+
+impl VirtualChannelPolicy for BufferAdvanceRate
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		candidates.iter().map(
+			|candidate|{
+				let CandidateEgress{port, virtual_channel, estimated_remaining_hops, ..} = *candidate;
+				let new_label = if let Some(buffer_advance_rate) = router.get_rate_output_buffer(port, virtual_channel, info.current_cycle){
+					buffer_advance_rate
+				}else{
+					panic!("The router does not have the rate of the output buffer")
+				};
+
+				CandidateEgress{label: new_label as i32, port, virtual_channel, estimated_remaining_hops,..candidate.clone()}
+			}).collect::<Vec<_>>()
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		false
+	}
+
+}
+
+impl BufferAdvanceRate
+{
+	pub fn new(_arg:VCPolicyBuilderArgument) -> BufferAdvanceRate
+	{
+		BufferAdvanceRate {}
+	}
+}
+
+
+
 
 ///Select the egresses with lowest label.
 #[derive(Debug)]
