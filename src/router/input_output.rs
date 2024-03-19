@@ -88,6 +88,10 @@ pub struct InputOutput
 	///Without other overrides, the quotient `general_frequency_divisor/crossbar_frequency_divisor` is the internal speedup.
 	crossbar_frequency_divisor: Time,
 
+	///Metrics
+	buffer_speed_metric: Option<Vec<Vec<TimeSegmentMetric>>>,
+
+
 	//allocator:
 	///The allocator for the croosbar.
 	crossbar_allocator: Box<dyn Allocator>,
@@ -116,7 +120,15 @@ impl Router for InputOutput
 	}
 	fn acknowledge(&mut self, current_cycle:Time, port:usize, ack_message:AcknowledgeMessage) -> Vec<EventGeneration>
 	{
+		if let Some(measure) = self.buffer_speed_metric.as_mut() //To save the speed at which acks arrive...
+		{
+			let credits = if let Some(credits) = ack_message.set_available_size.as_ref() { *credits } else { 1 };
+			let vc = *ack_message.virtual_channel.as_ref().expect("ack_message should have a virtual_channel");
+			measure[port][vc].add_measure(credits as f64, current_cycle);
+		}
+
 		self.transmission_port_status[port].acknowledge(ack_message);
+
 		let mut events = vec![];
 		if let Some(event) = self.schedule(current_cycle,0) {
 			events.push(event);
@@ -152,6 +164,14 @@ impl Router for InputOutput
 	fn get_maximum_credits_towards(&self, _port:usize, _virtual_channel:usize) -> Option<usize>
 	{
 		Some(self.buffer_size)
+	}
+	fn get_rate_output_buffer(&self, port: usize, virtual_channel: usize, cycle: Time) -> Option<f64> {
+		if let Some(measure) = &self.buffer_speed_metric
+		{
+			Some(measure[port][virtual_channel].get_in_use_data(cycle))
+		}else{
+			None
+		}
 	}
 	fn get_index(&self)->Option<usize>
 	{
@@ -338,6 +358,8 @@ impl InputOutput
 		let mut crossbar_delay: Time =0;
 		let mut neglect_busy_output = false;
 		let mut crossbar_frequency_divisor = general_frequency_divisor;
+		let mut time_segment_metric_buffer_rate = None;
+
 		match_object_panic!(cv,["InputOutput","InputOutputMonocycle"],value,
 			"virtual_channels" => match value
 			{
@@ -418,6 +440,7 @@ impl InputOutput
 				&ConfigurationValue::Literal(ref s) => from_server_mechanism = Some(s.to_string()),
 				_ => panic!("bad value for from_server_mechanism"),
 			},
+			"time_segment_metric_buffer_rate" => time_segment_metric_buffer_rate = Some(value.as_usize().expect("bad value for time_segment_metric_buffer_rate")),
 			"allocator" => allocator_value=Some(value.clone()),
 			"crossbar_frequency_divisor" => crossbar_frequency_divisor = value.as_time().expect("bad value for crossbar_frequency_divisor"),
 		);
@@ -496,6 +519,15 @@ impl InputOutput
 			).collect()
 		};
 		let output_buffer_phits_traversing_crossbar = vec![ vec![ 0 ; virtual_channels ] ; input_ports ];
+
+		let buffer_speed_metric = if let Some(time_segment) = time_segment_metric_buffer_rate
+		{
+			Some(
+				(0..input_ports).map(|_|(0..virtual_channels).map(|_|TimeSegmentMetric::new(time_segment)).collect()).collect()
+			)
+		}else{
+			None
+		};
 		let r=Rc::new(RefCell::new(InputOutput{
 			self_rc: Weak::new(),
 			next_events: vec![],
@@ -524,6 +556,7 @@ impl InputOutput
 			output_arbiter: OutputArbiter::Token{port_token: vec![0;input_ports]},
 			maximum_packet_size,
 			crossbar_frequency_divisor,
+			buffer_speed_metric,
 			crossbar_allocator: allocator,
 			statistics_begin_cycle: 0,
 			statistics_output_buffer_occupation_per_vc: vec![0f64;virtual_channels],
@@ -1017,6 +1050,73 @@ impl Eventful for InputOutput
 		}
 	}
 }
+
+#[derive(Clone)]
+struct TimeMetric{
+	value: f64,
+	time: Time,
+}
+struct TimeSegmentMetric{
+	in_use_metric: TimeMetric,
+	measure_metric: TimeMetric,
+	time_segment: usize,
+}
+impl TimeSegmentMetric{
+	fn new(time_segment:usize)->TimeSegmentMetric{
+		TimeSegmentMetric{
+			in_use_metric: TimeMetric{value:0.0,time:0},
+			measure_metric: TimeMetric{value:0.0,time:0},
+			time_segment,
+		}
+	}
+	fn add_measure(&mut self, value: f64, time: Time){
+		self.check_refresh(time);
+		self.measure_metric.value += value;
+	}
+	fn get_in_use_data(&self, time: Time) ->f64{
+		if time/self.time_segment as u64 == 0{
+			return 0.0;
+		}
+		if (time/self.time_segment as u64 -1u64) == self.in_use_metric.time/self.time_segment as u64{
+			self.in_use_metric.value
+		}else if (time/self.time_segment as u64 -1u64) == self.measure_metric.time/self.time_segment as u64{
+			self.measure_metric.value
+		}else {
+			0.0
+			// panic!("No measure avaliable...")
+		}
+	}
+	fn check_refresh(&mut self, time: Time){
+		if (time/self.time_segment as u64) > (self.measure_metric.time / self.time_segment as u64){
+			self.in_use_metric = self.measure_metric.clone();
+			self.measure_metric = TimeMetric{value:0.0, time};
+		}
+	}
+
+}
+
+// impl Eventful for TimeSegmentMetric{
+// 	fn process(&mut self, simulation:&SimulationShared, _mutable:&mut SimulationMut) -> Vec<EventGeneration>
+// 	{
+// 		self.check_refresh(simulation.cycle);
+// 		vec![]
+// 	}
+// 	fn as_eventful(&self)->Weak<RefCell<dyn Eventful>>
+// 	{
+// 		Rc::downgrade(&Rc::new(RefCell::new(self)))
+// 	}
+// 	fn schedule(&mut self, current_cycle:Time, _delay:Time) -> Option<EventGeneration>
+// 	{
+// 		let step = (current_cycle/self.time_segment) * self.time_segment;
+// 		let next = step + self.time_segment;
+// 		let event = Event::Generic(self.as_eventful().upgrade().expect("missing component"));
+// 		Some(EventGeneration{
+// 			delay: next-current_cycle,
+// 			position: CyclePosition::End,
+// 			event,
+// 		})
+// 	}
+// }
 
 impl Quantifiable for InputOutput
 {
