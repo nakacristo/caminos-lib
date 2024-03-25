@@ -18,7 +18,7 @@ use crate::topology::cartesian::CartesianData;//for CartesianTransform
 use crate::topology::{Topology, Location};
 use crate::quantify::Quantifiable;
 use crate::{Plugs,match_object_panic};
-use rand::SeedableRng;
+use rand::{RngCore, SeedableRng};
 
 /// Some things most uses of the pattern module will use.
 pub mod prelude
@@ -2858,14 +2858,26 @@ Switch{
 pub struct Switch {
 	indexing: Box<dyn Pattern>,
 	patterns: Vec<Box<dyn Pattern>>,
+	seed: Option<f64>,
 }
 
 impl Pattern for Switch {
 	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		self.indexing.initialize(source_size,self.patterns.len(),topology,rng);
+
+		let mut seed_generator = if let Some(seed) = self.seed{
+			Some(StdRng::seed_from_u64(seed as u64))
+		} else {
+			None
+		};
 		for pattern in self.patterns.iter_mut() {
-			pattern.initialize(source_size,target_size,topology,rng);
+			if let Some( seed_generator) = seed_generator.as_mut(){
+				let seed = seed_generator.next_u64();
+				pattern.initialize(source_size,target_size,topology, &mut StdRng::seed_from_u64(seed));
+			}else{
+				pattern.initialize(source_size,target_size,topology, rng);
+			}
 		}
 	}
 	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
@@ -2881,12 +2893,14 @@ impl Switch {
 		let mut indexing = None;
 		let mut patterns= None;//:Option<Vec<Box<dyn Pattern>>> = None;
 		let mut expand: Option<Vec<usize>> = None;
+		let mut seed = None;
 
 		match_object_panic!(arg.cv,"Switch",value,
 			"indexing" => indexing = Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
 			"patterns" => patterns=Some( value.as_array().expect("bad value for patterns") ),
 			"expand" => expand = Some(value.as_array().expect("bad value for expand").iter()
 				.map(|v|v.as_usize().expect("bad value in expand")).collect()),
+			"seed" => seed = Some(value.as_f64().expect("bad value for seed")),
 		);
 		let indexing = indexing.expect("Missing indexing in Switch.");
 		let patterns = patterns.expect("Missing patterns in Switch.");
@@ -2904,6 +2918,7 @@ impl Switch {
 		Switch{
 			indexing,
 			patterns,
+			seed,
 		}
 	}
 }
