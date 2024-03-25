@@ -464,6 +464,13 @@ pub struct Statistics
 	///For each definition of packet statistics, we have a vector with an element for each actual value of `keys`.
 	///Each of these elements have that value of `key`, together with the averages and the count.
 	pub packet_defined_statistics_measurement: Vec< Vec< (Vec<ConfigurationValue>,Vec<f32>,usize) >>,
+	///A list of statistic definitions for message statistics.
+	/// Each definition is a tuple `(keys,values)`, that are evaluated on each message.
+	/// Messages are classified via `keys` into their bin. The number of messages in each bin is counted and the associated `values` are averaged.
+	pub message_defined_statistics_definitions: Vec< (Vec<Expr>,Vec<Expr>) >,
+	///For each definition of message statistics, we have a vector with an element for each actual value of `keys`.
+	/// Each of these elements have that value of `key`, together with the averages and the count.
+	pub message_defined_statistics_measurement: Vec< Vec< (Vec<ConfigurationValue>,Vec<f32>,usize) >>,
 	///A list of statistic definitions for server statistics, indexed by the temporal step.
 	pub temporal_defined_statistics_definitions: Vec< (Vec<Expr>, Vec<Expr>) >,
 	///For each definition of server statistics, we have a vector with an element for each actual value of `keys`.
@@ -472,9 +479,10 @@ pub struct Statistics
 
 impl Statistics
 {
-	pub fn new(statistics_temporal_step:Time, server_percentiles: Vec<u8>, packet_percentiles: Vec<u8>, packet_defined_statistics_definitions:Vec<(Vec<Expr>, Vec<Expr>)>, temporal_defined_statistics_definitions:Vec<(Vec<Expr>, Vec<Expr>)>, topology: &dyn Topology) ->Statistics
+	pub fn new(statistics_temporal_step:Time, server_percentiles: Vec<u8>, packet_percentiles: Vec<u8>, packet_defined_statistics_definitions:Vec<(Vec<Expr>, Vec<Expr>)>, message_defined_statistics_definitions:Vec<(Vec<Expr>, Vec<Expr>)>, temporal_defined_statistics_definitions:Vec<(Vec<Expr>, Vec<Expr>)>, topology: &dyn Topology) ->Statistics
 	{
 		let packet_defined_statistics_measurement = vec![vec![]; packet_defined_statistics_definitions.len() ];
+		let message_defined_statistics_measurement = vec![vec![]; message_defined_statistics_definitions.len() ];
 		let temporal_defined_statistics_measurement = vec![ vec![vec![]; temporal_defined_statistics_definitions.len() ] ];
 		Statistics{
 			//begin_cycle:0,
@@ -505,6 +513,8 @@ impl Statistics
 				],
 			packet_defined_statistics_definitions,
 			packet_defined_statistics_measurement,
+			message_defined_statistics_definitions,
+			message_defined_statistics_measurement,
 			temporal_defined_statistics_definitions,
 			temporal_defined_statistics_measurement,
 		}
@@ -665,6 +675,40 @@ impl Statistics
 		if let Some(m) = self.current_temporal_measurement(cycle)
 		{
 			m.total_message_delay+=delay;
+		}
+
+		if !self.message_defined_statistics_definitions.is_empty()
+		{
+			let context_content = vec![
+				(String::from("delay"), ConfigurationValue::Number(delay as f64)),
+			];
+			let context = ConfigurationValue::Object( String::from("message"), context_content );
+			let path = Path::new(".");
+			for (index,definition) in self.message_defined_statistics_definitions.iter().enumerate()
+			{
+				let key : Vec<ConfigurationValue> = definition.0.iter().map(|key_expr|config::evaluate( key_expr, &context, path).unwrap_or_else(|error|panic!("error building user defined statistics: {}",error))).collect();
+				let value : Vec<f32> = definition.1.iter().map(|key_expr|
+					match config::evaluate( key_expr, &context, path).unwrap_or_else(|error|panic!("error building user defined statistics: {}",error)){
+						ConfigurationValue::Number(x) => x as f32,
+						_ => 0f32,
+					}).collect();
+				//find the measurement
+				let measurement = self.message_defined_statistics_measurement[index].iter_mut().find(|m|m.0==key);
+				match measurement
+				{
+					Some(m) =>
+					{
+						for (iv,v) in m.1.iter_mut().enumerate()
+						{
+							*v += value[iv];
+						}
+						m.2+=1;
+					}
+					None => {
+						self.message_defined_statistics_measurement[index].push( (key,value,1) )
+					},
+				};
+			}
 		}
 	}
 	/// Called with a hop from router to router
