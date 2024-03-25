@@ -259,6 +259,7 @@ pub fn new_traffic(arg:TrafficBuilderArgument) -> Box<dyn Traffic>
 			"Sleep" => Box::new(Sleep::new(arg)),
 			"TrafficCredit" => Box::new(TrafficCredit::new(arg)),
 			"Messages" => Box::new(TrafficMessages::new(arg)),
+			"MessageBarrier" => Box::new(MessageBarrier::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -1130,6 +1131,111 @@ impl TrafficMessages
 		}
 	}
 }
+
+/**
+
+```ignore
+MessageBarrier{
+
+}
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct MessageBarrier
+{
+	///Number of tasks applying this traffic.
+	tasks: usize,
+	///Traffic
+	traffic: Box<dyn Traffic>,
+	///The number of messages to send per iteration
+	messages_per_task_to_wait: usize,
+	///Total sent
+	total_sent_per_task: Vec<usize>,
+	///Total sent
+	total_sent: usize,
+	///Total consumed
+	total_consumed: usize,
+}
+
+impl Traffic for MessageBarrier
+{
+	fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
+	{
+		let message = self.traffic.generate_message(origin,cycle,topology,rng);
+		if !message.is_err(){
+			self.total_sent += 1;
+			self.total_sent_per_task[origin] += 1;
+		}
+		message
+	}
+	fn probability_per_cycle(&self, task:usize) -> f32 //should i check the task?
+	{
+		if self.total_sent_per_task[task] <= self.messages_per_task_to_wait {
+
+			self.traffic.probability_per_cycle(task)
+
+		} else {
+
+			0.0
+		}
+	}
+
+	fn should_generate(self: &mut MessageBarrier, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	{
+		self.total_sent_per_task[task] < self.messages_per_task_to_wait && self.traffic.should_generate(task, cycle, rng)
+	}
+
+	fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+	{
+		self.total_consumed += 1;
+		if self.total_sent == self.total_consumed && self.messages_per_task_to_wait * self.tasks == self.total_sent {
+			self.total_sent = 0;
+			self.total_consumed = 0;
+			self.total_sent_per_task = vec![0; self.tasks];
+		}
+		self.traffic.try_consume(task, message, cycle, topology, rng)
+	}
+	fn is_finished(&self) -> bool
+	{
+		false
+	}
+	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
+	{
+		self.traffic.task_state(task, cycle)
+	}
+
+	fn number_tasks(&self) -> usize {
+		self.tasks
+	}
+}
+
+impl MessageBarrier
+{
+	pub fn new(mut arg:TrafficBuilderArgument) -> MessageBarrier
+	{
+		let mut tasks=None;
+		let mut traffic = None;
+		let mut messages_per_task_to_wait = None;
+		match_object_panic!(arg.cv,"MessageBarrier",value,
+			"traffic" => traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,rng:&mut arg.rng,..arg})),
+			"tasks" | "servers" => tasks=Some(value.as_usize().expect("bad value for tasks")),
+			"messages_per_task_to_wait" => messages_per_task_to_wait=Some(value.as_usize().expect("bad value for messages_per_task_to_wait")),
+		);
+		let tasks=tasks.expect("There were no tasks");
+		let traffic=traffic.expect("There were no traffic");
+		let messages_per_task_to_wait=messages_per_task_to_wait.expect("There were no messages_per_task_to_wait");
+		MessageBarrier {
+			tasks,
+			traffic,
+			messages_per_task_to_wait,
+			total_sent_per_task: vec![0; tasks],
+			total_sent: 0,
+			total_consumed: 0,
+		}
+	}
+}
+
 
 /**
 Traffic which allow tasks to generate messages when they have enough credits.
