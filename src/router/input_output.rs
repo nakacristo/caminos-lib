@@ -1050,12 +1050,20 @@ impl Eventful for InputOutput
 		}
 	}
 }
-
+/*
+ Value gathered at some time
+ */
 #[derive(Clone)]
 struct TimeMetric{
 	value: f64,
 	time: Time,
 }
+/*
+ Metric to be measured in a time segment
+ in_use_metric: Current value in use for router operations
+ measure_metric: Value being measured at the time
+ time_segment: Time segment to measure the metric
+ */
 struct TimeSegmentMetric{
 	in_use_metric: TimeMetric,
 	measure_metric: TimeMetric,
@@ -1083,7 +1091,6 @@ impl TimeSegmentMetric{
 			self.measure_metric.value
 		}else {
 			0.0
-			// panic!("No measure avaliable...")
 		}
 	}
 	fn check_refresh(&mut self, time: Time){
@@ -1095,28 +1102,6 @@ impl TimeSegmentMetric{
 
 }
 
-// impl Eventful for TimeSegmentMetric{
-// 	fn process(&mut self, simulation:&SimulationShared, _mutable:&mut SimulationMut) -> Vec<EventGeneration>
-// 	{
-// 		self.check_refresh(simulation.cycle);
-// 		vec![]
-// 	}
-// 	fn as_eventful(&self)->Weak<RefCell<dyn Eventful>>
-// 	{
-// 		Rc::downgrade(&Rc::new(RefCell::new(self)))
-// 	}
-// 	fn schedule(&mut self, current_cycle:Time, _delay:Time) -> Option<EventGeneration>
-// 	{
-// 		let step = (current_cycle/self.time_segment) * self.time_segment;
-// 		let next = step + self.time_segment;
-// 		let event = Event::Generic(self.as_eventful().upgrade().expect("missing component"));
-// 		Some(EventGeneration{
-// 			delay: next-current_cycle,
-// 			position: CyclePosition::End,
-// 			event,
-// 		})
-// 	}
-// }
 
 impl Quantifiable for InputOutput
 {
