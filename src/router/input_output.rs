@@ -1050,30 +1050,40 @@ impl Eventful for InputOutput
 		}
 	}
 }
+// /*
+//  Value gathered at some time
+//  */
+// #[derive(Clone)]
+// struct TimeValue {
+// 	value: f64,
+// 	time: Time,
+// }
+
 /*
- Value gathered at some time
+ Value gathered at a period of time
  */
 #[derive(Clone)]
-struct TimeMetric{
+struct TimeSegmentValue {
 	value: f64,
-	time: Time,
+	begin_time: Time,
+	end_time: Time,
 }
-/*
+/**
  Metric to be measured in a time segment
- in_use_metric: Current value in use for router operations
+ in_use_metric: Current value in use for router operations. It's gathered from the last time segment
  measure_metric: Value being measured at the time
  time_segment: Time segment to measure the metric
- */
+ **/
 struct TimeSegmentMetric{
-	in_use_metric: TimeMetric,
-	measure_metric: TimeMetric,
+	in_use_metric: TimeSegmentValue,
+	measure_metric: TimeSegmentValue,
 	time_segment: usize,
 }
 impl TimeSegmentMetric{
 	fn new(time_segment:usize)->TimeSegmentMetric{
 		TimeSegmentMetric{
-			in_use_metric: TimeMetric{value:0.0,time:0},
-			measure_metric: TimeMetric{value:0.0,time:0},
+			in_use_metric: TimeSegmentValue {value:0.0,begin_time:0, end_time:0},
+			measure_metric: TimeSegmentValue {value:0.0,begin_time:0, end_time: time_segment as Time },
 			time_segment,
 		}
 	}
@@ -1082,21 +1092,21 @@ impl TimeSegmentMetric{
 		self.measure_metric.value += value;
 	}
 	fn get_in_use_data(&self, time: Time) ->f64{
-		if time/self.time_segment as u64 == 0{
+		if self.measure_metric.begin_time == 0u64 { //No chance to gather the metric (Something better?)
 			return 0.0;
 		}
-		if (time/self.time_segment as u64 -1u64) == self.in_use_metric.time/self.time_segment as u64{
+		if time < self.in_use_metric.end_time + self.time_segment as u64{
 			self.in_use_metric.value
-		}else if (time/self.time_segment as u64 -1u64) == self.measure_metric.time/self.time_segment as u64{
+		}else if time <= self.measure_metric.end_time + self.time_segment as u64{
 			self.measure_metric.value
-		}else {
+		}else { //No data collected. (Maybe we should return error?)
 			0.0
 		}
 	}
 	fn check_refresh(&mut self, time: Time){
-		if (time/self.time_segment as u64) > (self.measure_metric.time / self.time_segment as u64){
+		if time >= self.measure_metric.end_time as u64{
 			self.in_use_metric = self.measure_metric.clone();
-			self.measure_metric = TimeMetric{value:0.0, time};
+			self.measure_metric = TimeSegmentValue{value:0.0, begin_time: time, end_time: time + self.time_segment as u64};
 		}
 	}
 
