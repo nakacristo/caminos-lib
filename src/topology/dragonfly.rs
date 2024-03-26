@@ -1282,7 +1282,7 @@ impl PAR
 * Used in Dragonflies with trunking
 */
 #[derive(Debug)]
-pub struct PathSelector
+pub struct DragonflyDirect
 {
 	///The weights used for each link class. Only relevant links between routers.
 	class_weight:Vec<usize>,
@@ -1298,7 +1298,7 @@ pub struct PathSelector
 	local_max_weight_distance:Vec<usize>,
 }
 
-impl Routing for PathSelector
+impl Routing for DragonflyDirect
 {
 	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
@@ -1428,9 +1428,9 @@ impl Routing for PathSelector
 	}
 }
 
-impl PathSelector
+impl DragonflyDirect
 {
-	pub fn new(arg: RoutingBuilderArgument) -> PathSelector
+	pub fn new(arg: RoutingBuilderArgument) -> DragonflyDirect
 	{
 		let mut class_weight=None;
 		let mut total_max_weight_distance=0;
@@ -1445,7 +1445,7 @@ impl PathSelector
 				.map(|v|v.as_f64().expect("bad value in local_max_weight_distance") as usize).collect(),
 		);
 		let class_weight=class_weight.expect("There were no class_weight");
-		PathSelector{
+		DragonflyDirect {
 			class_weight,
 			distance_matrix:Matrix::constant(0, 0, 0),
 			local_matrix:Matrix::constant(0, 0, 0),

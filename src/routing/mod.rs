@@ -17,7 +17,7 @@ pub mod channel_operations;
 pub mod updown;
 pub mod polarized;
 
-use crate::topology::dragonfly::PathSelector;
+use crate::topology::dragonfly::DragonflyDirect;
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::convert::TryFrom;
@@ -445,7 +445,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"UpDownDerouting" => Box::new(UpDownDerouting::new(arg)),
 			"MegaflyAD" => Box::new(MegaflyAD::new(arg)),
 			"AdaptiveStart" => Box::new(AdaptiveStart::new(arg)),
-			"PathSelector" => Box::new(PathSelector::new(arg)),
+			"DragonflyDirect" | "PathSelector"  => Box::new(DragonflyDirect::new(arg)),
 			_ => panic!("Unknown Routing {}",cv_name),
 		}
 	}

@@ -2668,6 +2668,14 @@ impl Valiant4Hamming
 /**
 	Non-minimal routing of Clos-AD routing from the Flattened Butterfly paper.
 	Similar to Valiant, it missroutes to a switch in a dimension with the queue more empty.
+
+```ignore
+AdaptiveValiantClos{
+	order:[0,1,2],
+	first_reserved_virtual_channels: [0],
+	second_reserved_virtual_channels: [1],
+}
+```
  **/
 #[derive(Debug)]
 pub struct AdaptiveValiantClos

@@ -216,7 +216,7 @@ impl Megafly
 			"group_size" => group_size=Some(value.as_f64().expect("bad value for group_size")as usize),
 			"number_of_groups" => number_of_groups=Some(value.as_f64().expect("bad value for number_of_groups")as usize),
 			"global_arrangement" => global_arrangement=Some(new_arrangement(value.into())),
-			"lag" => lag=value.as_usize().expect("bad value for lag"),
+			"lag" | "global_lag" => lag=value.as_usize().expect("bad value for lag"),
 		);
 		let global_ports_per_spine=global_ports_per_spine.expect("There were no global_ports_per_spine");
 		let servers_per_leaf=servers_per_leaf.expect("There were no servers_per_leaf");
