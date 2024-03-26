@@ -1097,7 +1097,7 @@ impl TimeSegmentMetric{
 		}
 		if time < self.in_use_metric.end_time + self.time_segment as u64{
 			Some(self.in_use_metric.value)
-		}else if time <= self.measure_metric.end_time + self.time_segment as u64{
+		}else if time < self.measure_metric.end_time + self.time_segment as u64{ //Didn't update the metric yet by check_refresh
 			Some(self.measure_metric.value)
 		}else { //No data collected.
 			None
@@ -1110,7 +1110,6 @@ impl TimeSegmentMetric{
 			self.measure_metric = TimeSegmentValue{value:0.0, begin_time: offset, end_time: offset + self.time_segment as u64};
 		}
 	}
-
 }
 
 
