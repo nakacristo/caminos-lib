@@ -168,9 +168,9 @@ impl Router for InputOutput
 	fn get_rate_output_buffer(&self, port: usize, virtual_channel: usize, cycle: Time) -> Option<f64> {
 		if let Some(measure) = &self.buffer_speed_metric
 		{
-			Some(measure[port][virtual_channel].get_in_use_data(cycle))
+			measure[port][virtual_channel].get_in_use_data(cycle)
 		}else{
-			None
+			panic!("No buffer_speed_metric available");
 		}
 	}
 	fn get_index(&self)->Option<usize>
@@ -1091,22 +1091,23 @@ impl TimeSegmentMetric{
 		self.check_refresh(time);
 		self.measure_metric.value += value;
 	}
-	fn get_in_use_data(&self, time: Time) ->f64{
+	fn get_in_use_data(&self, time: Time) ->Option<f64>{
 		if self.measure_metric.begin_time == 0u64 { //No chance to gather the metric (Something better?)
-			return 0.0;
+			return None;
 		}
 		if time < self.in_use_metric.end_time + self.time_segment as u64{
-			self.in_use_metric.value
+			Some(self.in_use_metric.value)
 		}else if time <= self.measure_metric.end_time + self.time_segment as u64{
-			self.measure_metric.value
-		}else { //No data collected. (Maybe we should return error?)
-			0.0
+			Some(self.measure_metric.value)
+		}else { //No data collected.
+			None
 		}
 	}
 	fn check_refresh(&mut self, time: Time){
 		if time >= self.measure_metric.end_time as u64{
+			let offset = (self.time_segment * (time as usize/self.time_segment)) as u64;
 			self.in_use_metric = self.measure_metric.clone();
-			self.measure_metric = TimeSegmentValue{value:0.0, begin_time: time, end_time: time + self.time_segment as u64};
+			self.measure_metric = TimeSegmentValue{value:0.0, begin_time: offset, end_time: offset + self.time_segment as u64};
 		}
 	}
 

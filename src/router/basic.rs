@@ -184,7 +184,7 @@ impl Router for Basic
 		Some(self.buffer_size)
 	}
 	fn get_rate_output_buffer(&self, _port: usize, _virtual_channel: usize, _cycle: Time) -> Option<f64> {
-		None
+		todo!()
 	}
 	fn get_index(&self)->Option<usize>
 	{

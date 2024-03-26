@@ -1189,8 +1189,13 @@ impl Minimal
 	}
 }
 
+/**
+	Assigns the label the speed at which a buffer advances
+ **/
 #[derive(Debug)]
-pub struct BufferAdvanceRate{}
+pub struct BufferAdvanceRate{
+	default_value: f64,
+}
 
 impl VirtualChannelPolicy for BufferAdvanceRate
 {
@@ -1202,9 +1207,8 @@ impl VirtualChannelPolicy for BufferAdvanceRate
 				let new_label = if let Some(buffer_advance_rate) = router.get_rate_output_buffer(port, virtual_channel, info.current_cycle){
 					buffer_advance_rate
 				}else{
-					panic!("The router does not have the rate of the output buffer")
+					self.default_value
 				};
-
 				CandidateEgress{label: new_label as i32, port, virtual_channel, estimated_remaining_hops,..candidate.clone()}
 			}).collect::<Vec<_>>()
 	}
@@ -1228,9 +1232,16 @@ impl VirtualChannelPolicy for BufferAdvanceRate
 
 impl BufferAdvanceRate
 {
-	pub fn new(_arg:VCPolicyBuilderArgument) -> BufferAdvanceRate
+	pub fn new(arg:VCPolicyBuilderArgument) -> BufferAdvanceRate
 	{
-		BufferAdvanceRate {}
+		let mut default_value = None;
+		match_object_panic!(arg.cv,"BufferAdvanceRate",value,
+			"default_value" => default_value = Some(value.as_f64().expect("bad value for default_value")),
+		);
+		let default_value = default_value.expect("There were no default_value");
+		BufferAdvanceRate {
+			default_value
+		}
 	}
 }
 
