@@ -1435,7 +1435,7 @@ impl DragonflyDirect
 		let mut class_weight=None;
 		let mut total_max_weight_distance=0;
 		let mut local_max_weight_distance=vec![];
-		match_object_panic!(arg.cv,"PathSelector",value,
+		match_object_panic!(arg.cv,"DragonflyDirect",value,
 			"class_weight" => class_weight = Some(value.as_array()
 				.expect("bad value for class_weight").iter()
 				.map(|v|v.as_f64().expect("bad value in class_weight") as usize).collect()),
