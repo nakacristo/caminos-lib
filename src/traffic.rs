@@ -1133,10 +1133,13 @@ impl TrafficMessages
 }
 
 /**
-
+Introduces a barrier when all the tasks has sent a number of messages.
+Tasks will generate messages again when all the messages are consumed.
 ```ignore
 MessageBarrier{
-
+	traffic: HomogeneousTraffic{...},
+	tasks: 1000,
+	messages_per_task_to_wait: 10,
 }
 ```
  **/
