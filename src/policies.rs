@@ -991,7 +991,16 @@ impl AverageOccupancyFunction
 	}
 }
 
-
+/**Discards candidates whose label is greater (lower) than a threshold after applying a policy.
+	Example configuration:
+```ignore
+PortDiscardLabelThreshold{
+	previous_policy: OccupancyFunction{...}
+	threshold: 80,
+	below: true, //discard if above threshold
+}
+ ```
+ **/
 #[derive(Debug)]
 pub struct PortDiscardLabelThreshold
 {
@@ -2387,7 +2396,9 @@ impl VOQ
 
 
 
-///Apply a different policy to candidates with each label.
+/**
+	Set the label with the cycle the packet entered the network
+ **/
 #[derive(Debug)]
 pub struct CycleIntoNetwork
 {
@@ -2566,9 +2577,9 @@ impl NextLinkLabel
 	}
 }
 
-/*
+/**
 	Performed Hops in the Label.
- */
+ **/
 #[derive(Debug)]
 pub struct ChannelHop
 {

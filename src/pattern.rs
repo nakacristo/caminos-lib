@@ -330,7 +330,6 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"Composition" => Box::new(Composition::new(arg)),
 			"Pow" => Box::new(Pow::new(arg)),
 			"CartesianFactor" => Box::new(CartesianFactor::new(arg)),
-			// "CartesianFactorDimension" => Box::new(CartesianFactorDimension::new(arg)),
 			"Hotspots" => Box::new(Hotspots::new(arg)),
 			"RandomMix" => Box::new(RandomMix::new(arg)),
 			"ConstantShuffle" =>
@@ -1311,84 +1310,7 @@ impl CartesianFactor
 	}
 }
 
-//
-// /// Interpretate the origin as with cartesian coordinates. Multiply the first coordinate with a given factor
-// /// and divide it by each dimension size until it is smaller than the dimension size of a dimension.
-// #[derive(Quantifiable)]
-// #[derive(Debug)]
-// pub struct CartesianFactorDimension
-// {
-// 	///The Cartesian interpretation.
-// 	cartesian_data: CartesianData,
-// 	///The coefficient by which it is multiplied each dimension.
-// 	factor: usize,
-// 	///As given in initialization.
-// 	target_size: usize,
-// 	///The coefficient by which it is multiplied each dimension.
-// 	factors: Vec<f64>,
-// }
-//
-// impl Pattern for CartesianFactorDimension
-// {
-// 	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
-// 	{
-// 		self.target_size = target_size;
-// 		if source_size!=self.cartesian_data.size
-// 		{
-// 			panic!("Sizes do not agree on CartesianFactorDimension.");
-// 		}
-// 	}
-// 	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
-// 	{
-// 		let mut up_origin=self.cartesian_data.unpack(origin);
-// 		let mut factor = self.factor * up_origin[0];
-//
-// 		for f in 0..up_origin.len()
-// 		{
-// 			if factor < self.cartesian_data.sides[f]
-// 			{
-// 				up_origin[f] = (up_origin[f]+ factor) % self.cartesian_data.sides[f];
-// 				break;
-// 			}
-// 			factor = factor / self.cartesian_data.sides[f];
-// 		}
-// 		let destination = self.cartesian_data.pack(&up_origin); //.iter().zip(self.factors.iter()).map(|(&coord,&f)|coord as f64 * f).sum::<f64>() as usize;
-//
-//
-// 		//println!("origin: {}, destination: {}", origin, destination);
-//         destination// % self.target_size
-// 	}
-// }
-//
-// impl CartesianFactorDimension
-// {
-// 	fn new(arg:PatternBuilderArgument) -> CartesianFactorDimension
-// 	{
-// 		let mut sides: Option<Vec<_>>=None;
-// 		let mut factor=None;
-// 		let mut factors=None;
-//
-// 		match_object_panic!(arg.cv,"CartesianFactorDimension",value,
-// 			"sides" => sides=Some(value.as_array().expect("bad value for sides").iter()
-// 				.map(|v|v.as_f64().expect("bad value in sides") as usize).collect()),
-// 			"factor" => factor=Some(value.as_f64().expect("bad value for factor") as usize),
-// 			"factors" => factors=Some(value.as_array().expect("bad value for factors").iter()
-// 				.map(|v|v.as_f64().expect("bad value in factors")).collect()),
-//
-// 		);
-// 		let sides=sides.expect("There were no sides");
-// 		let factors=factors.expect("There were no factors");
-// 		let factor=factor.expect("There were no factor");
-//
-// 		CartesianFactorDimension{
-// 			cartesian_data: CartesianData::new(&sides),
-// 			factor,
-// 			target_size:0,
-// 			factors
-// 		}
-// 	}
-// }
-//
+
 /// The destinations are selected from a given pool of servers.
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -1698,6 +1620,7 @@ impl GroupShufflingDestinations
 
 /**
 * For each server, it keeps a shuffled list of destinations to which send.
+* Select each destination with a probability.
 *	´´´ ignore
 * 	DestinationSets{
 *		patterns: [RandomPermutation, RandomPermutation], //2 random destinations
@@ -1877,7 +1800,7 @@ pub struct FixedRandom
 {
 	map: Vec<usize>,
 	allow_self: bool,
-	opt_rng: Option<StdRng>,
+	rng: Option<StdRng>,
 }
 
 impl Pattern for FixedRandom
@@ -1885,7 +1808,7 @@ impl Pattern for FixedRandom
 	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, rng: &mut StdRng)
 	{
 		self.map.reserve(source_size);
-		let rng= self.opt_rng.as_mut().unwrap_or(rng);
+		let rng= self.rng.as_mut().unwrap_or(rng);
 		for source in 0..source_size
 		{
 			// To avoid selecting self we subtract 1 from the total. If the random falls in the latter half we add it again.
@@ -1909,17 +1832,15 @@ impl FixedRandom
 	fn new(arg:PatternBuilderArgument) -> FixedRandom
 	{
 		let mut allow_self = false;
-		let mut opt_rng = None; 
+		let mut rng = None;
 		match_object_panic!(arg.cv,"FixedRandom",value,
-			"seed" => opt_rng = Some( StdRng::seed_from_u64(
-				value.as_f64().expect("bad value for seed") as u64
-			)),
+			"seed" => rng = Some( value.as_rng().expect("bad value for seed") ),
 			"allow_self" => allow_self=value.as_bool().expect("bad value for allow_self"),
 		);
 		FixedRandom{
 			map: vec![],//to be initialized
 			allow_self,
-			opt_rng,
+			rng,
 		}
 	}
 }
@@ -2852,6 +2773,23 @@ Switch{
 		],middle_sizes:[8]},
 	],
 },
+```
+
+This example assigns 10 different RandomPermutations, depending on the `y` value, mentioned earlier.
+```ignore
+Switch{
+	indexing: LinearTansform{
+		source_size: [2, 10],
+		target_size: [10],
+		matrix: [
+			[0, 1],
+		],
+	},
+	patterns: [
+		RandomPermutation,
+	],
+	expand: [10,],
+}
 ```
 **/
 #[derive(Debug,Quantifiable)]
