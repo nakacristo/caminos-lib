@@ -613,7 +613,6 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 						ConfigurationValue::Number(x) => x,
 						_ => panic!("second argument of {} evaluated to a non-number ({}:?)",function_name,second),
 					};
-					
 					let mut q = first/second;
 					if integer_division {
 						q = q.floor();
@@ -1055,6 +1054,61 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 					let container = container[start..end].to_vec();
 					Ok(ConfigurationValue::Array(container))
 				}
+				"sum_group" =>
+					{
+						let mut container = None;
+						let mut box_size = None;
+						for (key,val) in arguments
+						{
+							match key.as_ref()
+							{
+								"container" =>
+									{
+										container=Some(evaluate(val,context,path)?);
+									},
+								"box_size" =>
+								{
+									box_size=Some(evaluate(val,context,path)?);
+								},
+								_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+							}
+						}
+						let container=container.expect("container argument of at not given.");
+						let container=match container
+						{
+							ConfigurationValue::Array(a) => a,
+							_ => panic!("first argument of at evaluated to a non-array ({}:?)",container),
+						};
+						let box_size=match box_size
+						{
+							Some(ConfigurationValue::Number(x)) => x as usize,
+							_ => panic!("box_size argument of AverageBins evaluated to a non-number ({:?}:?)",box_size),
+						};
+						let n = if container.len() % box_size == 0 {
+							container.len() / box_size
+						}else {
+							container.len() / box_size + 1
+						};
+						let mut result = Vec::with_capacity(n);
+						for i in 0..n
+						{
+							let mut sum = 0f64;
+							for j in 0..box_size
+							{
+								let index = i*box_size + j;
+								if index < container.len()
+								{
+									sum += match container[index]
+									{
+										ConfigurationValue::Number(x) => x,
+										_ => 0.0,
+									}
+								}
+							}
+							result.push(ConfigurationValue::Number(sum));
+						}
+						Ok(ConfigurationValue::Array(result))
+					}
 				"sort" =>
 				{
 					let mut container = None;
@@ -1120,6 +1174,141 @@ pub fn evaluate(expr:&Expr, context:&ConfigurationValue, path:&Path) -> Result<C
 					let container = container.into_iter().map( |(_expr_value,entry)| entry ).collect();
 					Ok(ConfigurationValue::Array(container))
 				}
+				"fill_list" =>
+				{
+					let mut container = None;
+					let mut expression = None;
+					let mut binding = None;
+					let mut step = None;
+					let mut def_value = None;
+					let mut to_fill = None;
+					for (key,val) in arguments
+					{
+						match key.as_ref()
+						{
+							"container" =>
+							{
+								container=Some(evaluate(val,context,path)?);
+							},
+							"expression" =>
+							{
+								expression=Some(val);
+							},
+							"binding" =>
+							{
+								binding=Some(evaluate(val, context, path)?);
+							},
+							"to_fill" =>
+							{
+								to_fill=Some(val);
+							},
+							"step" =>
+							{
+								step=Some(evaluate(val, context, path)?);
+							},
+							"default" =>
+							{
+								def_value=Some(evaluate(val, context, path)?);
+							},
+							_ => panic!("unknown argument `{}' for function `{}'",key,function_name),
+						}
+					}
+					let container=container.expect("container argument of at not given.");
+					let mut container=match container
+					{
+						ConfigurationValue::Array(a) => a,
+						_ => panic!("first argument of at evaluated to a non-array ({}:?)",container),
+					};
+					let expression = match expression
+					{
+						None => {
+							// If there is no expression just sort the array by its value.
+							container.sort_by(|a,b|a.partial_cmp(b).unwrap());
+							return Ok(ConfigurationValue::Array(container));
+						}
+						Some(expr) => expr,
+					};
+					let mut context = context.clone();//A single whole clone.
+					let binding=match binding
+					{
+						None => "x".to_string(),
+						Some(ConfigurationValue::Literal(s)) => s,
+						Some(other) => panic!("{:?} cannot be used as binding variable",other),
+					};
+					let to_fill=to_fill.expect("to_fill argument of at not given.");
+					let _step=match step
+					{
+						None => 1,
+						Some(ConfigurationValue::Number(n)) => n as usize,
+						Some(other) => panic!("{:?} cannot be used as step",other),
+					};
+					let def_value=def_value.unwrap_or(ConfigurationValue::Number(0f64));
+
+					// When given an expression we first compute the expression for each element of the array, making tuples (expression_value,entry).
+					let mut container : Vec<( ConfigurationValue, ConfigurationValue )> = container.into_iter().map(|entry|{
+						// We clone the context only once. Then push and pop onto it to keep it the same between iterations.
+						if let ConfigurationValue::Object(_name,ref mut data) = &mut context
+						{
+							data.push( (binding.clone(), entry.clone()) );
+						}
+						//let expr_value = evaluate(expression, &context, path).unwrap_or_else(|e|panic!("error {} in sort function",e));
+						let expr_value = evaluate(to_fill, &context, path)?;
+						if let ConfigurationValue::Object(_name,ref mut data) = &mut context
+						{
+							data.pop();
+						}
+						Ok( (expr_value,entry) )
+					}).collect::<Result<_,_>>()?;
+					container.sort_by(|(a,_),(b,_)|a.partial_cmp(b).unwrap()); //Sort till here
+
+					//Now fill the missing expression values with the default value, or the expression value
+					let mut next_to_write = 0;
+					let mut result = vec![];
+					for (expr_value,entry) in container
+					{
+						if let ConfigurationValue::Object(_name,ref mut data) = &mut context
+						{
+							data.push( (binding.clone(), entry.clone()) );
+						}
+						//let expr_value = evaluate(expression, &context, path).unwrap_or_else(|e|panic!("error {} in sort function",e));
+						let actual_value = evaluate(expression, &context, path)?;
+						if let ConfigurationValue::Object(_name,ref mut data) = &mut context
+						{
+							data.pop();
+						}
+
+						let n = match expr_value
+						{
+							ConfigurationValue::Number(n) => n as usize,
+							_ => panic!("fill_list expression did not evaluate to a number"),
+						};
+						// println!("position = {}, next_to_write = {}", n, next_to_write);
+						if result.len() != next_to_write
+						{
+							println!("result.len() = {}, next_to_write = {}", result.len(), next_to_write);
+							println!("result = {:?}", result);
+							panic!();
+						}
+
+						if n > next_to_write
+						{
+							for _ in next_to_write..n //fill the space
+							{
+								result.push(def_value.clone());
+							}
+						}
+						result.push(actual_value.clone());
+
+						// check that the result len is n+1
+						 if result.len() != n+1
+						 {
+						 	println!("result.len() = {}, n = {}", result.len(), n);
+						 	panic!();
+						 }
+						next_to_write = n+1;
+					}
+					Ok(ConfigurationValue::Array(result))
+				},
 				"last" =>
 				{
 					let mut container = None;
