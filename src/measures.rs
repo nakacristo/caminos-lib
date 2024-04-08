@@ -28,8 +28,10 @@ the message was created until the cycle in its consumption was completed. Note t
 */
 
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::convert::TryInto;
+	// use itertools::Itertools;
 
 use crate::{Quantifiable,Packet,Phit,Network,Topology,ConfigurationValue,Expr,Time};
 use crate::config;
@@ -166,6 +168,8 @@ pub struct TrafficStatistics
 	pub total_message_delay: Time,
 	/// The statistics of other subtraffic.
 	pub sub_traffic_statistics: Option<Vec<TrafficStatistics>>,
+	/// Messages histogram
+	pub histogram_messages: HashMap<usize, usize>,
 }
 
 #[derive(Clone,Default,Quantifiable,Debug)]
@@ -195,6 +199,7 @@ impl TrafficStatistics
 			total_consumed_phits: 0,
 			total_message_delay: 0,
 			sub_traffic_statistics,
+			histogram_messages: HashMap::new(),
 		}
 	}
 	// fn reset(&mut self, next_cycle: Time)
@@ -222,6 +227,8 @@ impl TrafficStatistics
 			m.consumed_phits+=size;
 			m.total_message_delay+=delay;
 		}
+
+		self.histogram_messages.entry(delay as usize).and_modify(|e| *e+=1).or_insert(1);
 
 		if let Some(subtraffic) = subtraffic
 		{
@@ -272,6 +279,10 @@ impl TrafficStatistics
 
 	pub fn parse_statistics(&self) -> ConfigurationValue
 	{
+		let max = self.histogram_messages.clone().into_keys().max().unwrap();
+		let messages_histogram = (0..max+1).map(|i|
+			ConfigurationValue::Number(self.histogram_messages.get(&i).unwrap_or(&0).clone() as f64)
+		).collect();
 		let mut traffic_content = vec![
 			(String::from("total_consumed_messages"),ConfigurationValue::Number(self.total_consumed_messages as f64)),
 			(String::from("total_consumed_phits"),ConfigurationValue::Number(self.total_consumed_phits as f64)),
@@ -280,6 +291,7 @@ impl TrafficStatistics
 			(String::from("total_message_delay"),ConfigurationValue::Number((self.total_message_delay/self.total_consumed_messages as u64)as f64)),
 			(String::from("cycle_last_created_message"),ConfigurationValue::Number(self.cycle_last_created_message as f64)),
 			(String::from("cycle_last_consumed_message"),ConfigurationValue::Number(self.cycle_last_consumed_message as f64)),
+			(String::from("message_latency_histogram"),ConfigurationValue::Array(messages_histogram)),
 		];
 		if self.temporal_step > 0
 		{
