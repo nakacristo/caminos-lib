@@ -166,10 +166,14 @@ pub struct TrafficStatistics
 	pub total_consumed_phits: usize,
 	/// The total delay of all messages.
 	pub total_message_delay: Time,
+	/// The total network delay of all packets.
+	pub total_message_network_delay: Time,
 	/// The statistics of other subtraffic.
 	pub sub_traffic_statistics: Option<Vec<TrafficStatistics>>,
 	/// Messages histogram
-	pub histogram_messages: HashMap<usize, usize>,
+	pub histogram_messages_delay: HashMap<usize, usize>,
+	/// Messages histogram network delay
+	pub histogram_messages_network_delay: HashMap<usize, usize>,
 }
 
 #[derive(Clone,Default,Quantifiable,Debug)]
@@ -198,8 +202,10 @@ impl TrafficStatistics
 			total_consumed_messages: 0,
 			total_consumed_phits: 0,
 			total_message_delay: 0,
+			total_message_network_delay: 0,
 			sub_traffic_statistics,
-			histogram_messages: HashMap::new(),
+			histogram_messages_delay: HashMap::new(),
+			histogram_messages_network_delay: HashMap::new(),
 		}
 	}
 	// fn reset(&mut self, next_cycle: Time)
@@ -209,32 +215,38 @@ impl TrafficStatistics
 	// }
 
 	/// Called when a task recieves a message.
-	pub fn track_consumed_message(&mut self, cycle: Time, delay:Time, size: usize, subtraffic: Option<usize>)
+	pub fn track_consumed_message(&mut self, cycle: Time, total_delay:Time, injection_delay:Time, size: usize, subtraffic: Option<usize>)
 	{
 		// if delay < 0
 		// {
 		// 	panic!("negative delay");
 		// }
-
+		if total_delay < injection_delay
+		{
+			panic!("negative total delay");
+		}
+		let message_network_delay = total_delay - injection_delay;
 		self.cycle_last_consumed_message = cycle;
 		self.total_consumed_messages+=1;
-		self.total_message_delay+=delay;
+		self.total_message_delay+=total_delay;
+		self.total_message_network_delay+= message_network_delay;
 		self.total_consumed_phits+=size;
 
 		if let Some(m) = self.current_temporal_measurement(cycle)
 		{
 			m.consumed_messages+=1;
 			m.consumed_phits+=size;
-			m.total_message_delay+=delay;
+			m.total_message_delay+=total_delay;
 		}
 
-		self.histogram_messages.entry(delay as usize).and_modify(|e| *e+=1).or_insert(1);
+		self.histogram_messages_delay.entry(total_delay as usize).and_modify(|e| *e+=1).or_insert(1);
+		self.histogram_messages_network_delay.entry(message_network_delay as usize).and_modify(|e| *e+=1).or_insert(1);
 
 		if let Some(subtraffic) = subtraffic
 		{
 			if let Some(sub) = self.sub_traffic_statistics.as_mut()
 			{
-				sub[subtraffic].track_consumed_message(cycle,delay,size,None);
+				sub[subtraffic].track_consumed_message(cycle,total_delay, injection_delay,size,None);
 			}else {
 				panic!("Subtraffic statistics not initialized");
 			}
@@ -279,10 +291,14 @@ impl TrafficStatistics
 
 	pub fn parse_statistics(&self) -> ConfigurationValue
 	{
-		let max = self.histogram_messages.clone().into_keys().max().unwrap();
-		let messages_histogram = (0..max+1).map(|i|
-			ConfigurationValue::Number(self.histogram_messages.get(&i).unwrap_or(&0).clone() as f64)
+		let max = self.histogram_messages_delay.clone().into_keys().max().unwrap();
+		let messages_latency_histogram = (0..max+1).map(|i|
+			ConfigurationValue::Number(self.histogram_messages_delay.get(&i).unwrap_or(&0).clone() as f64)
 		).collect();
+		let messages_network_latency_histogram = (0..max+1).map(|i|
+			ConfigurationValue::Number(self.histogram_messages_network_delay.get(&i).unwrap_or(&0).clone() as f64)
+		).collect();
+
 		let mut traffic_content = vec![
 			(String::from("total_consumed_messages"),ConfigurationValue::Number(self.total_consumed_messages as f64)),
 			(String::from("total_consumed_phits"),ConfigurationValue::Number(self.total_consumed_phits as f64)),
@@ -291,7 +307,8 @@ impl TrafficStatistics
 			(String::from("total_message_delay"),ConfigurationValue::Number((self.total_message_delay/self.total_consumed_messages as u64)as f64)),
 			(String::from("cycle_last_created_message"),ConfigurationValue::Number(self.cycle_last_created_message as f64)),
 			(String::from("cycle_last_consumed_message"),ConfigurationValue::Number(self.cycle_last_consumed_message as f64)),
-			(String::from("message_latency_histogram"),ConfigurationValue::Array(messages_histogram)),
+			(String::from("message_latency_histogram"),ConfigurationValue::Array(messages_latency_histogram)),
+			(String::from("message_network_latency_histogram"),ConfigurationValue::Array(messages_network_latency_histogram)),
 		];
 		if self.temporal_step > 0
 		{

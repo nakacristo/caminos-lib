@@ -316,6 +316,7 @@ impl Traffic for Homogeneous
 			destination,
 			size:self.message_size,
 			creation_cycle: cycle,
+			cycle_into_network: RefCell::new(None),
 		});
 		self.generated_messages.insert(message.as_ref() as *const Message);
 		Ok(message)
@@ -475,8 +476,14 @@ impl Traffic for Sum
 		{
 			if traffic.try_consume(task,message.clone(),cycle,topology,rng)
 			{
-				self.statistics.track_consumed_message(cycle, cycle - message.creation_cycle, message.size, Some(index) );
-				return true;
+				let injection_time = message.cycle_into_network.borrow().unwrap();
+				if injection_time < message.creation_cycle
+				{
+					println!("The message was created at cycle {}, injected at cycle {}, and consumed at cycle {}",message.creation_cycle, injection_time, cycle);
+					panic!("Message was injected before it was created")
+				}
+				self.statistics.track_consumed_message(cycle, cycle - message.creation_cycle, injection_time - message.creation_cycle, message.size, Some(index) );
+				return true; //IF SELF MESSAGE ???
 			}
 		}
 		return false;
@@ -603,6 +610,7 @@ impl Traffic for Shifted
 			destination:inner_message.destination+self.shift,
 			size:inner_message.size,
 			creation_cycle: cycle,
+			cycle_into_network: RefCell::new(None),
 		});
 		self.generated_messages.insert(outer_message.as_ref() as *const Message,inner_message);
 		Ok(outer_message)
@@ -700,6 +708,7 @@ impl Traffic for ProductTraffic
 			destination:global_dest*self.block_size+inner_message.destination,
 			size:inner_message.size,
 			creation_cycle: cycle,
+			cycle_into_network: RefCell::new(None),
 		});
 		self.generated_messages.insert(outer_message.as_ref() as *const Message,inner_message);
 		Ok(outer_message)
@@ -897,6 +906,7 @@ impl Traffic for Burst
 			destination,
 			size:self.message_size,
 			creation_cycle: cycle,
+			cycle_into_network: RefCell::new(None),
 		});
 		self.generated_messages.insert(message.as_ref() as *const Message);
 		Ok(message)
@@ -1304,6 +1314,7 @@ impl Traffic for TrafficCredit
 			destination,
 			size:self.message_size,
 			creation_cycle: cycle,
+			cycle_into_network: RefCell::new(None),
 		});
 		self.generated_messages.insert(message.as_ref() as *const Message);
 		Ok(message)
@@ -1486,6 +1497,7 @@ impl Traffic for Sweep
 			destination,
 			size:self.message_size[max_index],
 			creation_cycle: cycle,
+			cycle_into_network: RefCell::new(None),
 		});
 		Ok(message)
 	}
@@ -2025,6 +2037,7 @@ impl Traffic for PeriodicBurst
 			destination,
 			size:self.message_size,
 			creation_cycle: cycle,
+			cycle_into_network: RefCell::new(None),
 		});
 		self.generated_messages.insert(message.as_ref() as *const Message);
 		Ok(message)
@@ -2360,6 +2373,7 @@ impl Traffic for MultimodalBurst
 			destination,
 			size:message_size,
 			creation_cycle: cycle,
+			cycle_into_network: RefCell::new(None),
 		});
 		self.generated_messages.insert(message.as_ref() as *const Message);
 		Ok(message)
@@ -2510,6 +2524,7 @@ impl Traffic for BoundedDifference
 			destination,
 			size:self.message_size,
 			creation_cycle: cycle,
+			cycle_into_network: RefCell::new(None),
 		});
 		self.generated_messages.insert(message.as_ref() as *const Message);
 		Ok(message)
@@ -2701,6 +2716,7 @@ impl Traffic for TrafficMap
 			destination: self.from_app_to_machine[app_destination], // get the destination of the message (the machine) from the base map
 			size: app_message.size,
 			creation_cycle: app_message.creation_cycle,
+			cycle_into_network: RefCell::new(None),
 		});
 		self.generated_messages.insert(message.as_ref() as *const Message, app_message);
 		Ok(message)

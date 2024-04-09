@@ -111,6 +111,8 @@ pub struct Message
 	pub size: usize,
 	///Cycle when the message was created.
 	pub creation_cycle: Time,
+	///Cycle when the first packet of the message was injected into the network.
+	pub cycle_into_network: RefCell<Option<Time>>,
 }
 
 impl Phit

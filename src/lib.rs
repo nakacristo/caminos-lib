@@ -1089,6 +1089,10 @@ impl<'a> Simulation<'a>
 								&Location::ServerPort(_server_index) => if phit.is_begin()
 								{
 									*phit.packet.cycle_into_network.borrow_mut() = self.shared.cycle;
+									if phit.packet.index == 0
+									{
+										*phit.packet.message.cycle_into_network.borrow_mut() = Some(self.shared.cycle);
+									}
 									self.shared.routing.initialize_routing_info(&phit.packet.routing_info, self.shared.network.topology.as_ref(), router, target_router, Some(target_server), &mut self.mutable.rng);
 								},
 								&Location::RouterPort{../*router_index,router_port*/} =>
@@ -1229,6 +1233,7 @@ impl<'a> Simulation<'a>
 				{
 					let message=server.stored_messages.pop_front().expect("There are not messages in queue");
 					let mut size=message.size;
+					let mut index_packet=0;
 					while size>0
 					{
 						let ps=if size>self.shared.maximum_packet_size
@@ -1245,11 +1250,11 @@ impl<'a> Simulation<'a>
 							size:ps,
 							routing_info: RefCell::new(routing_info),
 							message:message.clone(),
-							index:0,
+							index:index_packet,
 							cycle_into_network:RefCell::new(0),
 							extra: RefCell::new(None),
 						}.into_ref());
-
+						index_packet+=1;
 						size-=ps;
 					}
 				}
