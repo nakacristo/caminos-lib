@@ -170,6 +170,8 @@ pub struct TrafficStatistics
 	pub total_message_network_delay: Time,
 	/// The statistics of other subtraffic.
 	pub sub_traffic_statistics: Option<Vec<TrafficStatistics>>,
+	/// Box size histogram
+	pub box_size: usize,
 	/// Messages histogram
 	pub histogram_messages_delay: HashMap<usize, usize>,
 	/// Messages histogram network delay
@@ -189,7 +191,7 @@ pub struct TrafficMeasurement
 
 impl TrafficStatistics
 {
-	pub fn new(temporal_step:Time, sub_traffic_statistics: Option<Vec<TrafficStatistics>>)-> TrafficStatistics
+	pub fn new(temporal_step:Time, box_size: usize, sub_traffic_statistics: Option<Vec<TrafficStatistics>>)-> TrafficStatistics
 	{
 		TrafficStatistics {
 			current_measurement: TrafficMeasurement::default(),
@@ -204,6 +206,7 @@ impl TrafficStatistics
 			total_message_delay: 0,
 			total_message_network_delay: 0,
 			sub_traffic_statistics,
+			box_size,
 			histogram_messages_delay: HashMap::new(),
 			histogram_messages_network_delay: HashMap::new(),
 		}
@@ -239,8 +242,8 @@ impl TrafficStatistics
 			m.total_message_delay+=total_delay;
 		}
 
-		self.histogram_messages_delay.entry(total_delay as usize).and_modify(|e| *e+=1).or_insert(1);
-		self.histogram_messages_network_delay.entry(message_network_delay as usize).and_modify(|e| *e+=1).or_insert(1);
+		self.histogram_messages_delay.entry(total_delay as usize/self.box_size).and_modify(|e| *e+=1).or_insert(1);
+		self.histogram_messages_network_delay.entry(message_network_delay as usize/self.box_size).and_modify(|e| *e+=1).or_insert(1);
 
 		if let Some(subtraffic) = subtraffic
 		{

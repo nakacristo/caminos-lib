@@ -542,12 +542,14 @@ impl Sum
 	{
 		let mut list : Option<Vec<_>> =None;
 		let mut temporal_step = 0;
+		let mut box_size = 100;
 		let mut tasks = None;
 		match_object_panic!(arg.cv,"TrafficSum",value,
 			"list" => list = Some(value.as_array().expect("bad value for list").iter()
 				.map(|v|new_traffic(TrafficBuilderArgument{cv:v,rng:&mut arg.rng,..arg})).collect()),
 			"statistics_temporal_step" => temporal_step = value.as_f64().expect("bad value for statistics_temporal_step") as Time,
 			"tasks" => tasks = Some(value.as_f64().expect("bad value for tasks") as usize),
+			"box_size" => box_size = value.as_f64().expect("bad value for box_size") as usize,
 		);
 		let list=list.expect("There were no list");
 		assert!( !list.is_empty() , "cannot sum 0 traffics" );
@@ -556,8 +558,8 @@ impl Sum
 		{
 			assert_eq!( traffic.number_tasks(), size , "In SumTraffic all sub-traffics must involve the same number of tasks." );
 		}
-		let list_statistics = list.iter().map(|_| TrafficStatistics::new(temporal_step, None)).collect();
-		let statistics = TrafficStatistics::new(temporal_step, Some(list_statistics));
+		let list_statistics = list.iter().map(|_| TrafficStatistics::new(temporal_step, box_size, None)).collect();
+		let statistics = TrafficStatistics::new(temporal_step, box_size, Some(list_statistics));
 		let tasks = tasks.unwrap();
 		Sum{
 			list,
