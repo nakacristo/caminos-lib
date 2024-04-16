@@ -17,15 +17,16 @@ use crate::topology::{Topology,NeighbourRouterIteratorItem,Location};
 use crate::matrix::Matrix;
 use crate::pattern::Pattern;
 
-///Use shortest up/down paths from origin to destination.
-///The up/down paths are understood as provided by `Topology::up_down_distance`.
-/// parameters:
-/// * `routing_up_stage_patterns` (optional): a pattern which depends on source_server * num_servers + destination_server which is applied to the routing to select an up option in each up stage.
-/// * `port_pattern` (optional): apply a pattern to the port.
-/// * `upwards_sizes` (optional): the target size of the patterns for each up stage.
-/// * `port_pattern_source_sizes` (optional): the source size of the port_pattern for each up stage. (should be the up degree for the stage)
-/// An up port "p" is selected in stage "s" if `routing_up_stage_patterns[s].get_destination(source * num_servers + target, ..) == port_pattern[s].get_destination(p, ..)`.
 /**
+Use shortest up/down paths from origin to destination. The up/down paths are understood as provided by `Topology::up_down_distance`.
+Receives the following parameters.
+* `routing_up_stage_patterns` (optional): a pattern which depends on source_server * num_servers + destination_server which is applied to the routing to select an up option in each up stage.
+* `port_pattern` (optional): apply a pattern to the port.
+* `upwards_sizes` (optional): the target size of the patterns for each up stage.
+* `port_pattern_source_sizes` (optional): the source size of the port_pattern for each up stage. (should be the up degree for the stage)
+
+An up port "p" is selected in stage "s" if `routing_up_stage_patterns[s].get_destination(source * num_servers + target, ..) == port_pattern[s].get_destination(p, ..)`.
+
 This is d-mod-k routing in a 4-ary 2-tree:
 ```ignore
 UpDown {

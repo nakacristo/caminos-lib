@@ -685,6 +685,8 @@ Valiant4Dragonfly{
 	legend_name: "Using Valiant4Dragonfly scheme, shortest to intermediate and shortest to destination",
 }
 ```
+
+TODO: there are undocumented configuration options.
  **/
 
 

@@ -250,31 +250,22 @@ impl Routing for Valiant
 		let mut bri=routing_info.borrow_mut();
 		bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
 
-		if middle==current_router
-		{
-
-			if self.min_src_first
-			{
+		if middle==current_router {
+			if self.min_src_first {
 				bri.selections=Some(vec![target_router as i32]);
 				self.first.initialize_routing_info(&bri.meta.as_ref().unwrap()[0],topology,current_router,target_router,target_server,rng)
-			}else{
+			} else {
 				self.second.initialize_routing_info(&bri.meta.as_ref().unwrap()[1],topology,current_router,target_router,target_server,rng);
 			}
-
-		}else if middle==target_router
-		{
-			if self.min_target_first
-			{
+		} else if middle==target_router {
+			if self.min_target_first {
 				bri.selections=Some(vec![target_router as i32]);
 				self.first.initialize_routing_info(&bri.meta.as_ref().unwrap()[0],topology,current_router,middle,target_server,rng)
-
-			}else{
+			} else {
 				self.second.initialize_routing_info(&bri.meta.as_ref().unwrap()[1],topology,current_router,middle,target_server,rng);
 			}
 			//self.second.initialize_routing_info(&bri.meta.as_ref().unwrap()[1],topology,current_router,target_router,target_server,rng);
-		}
-		else
-		{
+		} else {
 			bri.selections=Some(vec![middle as i32]);
 			//FIXME: what do we do when we are not excluding indirect routers?
 			//let middle_server=

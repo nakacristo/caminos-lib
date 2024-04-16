@@ -13,7 +13,6 @@ use std::rc::Rc;
 use std::collections::{BTreeSet,BTreeMap,VecDeque};
 //use std::mem::{size_of};
 use std::fmt::Debug;
-// use std::thread::current;
 
 use ::rand::{Rng,rngs::StdRng};
 
@@ -25,7 +24,6 @@ use crate::topology::Topology;
 use crate::event::Time;
 use quantifiable_derive::Quantifiable;
 use crate::measures::TrafficStatistics;
-//the derive macro
 use crate::quantify::Quantifiable;
 use crate::topology::prelude::CartesianData;
 
@@ -75,7 +73,7 @@ pub trait Traffic : Quantifiable + Debug
 	///Should coincide with having the `Generating` state for deterministic traffics.
 	fn should_generate(&mut self, _task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
 	{
-		panic!("should_generate not implemented for this traffic");
+		panic!("should_generate not implemented for this traffic. The default implementation has been removed.");
 		// let p=self.probability_per_cycle(task);
 		// let r=rng.gen_range(0f32..1f32);
 		// r<p
@@ -254,7 +252,6 @@ pub fn new_traffic(arg:TrafficBuilderArgument) -> Box<dyn Traffic>
 			"Sequence" => Box::new(Sequence::new(arg)),
 			"BoundedDifference" => Box::new(BoundedDifference::new(arg)),
 			"TrafficMap" => Box::new(TrafficMap::new(arg)),
-			"Sweep" => Box::new(Sweep::new(arg)),
 			"PeriodicBurst" => Box::new(PeriodicBurst::new(arg)),
 			"Sleep" => Box::new(Sleep::new(arg)),
 			"TrafficCredit" => Box::new(TrafficCredit::new(arg)),
@@ -335,7 +332,7 @@ impl Traffic for Homogeneous
 		}
 	}
 
-	fn should_generate(self: &mut Homogeneous, _task: usize, _cycle: Time, _rng: &mut StdRng) -> bool {
+	fn should_generate(&mut self, _task: usize, _cycle: Time, _rng: &mut StdRng) -> bool {
 		true
 	}
 	fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
@@ -397,6 +394,8 @@ TrafficSum{
 	list: [HomogeneousTraffic{...},... ],
 }
 ```
+
+TODO: document new arguments.
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -871,6 +870,9 @@ Burst{
 	message_size: 16,
 }
 ```
+
+
+TODO: document more arguments.
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -925,7 +927,7 @@ impl Traffic for Burst
 		}
 	}
 
-	fn should_generate(self: &mut Burst, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
+	fn should_generate(&mut self, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
 	{
 		self.pending_messages[task]>0
 	}
@@ -1399,7 +1401,7 @@ impl TrafficCredit
 		let mut message_size=None;
 		let mut messages_per_transition=None;
 		let mut initial_credits=None;
-		
+
 		match_object_panic!(arg.cv,"TrafficCredit",value,
 			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 			"tasks" | "servers" => tasks=Some(value.as_usize().expect("bad value for tasks")),
@@ -1409,7 +1411,7 @@ impl TrafficCredit
 			"messages_per_transition" => messages_per_transition=Some(value.as_usize().expect("bad value for messages_per_transition")),
 			"initial_credits" => initial_credits=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 		);
-		
+
 		let tasks=tasks.expect("There were no tasks");
 		let mut pattern = pattern.expect("There were no pattern");
 		let credits_to_activate=credits_to_activate.expect("There were no credits_to_activate");
@@ -1448,211 +1450,6 @@ impl TrafficCredit
 * There is no warp around in the edges of the cube.
 * Usually, server 0 starts sending first, but it is not necessary. Various server can start at the same time, if they've nothing to receive.
 **/
-#[derive(Quantifiable)]
-#[derive(Debug)]
-pub struct Sweep
-{
-	cartesian_data: CartesianData, //the cartesian data of the tasks
-	send_to: Vec<Vec<usize>>, //the directions of the sweep
-	messages_per_destination: Vec<usize>, //the number of messages to send to each communication
-	message_size: Vec<usize>, //the size of each message
-	// starting_point: usize,
-	map_to_send: Vec<Vec<usize>>, //the number of available messages to send for a task, for each destination
-	general_to_receive: Vec<usize>, //the number of incoming messages to receive for each task
-}
-
-impl Traffic for Sweep
-{
-	fn generate_message(&mut self, origin:usize, cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
-	{
-		if origin >= self.cartesian_data.size
-		{
-			//panic!("origin {} does not belong to the traffic",origin);
-			return Err(TrafficError::OriginOutsideTraffic);
-		}
-		let max_index = self.map_to_send[origin].iter().enumerate().max_by_key(|&(_, item)| item).unwrap().0;
-
-		if self.map_to_send[origin][max_index] == 0
-		{
-			return Err(TrafficError::SelfMessage);
-		}
-		self.map_to_send[origin][max_index]-=1;
-		let src_coords= self.cartesian_data.unpack(origin);
-
-		if sum_out_of_bounds(src_coords.clone(), self.send_to[max_index].clone(), self.cartesian_data.sides.clone())
-		{
-			//print coordinates
-			println!("src_coords: {:?}", src_coords);
-			println!("send_to: {:?}", self.send_to[max_index]);
-			println!("sides: {:?}", self.cartesian_data.sides);
-			panic!("Out of bounds")
-		}
-
-		let dst_coords = src_coords.iter().enumerate().map(|(i, v)| v + self.send_to[max_index][i]).collect::<Vec<usize>>();
-		let destination = self.cartesian_data.pack(&dst_coords);
-		if origin==destination
-		{
-			return Err(TrafficError::SelfMessage);
-		}
-		let message=Rc::new(Message{
-			origin,
-			destination,
-			size:self.message_size[max_index],
-			creation_cycle: cycle,
-			cycle_into_network: RefCell::new(None),
-		});
-		Ok(message)
-	}
-	fn probability_per_cycle(&self, task:usize) -> f32
-	{
-        if task >= self.general_to_receive.len(){
-
-           return  0.0;
-        }
-
-		if self.general_to_receive[task] == 0 && self.map_to_send[task].iter().sum::<usize>() != 0
-		{
-			1.0
-		}
-		else
-		{
-			0.0
-		}
-	}
-	fn try_consume(&mut self, task:usize, _message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
-	{
-		// let message_ptr=message.as_ref() as *const Message;
-		// self.generated_messages.remove(&message_ptr)
-		if self.general_to_receive[task] <= 0
-		{
-			println!("task: {} ", task);
-			println!("message: {:?} ", _message);
-			println!("to receive: {:?}", self.general_to_receive);
-			println!("to send: {:?} ", self.map_to_send);
-			panic!("Should not consume more")
-
-		}else{
-
-			self.general_to_receive[task] -= 1;
-			true
-		}
-
-	}
-	fn is_finished(&self) -> bool
-	{
-		if self.general_to_receive.iter().sum::<usize>() != 0
-		{
-			return false;
-		}
-		true
-	}
-	fn task_state(&self, _task:usize, _cycle:Time) -> TaskTrafficState
-	{
-		if self.is_finished() {
-			TaskTrafficState::Generating
-		} else {
-			//We do not know whether someone is sending us data.
-			//if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
-			// Sometimes it could be Finished, but it is not worth computing...
-			TaskTrafficState::FinishedGenerating
-		}
-	}
-
-	fn should_generate(self: &mut Sweep, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
-	{
-		self.probability_per_cycle(task) == 1.0
-	}
-
-	fn number_tasks(&self) -> usize {
-		self.cartesian_data.size
-	}
-}
-
-impl Sweep
-{
-	pub fn new(arg:TrafficBuilderArgument) -> Sweep
-	{
-		let mut sides=None;
-		let mut send_to=None;
-		let mut messages_per_destination=None;
-		let mut message_size=None;
-		// let mut starting_point=None;
-
-		match_object_panic!(arg.cv,"Sweep",value,
-			"sides" => sides=Some(value.as_array().expect("bad value for sides").iter().map(|a| a.as_usize().unwrap()).collect::<Vec<usize>>()),
-			"send_to" => send_to=Some(value.as_array().expect("bad value for send_to").iter().map(|a| a.as_array().expect("bad value to send_to").iter().map(|b| b.as_usize().unwrap() as usize).collect() ).collect() ),
-			"messages_per_destination" => messages_per_destination=Some( value.as_array().expect("bad value for messages_per_destination").iter().map(|a| a.as_usize().unwrap() ).collect::<Vec<usize>>() ),
-			"message_size" => message_size=Some(value.as_array().expect("bad value for message_size").iter().map(|a| a.as_usize().unwrap() ).collect() ),
-			// "starting_point" => starting_point=Some(value.as_array().expect("bad value for starting_point").iter().map(|a| a.as_usize().unwrap()).collect::<Vec<usize>>()),
-		);
-		let sides=sides.expect("There were no sides");
-		let message_size=message_size.expect("There were no message_size");
-		let messages_per_destination: Vec<usize> =messages_per_destination.expect("There were no messages_per_destination");
-		let send_to : Vec<Vec<usize>>=send_to.expect("There were no send_to");
-		let cartesian_data = CartesianData::new(&sides);
-		// let starting_point=cartesian_data.pack(&starting_point.expect("There were no starting_point"));
-		let mut map_to_send = vec![ vec![0; send_to.len()]; cartesian_data.size];
-		let mut general_to_receive = vec![0; cartesian_data.size];
-
-		// let to_send = to_send.iter().enumerate().map(|(i, v)| {
-		// 	let current_task = cartesian_data.unpack(i);
-		// 	v.iter().enumerate().map(|index,e| if sum_out_of_bounds(current_task, v.clone(), cartesian_data.sides){0} else{messages_per_destination[index]}).collect::<Vec<usize>>()
-		//
-		// }).collect();
-		//
-		// let to_recieve = vec![ vec![0; send_to.len()]; cartesian_data.size()];
-		// let to_recieve = to_recieve.iter().enumerate().map(|(i, v)| {
-		// 	let current_task = cartesian_data.unpack(i);
-		// 	v.iter().enumerate().map(|index,e| if sum_out_of_bounds(current_task, v.clone(), cartesian_data.sides){0} else{messages_per_destination[index]}).collect::<Vec<usize>>()
-		//
-		// }).collect();
-
-		for index in 0..map_to_send.len()
-		{
-			let current_task = cartesian_data.unpack(index);
-			for (i, v) in send_to.iter().enumerate()
-			{
-				if !sum_out_of_bounds(current_task.clone(), v.clone(), cartesian_data.sides.clone())
-				{
-					let index_to_send = cartesian_data.pack(&v.into_iter().zip(current_task.clone()).map(|(a, b)| a + b ).collect::<Vec<usize>>());
-					map_to_send[index][i] = messages_per_destination[i];
-					general_to_receive[index_to_send] += messages_per_destination[i];
-				}
-			}
-		}
-		// println!("INITIAL general_to_receive: {:?}", general_to_receive);
-		// general_to_receive[starting_point] = 0; //maybe this is not necessary, as its 0 anyways
-		// println!("INITIAL map_to_send: {:?}", map_to_send);
-
-		//search the task which generate first, which are the ones without messages to receive
-		println!("Tasks sending first: {:?}", general_to_receive.iter().enumerate().filter(|(_, &v)| v == 0).map(|(i, _)| i).collect::<Vec<usize>>());
-
-		Sweep {
-			cartesian_data,
-			send_to,
-			messages_per_destination,
-			message_size,
-			// starting_point,
-			map_to_send,
-			general_to_receive,
-		}
-	}
-}
-
-/**
-* Function to check if the sum of two vectors is out of bounds
-**/
-fn sum_out_of_bounds(vec1: Vec<usize>, vec2: Vec<usize>, sides: Vec<usize>) -> bool {
-	for i in 0..vec1.len() {
-		if vec1[i] + vec2[i] >= sides[i] {
-			return true;
-		}
-	}
-	false
-}
-
-
-
 /**
 Has a major traffic `action_traffic` generated normally. When a message from this `action_traffic` is consumed, the `reaction_traffic` is requested for a message. This reaction message will be generated by the task that consumed the action message. The destination of the reaction message is independent of the origin of the action message. The two traffics must involve the same number of tasks.
 **/
@@ -1835,7 +1632,7 @@ impl Traffic for TimeSequenced
 		}
 		return true;
 	}
-	fn should_generate(self: &mut TimeSequenced, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	fn should_generate(&mut self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
 	{
 		let mut offset = cycle;
 		let mut traffic_index = 0;
@@ -1939,7 +1736,7 @@ impl Traffic for Sleep
 		self.finished
 	}
 
-	fn should_generate(self: &mut Sleep, _task:usize, cycle:Time, _rng: &mut StdRng) -> bool
+	fn should_generate(&mut self, _task:usize, cycle:Time, _rng: &mut StdRng) -> bool
 	{
 		if cycle >= self.cycle_to_wake as u64 {
 			self.finished = true;
@@ -2003,7 +1800,7 @@ PeriodicBurst{
 pub struct PeriodicBurst
 {
 	///times at which the burst will happen
-	times_to_generate: RefCell<VecDeque<Time>>,
+	times_to_generate: VecDeque<Time>,
 	///Number of tasks applying this traffic.
 	tasks: usize,
 	///The pattern of the communication.
@@ -2013,7 +1810,7 @@ pub struct PeriodicBurst
 	///Messages to send per period
 	messages_per_task_per_period: usize,
 	///The number of messages each task has pending to sent.
-	pending_messages: RefCell<Vec<usize>>,
+	pending_messages: Vec<usize>,
 	///Set of generated messages.
 	generated_messages: BTreeSet<*const Message>,
 }
@@ -2027,8 +1824,7 @@ impl Traffic for PeriodicBurst
 			//panic!("origin {} does not belong to the traffic",origin);
 			return Err(TrafficError::OriginOutsideTraffic);
 		}
-		let mut pending_messages = self.pending_messages.borrow_mut();
-		pending_messages[origin]-=1;
+		self.pending_messages[origin]-=1;
 		let destination=self.pattern.get_destination(origin,topology,rng);
 		if origin==destination
 		{
@@ -2046,8 +1842,7 @@ impl Traffic for PeriodicBurst
 	}
 	fn probability_per_cycle(&self, task:usize) -> f32
 	{
-		let pending_messages = self.pending_messages.borrow();
-		if pending_messages[task]>0
+		if self.pending_messages[task]>0
 		{
 			1.0
 		}
@@ -2063,14 +1858,13 @@ impl Traffic for PeriodicBurst
 	}
 	fn is_finished(&self) -> bool
 	{
-		let pending_messages = self.pending_messages.borrow();
-		let times_to_generate = self.times_to_generate.borrow();
+		let times_to_generate = &self.times_to_generate;
 
 		if !self.generated_messages.is_empty() || !times_to_generate.is_empty()
 		{
 			return false;
 		}
-		for &pm in pending_messages.iter()
+		for &pm in self.pending_messages.iter()
 		{
 			if pm>0
 			{
@@ -2080,7 +1874,7 @@ impl Traffic for PeriodicBurst
 		true
 	}
 
-	fn should_generate(self: &mut PeriodicBurst, task:usize, cycle:Time, _rng: &mut StdRng) -> bool
+	fn should_generate(&mut self, task:usize, cycle:Time, _rng: &mut StdRng) -> bool
 	{
 		// let mut offset = cycle;
 		// let mut traffic_index = 0;
@@ -2094,21 +1888,19 @@ impl Traffic for PeriodicBurst
 		// } else {
 		// 	false
 		// }
-		let mut pending_messages = self.pending_messages.borrow_mut();
-		let mut times = self.times_to_generate.borrow_mut();
+		let times = &mut self.times_to_generate;
 
 		if !times.is_empty() && cycle >= times[0] {
 			times.pop_front();
-			for i in 0..pending_messages.len() {
-				pending_messages[i] += self.messages_per_task_per_period;
+			for i in 0..self.pending_messages.len() {
+				self.pending_messages[i] += self.messages_per_task_per_period;
 			}
 		}
-		pending_messages[task] > 0
+		self.pending_messages[task] > 0
 	}
 	fn task_state(&self, task:usize, _cycle:Time) -> TaskTrafficState
 	{
-		let pending_messages = self.pending_messages.borrow();
-		if pending_messages[task]>0 {
+		if self.pending_messages[task]>0 {
 			TaskTrafficState::Generating
 		} else {
 			//We do not know whether someone is sending us data.
@@ -2152,8 +1944,8 @@ impl PeriodicBurst
 		let message_size=message_size.expect("There were no message_size");
 		let messages_per_task_per_period=messages_per_task_per_period.expect("There were no messages_per_task_per_period");
 
-		let times_to_generate = RefCell::new(VecDeque::from((0..((finish-offset)/period +1)).into_iter().map(|i| (i*period + offset) as Time).collect::<Vec<Time>>()));
-		println!("times_to_generate: {:?}", times_to_generate.borrow());
+		let times_to_generate = VecDeque::from((0..((finish-offset)/period +1)).into_iter().map(|i| (i*period + offset) as Time).collect::<Vec<Time>>());
+		println!("times_to_generate: {:?}", times_to_generate);
 		pattern.initialize(tasks, tasks, arg.topology, arg.rng);
 		PeriodicBurst {
 			pattern,
@@ -2161,7 +1953,7 @@ impl PeriodicBurst
 			tasks,
 			message_size,
 			messages_per_task_per_period,
-			pending_messages: RefCell::new(vec![0;tasks]),
+			pending_messages: vec![0;tasks],
 			generated_messages: BTreeSet::new(),
 		}
 	}
@@ -2233,7 +2025,7 @@ impl Traffic for Sequence
 		//return current_period == period_limit;
 		return self.current_traffic>=self.traffics.len() || (self.current_traffic==self.traffics.len()-1 && self.traffics[self.current_traffic].is_finished())
 	}
-	fn should_generate(self: &mut Sequence, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	fn should_generate(&mut self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
 	{
 		while self.traffics.len() > self.current_traffic && self.traffics[self.current_traffic].is_finished()
 		{
@@ -2735,7 +2527,7 @@ impl Traffic for TrafficMap
 		}).unwrap_or(0.0) // if the task_app has no origin, it has no probability
 	}
 
-	fn should_generate(self: &mut TrafficMap, task: usize, cycle: Time, rng: &mut StdRng) -> bool {
+	fn should_generate(&mut self, task: usize, cycle: Time, rng: &mut StdRng) -> bool {
 		let task_app = self.from_machine_to_app[task];
 
 		task_app.map(|app| {

@@ -19,10 +19,7 @@ use std::fmt::Debug;
 use std::convert::TryInto;
 use std::rc::Rc;
 
-use rand::{Rng,rngs::StdRng,SeedableRng};
-// use ::rand::{Rng,rngs::StdRng};
-use crate::pattern::{new_pattern, Pattern, PatternBuilderArgument};
-use crate::topology::prelude::CartesianData;
+use rand::{Rng,rngs::StdRng};
 
 ///Extra information to be used by the policies of virtual channels.
 #[derive(Debug)]
@@ -1085,7 +1082,9 @@ impl PortDiscardLabelThreshold
 	}
 }
 
-
+/**
+Applies a `policy` to those candidates that would move to a router closer to the destination.
+ **/
 #[derive(Debug)]
 pub struct Minimal
 {

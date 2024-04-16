@@ -20,7 +20,19 @@ struct Client {
     /// Index of the resource that the client has (or None if the client has no resource)
     resource: Option<usize>,
 }
-/// A random allocator that randomly allocates requests to resources
+/**
+A random allocator that randomly allocates requests to resources.
+
+TODO: comment on priority.
+
+```
+RandomPriorityAllocator{
+	//seed:0
+	//greatest_first:false
+}
+```
+
+**/
 pub struct RandomPriorityAllocator {
     /// The max number of outputs of the router crossbar
     num_resources: usize,
@@ -49,17 +61,12 @@ impl RandomPriorityAllocator {
         let mut seed = None;
         let mut greatest_first = false;
         match_object_panic!(args.cv, "RandomWithPriority", value,
-        "seed" => match value
-        {
-            &ConfigurationValue::Number(s) => seed = Some(s as u64),
-            _ => panic!("Bad value for seed"),
-        },
-        "greatest_first" => match value
-        {
-            &ConfigurationValue::True => greatest_first = true,
-            &ConfigurationValue::False => greatest_first = false,
-            _ => panic!("Bad value for greatest_first"),
-        },
+			"seed" => match value
+			{
+				&ConfigurationValue::Number(s) => seed = Some(s as u64),
+				_ => panic!("Bad value for seed"),
+			},
+			"greatest_first" => greatest_first = value.as_bool().expect("Bad value for greatest_first"),
         );
         let rng = seed.map(|s| StdRng::seed_from_u64(s));
         // Create the allocator

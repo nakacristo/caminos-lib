@@ -1148,12 +1148,14 @@ impl Composition
  For a source, it sums the result of applying several patterns.
  For instance, the destination of a server a would be: dest(a) = p1(a) + p2(a) + p3(a).
  middle_sizes indicates the size of the intermediate patters.
+
+ TODO: add an example.
  **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Sum
 {
-	patterns: RefCell<Vec<Box<dyn Pattern>>>,
+	patterns: Vec<Box<dyn Pattern>>,
 	middle_sizes: Vec<usize>,
 	target_size: Option<usize>,
 }
@@ -1162,7 +1164,7 @@ impl Pattern for Sum
 {
 	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
-		for (index,pattern) in self.patterns.borrow_mut().iter_mut().enumerate()
+		for (index,pattern) in self.patterns.iter_mut().enumerate()
 		{
 			// let current_source = if index==0 { source_size } else { *self.middle_sizes.get(index-1).unwrap_or(&target_size) };
 			let current_target = *self.middle_sizes.get(index).unwrap_or(&target_size);
@@ -1174,7 +1176,7 @@ impl Pattern for Sum
 	{
 		let target_size = self.target_size.unwrap();
 		let mut destination=0;
-		for pattern in self.patterns.borrow_mut().iter_mut()
+		for pattern in self.patterns.iter()
 		{
 			let next_destination = pattern.get_destination(origin,topology,rng);
 			destination+=next_destination;
@@ -1199,7 +1201,7 @@ impl Sum
 			"middle_sizes" => middle_sizes = Some(value.as_array().expect("bad value for middle_sizes").iter()
 				.map(|v|v.as_usize().expect("bad value for middle_sizes")).collect()),
 		);
-		let patterns=RefCell::new(patterns.expect("There were no patterns"));
+		let patterns=patterns.expect("There were no patterns");
 		let middle_sizes = middle_sizes.unwrap_or_else(||vec![]);
 		Sum{
 			patterns,
@@ -1431,7 +1433,11 @@ impl RandomMix
 	}
 }
 
-/// Use a list of patterns in a round robin fashion, for each source.
+/**
+Use a list of patterns in a round robin fashion, for each source.
+
+TODO: describe an example.
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct RoundRobin
@@ -1619,12 +1625,17 @@ impl GroupShufflingDestinations
 
 
 /**
-* For each server, it keeps a shuffled list of destinations to which send.
-* Select each destination with a probability.
-*	´´´ ignore
-* 	DestinationSets{
-*		patterns: [RandomPermutation, RandomPermutation], //2 random destinations
-*	}
+For each server, it keeps a shuffled list of destinations to which send.
+Select each destination with a probability.
+
+TODO: describe `weights` parameter.
+
+```ignore
+DestinationSets{
+	patterns: [RandomPermutation, RandomPermutation], //2 random destinations
+	//weights
+}
+```
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -2567,6 +2578,8 @@ Matrix by vector multiplication. Origin is given coordinates as within a block o
 Then the destination coordinate vector is `y=Mx`, with `x` being the origin and `M` the given `matrix`.
 This destination vector is converted into an index into a block of size `target_size`.
 
+TODO: describe parameter `check_admisible`.
+
 Example configuration:
 ```ignore
 LinearTransform{
@@ -2578,6 +2591,7 @@ LinearTransform{
 	],
 	target_size: [4,8,8],
 	legend_name: "Identity",
+	//check_admisible: false,
 }
 ```
  **/
@@ -2673,6 +2687,8 @@ impl LinearTransform
 
 /**
 Method to calculate the determinant of a matrix.
+
+TODO: integrate in matrix.rs
  **/
 fn laplace_determinant(matrix: &Vec<Vec<i32>>) -> i32
 {
@@ -2775,6 +2791,8 @@ Switch{
 },
 ```
 
+TODO: describe `expand` and `seed`.
+
 This example assigns 10 different RandomPermutations, depending on the `y` value, mentioned earlier.
 ```ignore
 Switch{
@@ -2856,19 +2874,21 @@ impl Switch {
 		Switch{
 			indexing,
 			patterns,
+            seed,
 			seed,
 		}
 	}
 }
+
 /**
-* For each source, it keeps a state of the last destination used. When applying the pattern, it uses the last destination as the origin for the pattern, and
-* the destination is saved for the next call to the pattern.
-* ´´´ignore
-* ElementComposition{
-* 	pattern: RandomPermutation,
-* }
-* ´´´
- **/
+For each source, it keeps a state of the last destination used. When applying the pattern, it uses the last destination as the origin for the pattern, and
+the destination is saved for the next call to the pattern.
+```ignore
+ElementComposition{
+	pattern: RandomPermutation,
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct ElementComposition
@@ -3011,7 +3031,7 @@ impl Pattern for BinomialTree
 		if source_size!= target_size
 		{
 			panic!("BinomialTree requires source and target sets to have same size.");
-		}
+        }
 
 		if !source_size.is_power_of_two()
 		{
@@ -3026,7 +3046,7 @@ impl Pattern for BinomialTree
 		}
 		self.cartesian_data = CartesianData::new(&vec![2; tree_order as usize]); // Tree emdebbed into an hypercube
 		self.state = RefCell::new(vec![0; source_size]);
-	}
+    }
 	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
 		if origin >= self.cartesian_data.size
@@ -3090,13 +3110,13 @@ impl BinomialTree
 
 
 /**
-* Boolean function which puts a 1 if the pattern contains the server, and 0 otherwise.
-* ´´´ignore
-* BooleanFunction{
-* 	pattern: Hotspots{selected_destinations: [0]}, //1 if the server is 0, 0 otherwise
-*	pattern_destination_size: 1,
-* 	}
-* ´´´
+Boolean function which puts a 1 if the pattern contains the server, and 0 otherwise.
+```ignore
+BooleanFunction{
+	pattern: Hotspots{selected_destinations: [0]}, //1 if the server is 0, 0 otherwise
+	pattern_destination_size: 1,
+}
+```
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -3169,74 +3189,45 @@ Debug{
 #[derive(Debug,Quantifiable)]
 struct DebugPattern {
 	/// The pattern being applied transparently.
-	pattern: Vec<Box<dyn Pattern>>,
+	pattern: Box<dyn Pattern>,
 	/// Whether to consider an error not being a permutation.
 	check_permutation: bool,
-	/// Whether to consider an error not being an injection.
-	check_injective: bool,
 	/// Size of source cached at initialization.
-	source_size: Vec<usize>,
+	source_size: usize,
 	/// Size of target cached at initialization.
 	target_size: usize,
 }
 
 impl Pattern for DebugPattern{
-	fn initialize(&mut self, _source_size:usize, _target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
-		// self.source_size = source_size;
-		// self.target_size = target_size;
-		for (index, pattern) in self.pattern.iter_mut().enumerate() {
-			pattern.initialize(self.source_size[index], self.target_size, topology,rng);
-		}
-
-		if self.check_injective{
-
-			if self.source_size.iter().sum::<usize>() > self.target_size{
-				panic!("cannot be injective if source size {} is more than target size {}",self.source_size.iter().sum::<usize>(),self.target_size);
+		self.source_size = source_size;
+		self.target_size = target_size;
+		self.pattern.initialize(source_size,target_size,topology,rng);
+		if self.check_permutation {
+			if source_size != target_size {
+				panic!("cannot be a permutation is source size {} and target size {} do not agree.",source_size,target_size);
 			}
-			let mut hits = vec![-1;self.target_size];
-			for (index, size) in self.source_size.iter().enumerate() {
-
-				for origin_local in 0..*size {
-					let dst = self.pattern[index].get_destination(origin_local,topology,rng);
-					if hits[dst] != -1 {
-						panic!("Destination {} hit by origin {}, now by {}, in pattern: {}",dst,hits[dst],origin_local, index);
-					}
-					hits[dst] = origin_local as isize;
+			let mut hits = vec![false;target_size];
+			for origin in 0..source_size {
+				let dst = self.pattern.get_destination(origin,topology,rng);
+				if hits[dst] {
+					panic!("Destination {} hit at least twice.",dst);
 				}
-
+				hits[dst] = true;
 			}
-			println!("Check injective patterns passed.");
-			println!("There were the following number of sources: {:?} ({}), and the following number of destinations: {}",self.source_size,self.source_size.iter().sum::<usize>(),self.target_size);
-			println!("There are {} free destinations, and {} servers hits. The free destinations are: {:?}",hits.iter().filter(|x|**x==-1).count(),hits.iter().filter(|x|**x!=-1).count(),hits.iter().enumerate().filter(|(_,x)|**x==-1).map(|(i,_)|i).collect::<Vec<usize>>());
-
 		}
-		// if self.check_permutation {
-		// 	if self.source_size != self.target_size {
-		// 		panic!("cannot be a permutation is source size {} and target size {} do not agree.",self.source_size,self.target_size);
-		// 	}
-		// 	let mut hits = vec![false;self.target_size];
-		// 	for origin in 0..self.source_size {
-		// 		let dst = self.pattern.get_destination(origin,topology,rng);
-		// 		if hits[dst] {
-		// 			panic!("Destination {} hit at least twice.",dst);
-		// 		}
-		// 		hits[dst] = true;
-		// 	}
-		// }
-		panic!("This is just a check.")
 	}
-	fn get_destination(&self, _origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
-		0
-		// if origin >= self.source_size {
-		// 	panic!("Received an origin {origin} beyond source size {size}",size=self.source_size);
-		// }
-		// let dst = self.pattern.get_destination(origin,topology,rng);
-		// if dst >= self.target_size {
-		// 	panic!("The destination {dst} is beyond the target size {size}",size=self.target_size);
-		// }
-		// dst
+		if origin >= self.source_size {
+			panic!("Received an origin {origin} beyond source size {size}",size=self.source_size);
+		}
+		let dst = self.pattern.get_destination(origin,topology,rng);
+		if dst >= self.target_size {
+			panic!("The destination {dst} is beyond the target size {size}",size=self.target_size);
+		}
+		dst
 	}
 }
 
@@ -3244,27 +3235,16 @@ impl DebugPattern{
 	fn new(arg:PatternBuilderArgument) -> DebugPattern{
 		let mut pattern = None;
 		let mut check_permutation = false;
-		let mut check_injective = false;
-		let mut source_size = None;
-		let mut target_size = None;
 		match_object_panic!(arg.cv,"Debug",value,
-			"patterns" => pattern = Some(value.as_array().expect("bad value for pattern").iter()
-				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 			"check_permutation" => check_permutation = value.as_bool().expect("bad value for check_permutation"),
-			"source_size" => source_size = Some(value.as_array().expect("bad value for source_size").iter()
-				.map(|v|v.as_usize().expect("bad value in source_size")).collect()),
-			"target_size" => target_size = Some(value.as_usize().expect("bad value for target_size")),
-			"check_injective" => check_injective = value.as_bool().expect("bad value for check_injective"),
 		);
 		let pattern = pattern.expect("Missing pattern in configuration of Debug.");
-		let source_size = source_size.expect("Missing source_size in configuration of Debug.");
-		let target_size = target_size.expect("Missing target_size in configuration of Debug.");
 		DebugPattern{
 			pattern,
 			check_permutation,
-			check_injective,
-			source_size,
-			target_size,
+			source_size:0,
+			target_size:0,
 		}
 	}
 }
