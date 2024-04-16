@@ -16,7 +16,7 @@ use ::rand::{rngs::StdRng,Rng};
 use crate::match_object_panic;
 use crate::config_parser::ConfigurationValue;
 use crate::routing::prelude::*;
-use crate::topology::{Topology,Location};
+use crate::topology::{Topology, Location};
 use crate::matrix::Matrix;
 use crate::pattern::prelude::*;
 
@@ -98,6 +98,7 @@ See Valiant, L. G. (1982). A scheme for fast parallel communication. SIAM journa
 Valiant{
 	first: Shortest,
 	second: Shortest,
+	use_min_b: false, //inject minimal packets always in the first VC
 	legend_name: "Using Valiant scheme, shortest to intermediate and shortest to destination",
 	//selection_exclude_indirect_routers: false,//optional parameter
 	//first_reserved_virtual_channels: [0],//optional parameter, defaults to empty. Reserves some VCs to be used only in the first stage
@@ -118,6 +119,9 @@ pub struct Valiant
 	selection_exclude_indirect_routers: bool,
 	first_reserved_virtual_channels: Vec<usize>,
 	second_reserved_virtual_channels: Vec<usize>,
+	///For using minA, minB or MinBOTH
+	min_src_first:bool, //true means that a packet is injected in the first set of VC if if the source is the intermediate node
+	min_target_first:bool, //true means that a packet is injected in the first set of VC if if the target is the intermediate node
 	/// A pattern on the routers such that when reaching a router `x` with `intermediate_bypass(x)==intermediate_bypass(Valiant_choice)` the first stage is terminated.
 	/// This is intended to use with projecting patterns, for example those that map a whole group to a single representative.
 	/// In such case, upon reaching that intermediate group the packet would change to the second fase, without having to reach the specific router.
@@ -245,12 +249,23 @@ impl Routing for Valiant
 		};
 		let mut bri=routing_info.borrow_mut();
 		bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
-		if middle==current_router || middle==target_router
-		{
-			self.second.initialize_routing_info(&bri.meta.as_ref().unwrap()[1],topology,current_router,target_router,target_server,rng);
-		}
-		else
-		{
+
+		if middle==current_router {
+			if self.min_src_first {
+				bri.selections=Some(vec![target_router as i32]);
+				self.first.initialize_routing_info(&bri.meta.as_ref().unwrap()[0],topology,current_router,target_router,target_server,rng)
+			} else {
+				self.second.initialize_routing_info(&bri.meta.as_ref().unwrap()[1],topology,current_router,target_router,target_server,rng);
+			}
+		} else if middle==target_router {
+			if self.min_target_first {
+				bri.selections=Some(vec![target_router as i32]);
+				self.first.initialize_routing_info(&bri.meta.as_ref().unwrap()[0],topology,current_router,middle,target_server,rng)
+			} else {
+				self.second.initialize_routing_info(&bri.meta.as_ref().unwrap()[1],topology,current_router,middle,target_server,rng);
+			}
+			//self.second.initialize_routing_info(&bri.meta.as_ref().unwrap()[1],topology,current_router,target_router,target_server,rng);
+		} else {
 			bri.selections=Some(vec![middle as i32]);
 			//FIXME: what do we do when we are not excluding indirect routers?
 			//let middle_server=
@@ -331,6 +346,9 @@ impl Valiant
 		let mut first=None;
 		let mut second=None;
 		let mut selection_exclude_indirect_routers=false;
+		let mut use_min_b=false;
+		let mut min_src_first= true;
+		let mut min_target_first= true;
 		let mut first_reserved_virtual_channels=vec![];
 		let mut second_reserved_virtual_channels=vec![];
 		let mut intermediate_bypass=None;
@@ -338,6 +356,9 @@ impl Valiant
 			"first" => first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
 			"second" => second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
 			"selection_exclude_indirect_routers" => selection_exclude_indirect_routers = value.as_bool().expect("bad value for selection_exclude_indirect_routers"),
+			"min_src_first" => min_src_first=value.as_bool().expect("bad value for min_src_first"),
+			"min_target_first" => min_target_first=value.as_bool().expect("bad value for min_target_first"),
+			"use_min_b" => use_min_b=value.as_bool().expect("bad value for use_min_b"),
 			"first_reserved_virtual_channels" => first_reserved_virtual_channels=value.
 				as_array().expect("bad value for first_reserved_virtual_channels").iter()
 				.map(|v|v.as_f64().expect("bad value in first_reserved_virtual_channels") as usize).collect(),
@@ -350,12 +371,19 @@ impl Valiant
 		let second=second.expect("There were no second");
 		//let first_reserved_virtual_channels=first_reserved_virtual_channels.expect("There were no first_reserved_virtual_channels");
 		//let second_reserved_virtual_channels=second_reserved_virtual_channels.expect("There were no second_reserved_virtual_channels");
+		if use_min_b
+		{
+			min_src_first= false;
+			min_target_first= false;
+		}
 		Valiant{
 			first,
 			second,
 			selection_exclude_indirect_routers,
 			first_reserved_virtual_channels,
 			second_reserved_virtual_channels,
+			min_src_first,
+			min_target_first,
 			intermediate_bypass,
 		}
 	}

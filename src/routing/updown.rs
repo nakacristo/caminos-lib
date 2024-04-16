@@ -8,26 +8,94 @@ Implementation of general Up/Down-like routings.
 */
 
 use ::rand::{rngs::StdRng};
-
+use crate::pattern::{new_pattern};
+use crate::PatternBuilderArgument;
 use crate::match_object_panic;
 use crate::config_parser::ConfigurationValue;
 use crate::routing::prelude::*;
 use crate::topology::{Topology,NeighbourRouterIteratorItem,Location};
 use crate::matrix::Matrix;
+use crate::pattern::Pattern;
 
-///Use a shortest up/down path from origin to destination.
-///The up/down paths are understood as provided by `Topology::up_down_distance`.
+/**
+Use shortest up/down paths from origin to destination. The up/down paths are understood as provided by `Topology::up_down_distance`.
+Receives the following parameters.
+* `routing_up_stage_patterns` (optional): a pattern which depends on source_server * num_servers + destination_server which is applied to the routing to select an up option in each up stage.
+* `port_pattern` (optional): apply a pattern to the port.
+* `upwards_sizes` (optional): the target size of the patterns for each up stage.
+* `port_pattern_source_sizes` (optional): the source size of the port_pattern for each up stage. (should be the up degree for the stage)
+
+An up port "p" is selected in stage "s" if `routing_up_stage_patterns[s].get_destination(source * num_servers + target, ..) == port_pattern[s].get_destination(p, ..)`.
+
+This is d-mod-k routing in a 4-ary 2-tree:
+```ignore
+UpDown {
+	routing_up_stage_patterns: [ //2 fases en la topologia
+			LinearTransform{
+				source_size: [4,4,4,64],
+				matrix: [[1,0,0,0]],
+				target_size: [4],
+
+			},
+			LinearTransform{
+				source_size: [4,4,4,64],
+				matrix: [[0,1,0,0]],
+				target_size: [4],
+
+			},
+	],
+	upwards_sizes:[4,4],
+	legend_name: "D mod k",
+},
+
+UpDown {
+	routing_up_stage_patterns: [ //2 fases en la topologia
+			LinearTransform{
+				source_size: [4,4,4,64],
+				matrix: [[1,0,0,0]],
+				target_size: [2],
+			},
+			LinearTransform{
+				source_size: [4,4,4,64],
+				matrix: [[0,1,0,0]],
+				target_size: [2],
+			},
+	],
+	port_pattern:[
+			LinearTransform{
+				source_size: [4],
+				matrix: [[1]],
+				target_size: [2],
+
+			},
+			LinearTransform{
+				source_size: [4],
+				matrix: [[1]],
+				target_size: [2],
+
+			},
+	],
+	upwards_sizes:[2,2],
+	port_pattern_source_sizes: [4,4],
+	legend_name: "D mod k/2",
+},
+```
+**/
 #[derive(Debug)]
 pub struct UpDown
 {
+	routing_up_stage_patterns: Option<Vec<Box<dyn Pattern>>>,
+	port_pattern: Option<Vec<Box<dyn Pattern>>>,
+	target_sizes: Option<Vec<usize>>,
+	port_pattern_source_sizes: Option<Vec<usize>>,
 }
 
 impl Routing for UpDown
 {
-	fn next(&self, _routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
 		//let (target_location,_link_class)=topology.server_neighbour(target_server);
-		//let target_router=match target_location
+		//let target_router=match target_locatiself.vcs[vc_index]on
 		//{
 		//	Location::RouterPort{router_index,router_port:_} =>router_index,
 		//	_ => panic!("The server is not attached to a router"),
@@ -53,22 +121,58 @@ impl Routing for UpDown
 		}
 		let num_ports=topology.ports(current_router);
 		let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
-		for i in 0..num_ports
+		for NeighbourRouterIteratorItem{link_class: next_link_class,port_index,neighbour_router:neighbour_router_index,..} in topology.neighbour_router_iter(current_router)
 		{
-			//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
-			if let (Location::RouterPort{router_index,router_port:_},_link_class)=topology.neighbour(current_router,i)
+			if let Some((new_u, new_d)) = topology.up_down_distance(neighbour_router_index,target_router)
 			{
-				if let Some((new_u, new_d)) = topology.up_down_distance(router_index,target_router)
+				if new_u<up_distance && new_d<=down_distance // I guess its an up stage
 				{
-					if (new_u<up_distance && new_d<=down_distance) || (new_u<=up_distance && new_d<down_distance)
+					let mut port_hash = port_index;
+					if let Some(ref port_pattern) = self.port_pattern
 					{
-						r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+						let pattern = &port_pattern[next_link_class];
+						port_hash = pattern.get_destination(port_index,topology,rng)
 					}
+
+					if let Some(ref routing_pattern) = self.routing_up_stage_patterns
+					{
+						let source_server = routing_info.source_server.unwrap();
+						let pair_index = source_server * topology.num_servers() + target_server.unwrap();
+						let pattern_stage = &routing_pattern[next_link_class];
+						if pattern_stage.get_destination(pair_index,topology,rng) != port_hash{
+							continue;
+						}
+					}
+
+					r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(port_index,vc)));
+				}else if new_u<=up_distance && new_d<down_distance
+				{
+					r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(port_index,vc)));
 				}
 			}
 		}
-		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
 		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
+	}
+
+	fn initialize(&mut self, topology: &dyn Topology, rng: &mut StdRng) {
+
+		if let Some(ref mut pattern) = self.routing_up_stage_patterns
+		{
+			let target_sizes = self.target_sizes.as_ref().expect("up_size was not given");
+			for (i,p) in pattern.iter_mut().enumerate()
+			{
+				p.initialize(topology.num_servers()*topology.num_servers(), target_sizes[i], topology, rng);
+			}
+		}
+		if let Some(ref mut pattern) = self.port_pattern
+		{
+			let target_sizes = self.target_sizes.as_ref().expect("up_size was not given");
+			let port_pattern_source_sizes = self.port_pattern_source_sizes.as_ref().expect("port_pattern_source_sizes was not given");
+			for (i,p) in pattern.iter_mut().enumerate()
+			{
+				p.initialize(port_pattern_source_sizes[i], target_sizes[i], topology, rng);
+			}
+		}
 	}
 }
 
@@ -76,8 +180,29 @@ impl UpDown
 {
 	pub fn new(arg: RoutingBuilderArgument) -> UpDown
 	{
-		match_object_panic!(arg.cv,"UpDown",_value);
+		let mut routing_up_stage_patterns = None;
+		let mut port_pattern = None;
+		let mut target_sizes = None;
+		let mut port_pattern_source_sizes = None;
+		match_object_panic!(arg.cv,"UpDown",value,
+			"routing_up_stage_patterns" => routing_up_stage_patterns = Some(value.as_array().expect("bad value for routing_up_stage_patterns").iter().map(|x|{
+				new_pattern(PatternBuilderArgument{cv:x,plugs:arg.plugs})
+			}).collect()),
+			"port_pattern" => port_pattern = Some(value.as_array().expect("bad value for port_pattern").iter().map(|x|{
+				new_pattern(PatternBuilderArgument{cv:x,plugs:arg.plugs})
+			}).collect()),
+			"upwards_sizes" => target_sizes = Some(value.as_array().expect("bad value for up_sizes").iter().map(|x|{
+				x.as_usize().expect("bad value for up_sizes")
+			}).collect()),
+			"port_pattern_source_sizes" => port_pattern_source_sizes = Some(value.as_array().expect("bad value for port_pattern_source_sizes").iter().map(|x|{
+				x.as_usize().expect("bad value for port_pattern_source_sizes")
+			}).collect()),
+		);
 		UpDown{
+			routing_up_stage_patterns,
+			port_pattern,
+			target_sizes,
+			port_pattern_source_sizes,
 		}
 	}
 }

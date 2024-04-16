@@ -50,6 +50,8 @@ pub struct Megafly
 	global_arrangement: Box<dyn Arrangement>,
 	///`distance_matrix.get(i,j)` = distance from router i to router j.
 	distance_matrix:Matrix<u8>,
+	// Cartesian data [switch_index, group_index]
+	cartesian_data: CartesianData,
 }
 
 impl Topology for Megafly
@@ -176,7 +178,7 @@ impl Topology for Megafly
 	}
 	fn cartesian_data(&self) -> Option<&CartesianData>
 	{
-		todo!()
+		Some(&self.cartesian_data)
 	}
 	fn coordinated_routing_record(&self, _coordinates_a:&[usize], _coordinates_b:&[usize], _rng: Option<&mut StdRng>)->Vec<i32>
 	{
@@ -202,12 +204,14 @@ impl Megafly
 		let mut group_size=None;
 		let mut number_of_groups=None;
 		let mut global_arrangement=None;
+		let mut lag=1;
 		match_object_panic!(arg.cv,"Megafly",value,
 			"global_ports_per_spine" => global_ports_per_spine=Some(value.as_f64().expect("bad value for global_ports_per_spine")as usize),
 			"servers_per_leaf" => servers_per_leaf=Some(value.as_f64().expect("bad value for servers_per_leaf")as usize),
 			"group_size" => group_size=Some(value.as_f64().expect("bad value for group_size")as usize),
 			"number_of_groups" => number_of_groups=Some(value.as_f64().expect("bad value for number_of_groups")as usize),
 			"global_arrangement" => global_arrangement=Some(new_arrangement(value.into())),
+			"lag" | "global_lag" => lag=value.as_usize().expect("bad value for lag"),
 		);
 		let global_ports_per_spine=global_ports_per_spine.expect("There were no global_ports_per_spine");
 		let servers_per_leaf=servers_per_leaf.expect("There were no servers_per_leaf");
@@ -218,7 +222,7 @@ impl Megafly
 			number_of_groups,
 			group_size,
 			number_of_ports: global_ports_per_spine,
-			lag: 1usize,
+			lag,
 		},arg.rng);
 		//let group_size = 2*global_ports_per_spine;
 		//let number_of_groups = group_size*global_ports_per_spine + 1;
@@ -229,6 +233,7 @@ impl Megafly
 			group_size,
 			number_of_groups,
 			distance_matrix:Matrix::constant(0,0,0),
+			cartesian_data: CartesianData::new(&[group_size, number_of_groups]),
 		};
 		let (distance_matrix,_amount_matrix)=topo.compute_amount_shortest_paths();
 		topo.distance_matrix=distance_matrix.map(|x|*x as u8);

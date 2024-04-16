@@ -9,7 +9,6 @@ see [`new_allocator`](fn.new_allocator.html) for documentation on the configurat
 pub mod random;
 pub mod random_priority;
 pub mod islip;
-//pub mod separable_input_first;
 
 use crate::Plugs;
 use crate::config_parser::ConfigurationValue;

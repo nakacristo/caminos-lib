@@ -2317,11 +2317,12 @@ impl DimWAR
 
 /**
 This is an adapted Valiant version for the Hamming topology, suitable for source adaptive routings, as UGAL.
-It removes switches from source and target groups as intermediate switches.
+It removes intermediate switches aligned with source or destination selected dimensions.
+It also can forbid to missroute in a dimension if the source is already aligned.
 See Valiant, L. G. (1982). A scheme for fast parallel communication. SIAM journal on computing, 11(2), 350-361.
 
 ```ignore
-Valiant4Dragonfly{
+Valiant4Hamming{
 	first: Shortest,
 	second: Shortest,
 	first_reserved_virtual_channels: [0],//optional parameter, defaults to empty. Reserves some VCs to be used only in the first stage
@@ -2329,7 +2330,7 @@ Valiant4Dragonfly{
 	remove_target_dimensions_aligment:[[0],[1]], //remove intermediate aligned with the target in the 0 and 1 dimensions
 	remove_source_dimensions_aligment:[[0],[1]]  //remove intermediate aligned with the source in the 0 and 1 dimensions
 	allow_unaligned: false, //To go through unaligned dimensions
-	legend_name: "Using Valiant4Dragonfly scheme, shortest to intermediate and shortest to destination",
+	legend_name: "Using Valiant4Hamming scheme, shortest to intermediate and shortest to destination",
 }
 ```
  **/
@@ -2454,15 +2455,16 @@ impl Routing for Valiant4Hamming
 		let src_coord = cartesian_data.unpack(current_router);
 		let trg_coord = cartesian_data.unpack(target_router);
 
-		let middle_server = self.pattern.get_destination(source_server,topology, rng);
-		let (middle_location,_link_class)=topology.server_neighbour(middle_server);
-		let mut middle_router=match middle_location
-		{
-			Location::RouterPort{router_index,router_port:_} =>router_index,
-			_ => panic!("The server is not attached to a router"),
-		};
+		//let middle_server = self.pattern.get_destination(source_server,topology, rng);
+		//let (middle_location,_link_class)=topology.server_neighbour(middle_server);
+		let mut middle_router;
+		// =match middle_location
+		// {
+		// 	Location::RouterPort{router_index,router_port:_} =>router_index,
+		// 	_ => panic!("The server is not attached to a router"),
+		// };
 
-		let mut middle_coord = cartesian_data.unpack(middle_router);
+		let mut middle_coord= vec![]; // = cartesian_data.unpack(middle_router);
 		let mut not_valid_middle = true;
 
 		while not_valid_middle
@@ -2663,5 +2665,251 @@ impl Valiant4Hamming
 }
 
 
+/**
+	Non-minimal routing of Clos-AD routing from the Flattened Butterfly paper.
+	Similar to Valiant, it missroutes to a switch in a dimension with the queue more empty.
 
+```ignore
+AdaptiveValiantClos{
+	order:[0,1,2],
+	first_reserved_virtual_channels: [0],
+	second_reserved_virtual_channels: [1],
+}
+```
+ **/
+#[derive(Debug)]
+pub struct AdaptiveValiantClos
+{
+	first: Box<dyn Routing>,
+	second: Box<dyn Routing>,
+	///Whether to avoid selecting routers without attached servers. This helps to apply it to indirect networks.
+	// selection_exclude_indirect_routers: bool,
+	//pattern to select intermideate nodes
+	first_reserved_virtual_channels: Vec<usize>,
+	second_reserved_virtual_channels: Vec<usize>,
+}
 
+impl Routing for AdaptiveValiantClos
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
+	{
+		/*let (target_location,_link_class)=topology.server_neighbour(target_server);
+		let target_router=match target_location
+		{
+			Location::RouterPort{router_index,router_port:_} =>router_index,
+			_ => panic!("The server is not attached to a router"),
+		};*/
+		let distance=topology.distance(current_router,target_router);
+		if distance==0
+		{
+			for i in 0..topology.ports(current_router)
+			{
+				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router,i)
+				{
+					if server==target_server.expect("Server here!")
+					{
+						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
+					}
+				}
+			}
+			unreachable!();
+		}
+		let cartesian_data = topology.cartesian_data().expect("Cartesian topology");
+		let selections=routing_info.selections.as_ref().unwrap();
+		let meta=routing_info.meta.as_ref().unwrap();
+		let mut dimension_exit:i32 = -1;
+
+		for i in 0..selections.len()
+		{
+			if selections[i] == 1
+			{
+				dimension_exit = i as i32;
+				break;
+			}
+		}
+		let mut r = vec![];
+		if dimension_exit > -1 // GO miss
+		{
+			let dimension_exit = dimension_exit as usize;
+
+			let mut port_offset = 0;
+			for j in 0..dimension_exit
+			{
+				port_offset += cartesian_data.sides[j]-1;
+			}
+
+			for i in port_offset..(port_offset + cartesian_data.sides[dimension_exit] -1)
+			{
+				if let (Location::RouterPort{router_index: _,router_port:_},link_class)=topology.neighbour(current_router,i)
+				{
+					if link_class != dimension_exit
+					{
+						panic!("The port is not pointing in the right direction, link_class: {} exit_dimension {}", link_class, dimension_exit);
+					}
+
+					r.extend((self.first_reserved_virtual_channels.clone().into_iter()).map(|vc|CandidateEgress::new(i,vc)));
+				}
+			}
+
+			Ok(RoutingNextCandidates{candidates:r,idempotent:true})
+		}else{ //GO to destination
+
+			let base=self.second.next(&meta[1].borrow(),topology,current_router,target_router, target_server,num_virtual_channels,rng)?;
+			let idempotent = base.idempotent;
+			r=base.into_iter().filter_map(|egress|
+				{
+					if !self.first_reserved_virtual_channels.contains(&egress.virtual_channel) && self.second_reserved_virtual_channels.contains(&egress.virtual_channel)
+					{
+						Some(egress)
+					}else{
+						None
+					}
+				}).collect();
+			Ok(RoutingNextCandidates{candidates:r,idempotent})
+		}
+	}
+
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
+	{
+
+		let port = topology.degree(current_router);
+		let (server_source_location,_link_class) = topology.neighbour(current_router, port);
+		let _source_server=match server_source_location
+		{
+			Location::ServerPort(server) =>server,
+			_ => panic!("The server is not attached to a router"),
+		};
+
+		let cartesian_topology = topology.cartesian_data().expect("Cartesian topology");
+		let mut dimension_deroute = vec![0; cartesian_topology.sides.len()];
+		let mut deroutes = 0;
+		let current_coord = cartesian_topology.unpack(current_router);
+		let target_coord = cartesian_topology.unpack(target_router);
+		for i in 0..cartesian_topology.sides.len()
+		{
+			// dimension deroute is 1 if random is 0
+			if current_coord[i] != target_coord[i]
+			{
+				dimension_deroute[i] = 1;
+				deroutes+=1;
+			}
+		}
+
+		let mut bri=routing_info.borrow_mut();
+		bri.visited_routers=Some(vec![current_router]);
+		bri.meta=Some(vec![RefCell::new(RoutingInfo::new()),RefCell::new(RoutingInfo::new())]);
+
+		//check if dimension_deroute has any 1 in it filtering the list into_iter
+		if deroutes == 0
+		{
+			self.second.initialize_routing_info(&bri.meta.as_ref().unwrap()[1],topology,current_router,target_router, target_server,rng);
+		}
+
+		bri.selections=Some(dimension_deroute);
+
+	}
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, target_server:Option<usize>, rng: &mut StdRng)
+	{
+		if let (Location::RouterPort{router_index: previous_router,router_port:_},_link_class)=topology.neighbour(current_router,current_port)
+		{
+			let mut bri = routing_info.borrow_mut();
+			let _hops = bri.hops;
+			// let _middle = bri.selections.as_ref().map(|s| s[0] as usize);
+
+			let cartesian_data = topology.cartesian_data().expect("OmniDimensionalDeroute requires a Cartesian topology");
+			let up_current = cartesian_data.unpack(current_router);
+			let up_previous = cartesian_data.unpack(previous_router);
+			let mut exit_dimension = None;
+
+			for j in 0..up_current.len()
+			{
+				if up_current[j] != up_previous[j]
+				{
+					exit_dimension = Some(j);
+				}
+			}
+
+			let exit_dimension = exit_dimension.expect("there should be a usize here");
+			match bri.selections
+			{
+				Some(ref mut v) =>
+					{
+						v[exit_dimension] = 0;
+					}
+				None => panic!("selections not initialized"),
+			};
+
+			match bri.visited_routers
+			{
+				Some(ref mut v) =>
+					{
+						v.push(current_router);
+					}
+				None => panic!("visited_routers not initialized"),
+			};
+
+			let deroutes = bri.selections.clone().expect("List of missrouting").into_iter().filter(|&x| x == 1i32).collect::<Vec<_>>().len();
+			if deroutes == 0
+			{
+				self.second.initialize_routing_info(&bri.meta.as_ref().unwrap()[1], topology, current_router, target_router, target_server, rng);
+			}
+		}
+	}
+	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		self.first.initialize(topology,rng);
+		self.second.initialize(topology,rng);
+
+	}
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>,  _num_virtual_channels:usize, _rng: &mut StdRng)
+	{
+		//TODO: recurse over routings
+	}
+}
+
+impl AdaptiveValiantClos
+{
+	pub fn new(arg: RoutingBuilderArgument) -> AdaptiveValiantClos
+	{
+		//let mut order=None;
+		//let mut servers_per_router=None;
+		let mut order=None;
+		// let mut selection_exclude_indirect_routers=true; //this was false...
+		let mut first_reserved_virtual_channels=vec![];
+		let mut second_reserved_virtual_channels=vec![];
+		match_object_panic!(arg.cv,"AdaptiveValiantClos",value,
+			// "first" => first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			// "second" => second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"order" => order=Some(value.as_array().expect("bad value for order").iter().map(|v|v.as_f64().expect("bad value in order") as usize).collect()),
+			// "selection_exclude_indirect_routers" => selection_exclude_indirect_routers = value.as_bool().expect("bad value for selection_exclude_indirect_routers"),
+			"first_reserved_virtual_channels" => first_reserved_virtual_channels=value.
+				as_array().expect("bad value for first_reserved_virtual_channels").iter()
+				.map(|v|v.as_f64().expect("bad value in first_reserved_virtual_channels") as usize).collect(),
+			"second_reserved_virtual_channels" => second_reserved_virtual_channels=value.
+				as_array().expect("bad value for second_reserved_virtual_channels").iter()
+				.map(|v|v.as_f64().expect("bad value in second_reserved_virtual_channels") as usize).collect(),
+		);
+
+		let order:Vec<usize>= order.expect("There were no order");
+		let first= ConfigurationValue::Object("DOR".to_string(), vec![("order".to_string(), ConfigurationValue::Array( order.iter().map(|&a| ConfigurationValue::Number(a as f64)).collect() ))]);
+		let second= ConfigurationValue::Object("DOR".to_string(), vec![("order".to_string(), ConfigurationValue::Array( order.iter().map(|&a| ConfigurationValue::Number(a as f64)).collect() ))]);
+
+		let first=new_routing(RoutingBuilderArgument{cv: &first,..arg});
+		let second=new_routing(RoutingBuilderArgument{cv: &second,..arg});
+		// let first=first.expect("There were no first");
+		// let second=second.expect("There were no second");
+		//let first_reserved_virtual_channels=first_reserved_virtual_channels.expect("There were no first_reserved_virtual_channels");
+		//let second_reserved_virtual_channels=second_reserved_virtual_channels.expect("There were no second_reserved_virtual_channels");
+
+		AdaptiveValiantClos{
+			first,
+			second,
+			// selection_exclude_indirect_routers,
+			first_reserved_virtual_channels,
+			second_reserved_virtual_channels,
+		}
+	}
+}

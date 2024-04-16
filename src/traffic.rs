@@ -21,7 +21,8 @@ use crate::{Message,Plugs};
 use crate::pattern::{Pattern,new_pattern,PatternBuilderArgument};
 use crate::topology::Topology;
 use crate::event::Time;
-use quantifiable_derive::Quantifiable;//the derive macro
+use quantifiable_derive::Quantifiable;
+use crate::measures::TrafficStatistics;
 use crate::quantify::Quantifiable;
 
 ///Possible errors when trying to generate a message with a `Traffic`.
@@ -68,11 +69,12 @@ pub trait Traffic : Quantifiable + Debug
 	fn is_finished(&self) -> bool;
 	///Returns true if a task should generate a message this cycle
 	///Should coincide with having the `Generating` state for deterministic traffics.
-	fn should_generate(&self, task:usize, _cycle:Time, rng: &mut StdRng) -> bool
+	fn should_generate(&mut self, _task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
 	{
-		let p=self.probability_per_cycle(task);
-		let r=rng.gen_range(0f32..1f32);
-		r<p
+		panic!("should_generate not implemented for this traffic. The default implementation has been removed.");
+		// let p=self.probability_per_cycle(task);
+		// let r=rng.gen_range(0f32..1f32);
+		// r<p
 	}
 	///Indicates the state of the task within the traffic.
 	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState;
@@ -80,6 +82,10 @@ pub trait Traffic : Quantifiable + Debug
 	/// Indicates the number of tasks in the traffic.
 	/// A task is a process that generates traffic.
 	fn number_tasks(&self) -> usize;
+
+	fn get_statistics(&self) -> Option<TrafficStatistics> {
+		None
+	}
 }
 
 #[derive(Debug)]
@@ -244,6 +250,11 @@ pub fn new_traffic(arg:TrafficBuilderArgument) -> Box<dyn Traffic>
 			"Sequence" => Box::new(Sequence::new(arg)),
 			"BoundedDifference" => Box::new(BoundedDifference::new(arg)),
 			"TrafficMap" => Box::new(TrafficMap::new(arg)),
+			"PeriodicBurst" => Box::new(PeriodicBurst::new(arg)),
+			"Sleep" => Box::new(Sleep::new(arg)),
+			"TrafficCredit" => Box::new(TrafficCredit::new(arg)),
+			"Messages" => Box::new(TrafficMessages::new(arg)),
+			"MessageBarrier" => Box::new(MessageBarrier::new(arg)),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -317,6 +328,10 @@ impl Traffic for Homogeneous
 			r
 		}
 	}
+
+	fn should_generate(&mut self, _task: usize, _cycle: Time, _rng: &mut StdRng) -> bool {
+		true
+	}
 	fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
 	{
 		let message_ptr=message.as_ref() as *const Message;
@@ -376,6 +391,8 @@ TrafficSum{
 	list: [HomogeneousTraffic{...},... ],
 }
 ```
+
+TODO: document new arguments.
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -383,27 +400,62 @@ pub struct Sum
 {
 	///List of traffic summands
 	list: Vec<Box<dyn Traffic>>,
+	///For each task, the index of the traffic that is generating messages.
+	index_to_generate: Vec<Vec<usize>>,
+	///Statistics for the traffic
+	statistics: TrafficStatistics,
+	///Total number of tasks
+	tasks:usize,
 }
 
 impl Traffic for Sum
 {
 	fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
 	{
-		let probs:Vec<f32> =self.list.iter().map(|t|t.probability_per_cycle(origin)).collect();
-		//let mut r=rng.gen_range(0f32,probs.iter().sum());//rand-0.4
-		let mut r=rng.gen_range(0f32..probs.iter().sum());//rand-0.8
-		for i in 0..self.list.len()
-		{
-			if r<probs[i]
-			{
-				return self.list[i].generate_message(origin,cycle,topology,rng);
-			}
-			else
-			{
-				r-=probs[i];
-			}
+
+		// let mut traffics: Vec<&mut Box<dyn Traffic>> = self.list.iter_mut().filter(|t|t.should_generate(origin, cycle, rng)).collect();
+		// let probs:Vec<f32>  = traffics.iter().map(|t|t.probability_per_cycle(origin)).collect();
+		//
+		// //let mut r=rng.gen_range(0f32,probs.iter().sum());//rand-0.4
+		// if traffics.len() == 0{
+		// 	panic!("This origin is not generating messages in any Traffic")
+		// }
+		// if traffics.len() > 1{
+		// 	panic!("Warning: Multiple traffics are generating messages in the same task.");
+		// }
+		if self.index_to_generate[origin].len() == 0{
+			panic!("This origin is not generating messages in any Traffic")
 		}
-		panic!("failed probability");
+		if self.index_to_generate[origin].len() > 1 && self.index_to_generate[origin].iter().min().unwrap() != self.index_to_generate[origin].iter().max().unwrap(){
+			panic!("Warning: Multiple traffics are generating messages in the same task.");
+		}
+
+		let r=rng.gen_range(0..self.index_to_generate[origin].len());//rand-0.8
+		let index = self.index_to_generate[origin][r];
+		let message = self.list[index].generate_message(origin,cycle,topology,rng);
+
+		if !message.is_err(){
+			let size_msg = message.as_ref().unwrap().size;
+			self.statistics.track_created_message(cycle, size_msg, Some( index ));
+		}
+		message
+
+		// for i in 0..traffics.len()
+		// {
+		// 	if r<probs[i]
+		// 	{
+		// 		let message = traffics[i].generate_message(origin,cycle,topology,rng);
+		// 		if !message.is_err(){
+		// 			self.statistics[i].borrow_mut().track_created_message(cycle);
+		// 		}
+		// 		return message;
+		// 	}
+		// 	else
+		// 	{
+		// 		r-=probs[i];
+		// 	}
+		// }
+		// panic!("failed probability");
 	}
 	//fn should_generate(&self, rng: &mut StdRng) -> bool
 	//{
@@ -416,10 +468,11 @@ impl Traffic for Sum
 	}
 	fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
 	{
-		for traffic in self.list.iter_mut()
+		for (index, traffic) in self.list.iter_mut().enumerate()
 		{
 			if traffic.try_consume(task,message.clone(),cycle,topology,rng)
 			{
+				self.statistics.track_consumed_message(cycle, cycle - message.creation_cycle, message.size, Some(index) );
 				return true;
 			}
 		}
@@ -435,6 +488,16 @@ impl Traffic for Sum
 			}
 		}
 		return true;
+	}
+	fn should_generate(&mut self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	{
+		self.index_to_generate[task].clear(); //FIXME: This may not be the best way.
+		for (index, t) in self.list.iter_mut().enumerate(){
+			if t.should_generate(task,cycle,rng){
+				self.index_to_generate[task].push(index);
+			}
+		}
+		self.index_to_generate[task].len() > 0
 	}
 	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
 	{
@@ -456,7 +519,10 @@ impl Traffic for Sum
 
 	fn number_tasks(&self) -> usize {
 		// all traffics have the same number of tasks
-		self.list[0].number_tasks()
+		self.tasks
+	}
+	fn get_statistics(&self) -> Option<TrafficStatistics> {
+		Some(self.statistics.clone())
 	}
 }
 
@@ -465,9 +531,13 @@ impl Sum
 	pub fn new(mut arg:TrafficBuilderArgument) -> Sum
 	{
 		let mut list : Option<Vec<_>> =None;
+		let mut temporal_step = 0;
+		let mut tasks = None;
 		match_object_panic!(arg.cv,"TrafficSum",value,
 			"list" => list = Some(value.as_array().expect("bad value for list").iter()
 				.map(|v|new_traffic(TrafficBuilderArgument{cv:v,rng:&mut arg.rng,..arg})).collect()),
+			"statistics_temporal_step" => temporal_step = value.as_f64().expect("bad value for statistics_temporal_step") as Time,
+			"tasks" => tasks = Some(value.as_f64().expect("bad value for tasks") as usize),
 		);
 		let list=list.expect("There were no list");
 		assert!( !list.is_empty() , "cannot sum 0 traffics" );
@@ -476,8 +546,14 @@ impl Sum
 		{
 			assert_eq!( traffic.number_tasks(), size , "In SumTraffic all sub-traffics must involve the same number of tasks." );
 		}
+		let list_statistics = list.iter().map(|_| TrafficStatistics::new(temporal_step, None)).collect();
+		let statistics = TrafficStatistics::new(temporal_step, Some(list_statistics));
+		let tasks = tasks.unwrap();
 		Sum{
-			list
+			list,
+			index_to_generate: vec![vec![]; tasks ],
+			statistics,
+			tasks,
 		}
 	}
 }
@@ -781,6 +857,9 @@ Burst{
 	message_size: 16,
 }
 ```
+
+
+TODO: document more arguments.
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -833,6 +912,12 @@ impl Traffic for Burst
 			0.0
 		}
 	}
+
+	fn should_generate(&mut self, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
+	{
+		self.pending_messages[task]>0
+	}
+
 	fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
 	{
 		let message_ptr=message.as_ref() as *const Message;
@@ -878,8 +963,12 @@ impl Burst
 		let mut messages_per_task=None;
 		let mut pattern=None;
 		let mut message_size=None;
+		let mut source_selection = None;
+		let mut source_space_size = None;
 		match_object_panic!(arg.cv,"Burst",value,
 			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"source_selection" => source_selection=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"source_space_size" => source_space_size=Some(value.as_f64().expect("bad value for source_space_size") as usize),
 			"tasks" | "servers" => tasks=Some(value.as_f64().expect("bad value for tasks") as usize),
 			"messages_per_task" | "messages_per_server" => messages_per_task=Some(value.as_f64().expect("bad value for messages_per_task") as usize),
 			"message_size" => message_size=Some(value.as_f64().expect("bad value for message_size") as usize),
@@ -889,11 +978,448 @@ impl Burst
 		let messages_per_task=messages_per_task.expect("There were no messages_per_task");
 		let mut pattern=pattern.expect("There were no pattern");
 		pattern.initialize(tasks, tasks, arg.topology, arg.rng);
+
+		let pending_messages = if let Some(mut source_selection) = source_selection {
+			let source_space_size = source_space_size.unwrap_or(tasks);
+			source_selection.initialize(tasks, source_space_size, arg.topology, arg.rng);
+			let mut messages = vec![0;tasks];
+			(0..tasks).for_each(|i| messages[source_selection.get_destination(i, arg.topology, arg.rng)] = messages_per_task);
+			messages
+		}else{
+			vec![messages_per_task;tasks]
+		};
+
 		Burst{
 			tasks,
 			pattern,
 			message_size,
-			pending_messages:vec![messages_per_task;tasks],
+			pending_messages,
+			generated_messages: BTreeSet::new(),
+		}
+	}
+}
+
+/**
+Traffic which allows to generate a specific number of messages in total following a specific traffic.
+It finishes when all the messages have been generated and consumed.
+Optionally, messages per task could be indicated to restrict all the tasks to generate the same amount of messages.
+```ignore
+TrafficMessages{
+	task:1000,
+	traffic: HomogeneousTraffic{...},
+	num_messages: 10000,
+	messages_per_task: 10, //optional
+}
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct TrafficMessages
+{
+	///Number of tasks applying this traffic.
+	tasks: usize,
+	///Traffic
+	traffic: Box<dyn Traffic>,
+	///The number of messages to send.
+	num_messages: usize,
+	///Total sent
+	total_sent: usize,
+	///Total consumed
+	total_consumed: usize,
+	///Restriction to the number of messages to send per task
+	messages_per_task: Option<Vec<usize>>,
+}
+
+impl Traffic for TrafficMessages
+{
+	fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
+	{
+		let message = self.traffic.generate_message(origin,cycle,topology,rng);
+		if !message.is_err(){
+			self.total_sent += 1;
+			if let Some(task_messages) = self.messages_per_task.as_mut() {
+				task_messages[origin] -= 1;
+			}
+		}
+		message
+	}
+	fn probability_per_cycle(&self, task:usize) -> f32 //should i check the task?
+	{
+		if self.num_messages > self.total_sent {
+
+			self.traffic.probability_per_cycle(task)
+
+		} else {
+
+			0.0
+		}
+	}
+
+	fn should_generate(&mut self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	{
+		if let Some(task_messages) = self.messages_per_task.as_ref() {
+			self.traffic.should_generate(task, cycle, rng) && task_messages[task] > 0
+		}else {
+			self.traffic.should_generate(task, cycle, rng) && self.num_messages > self.total_sent
+		}
+	}
+
+	fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+	{
+		self.total_consumed += 1;
+		self.traffic.try_consume(task, message, cycle, topology, rng)
+	}
+	fn is_finished(&self) -> bool
+	{
+		// if self.num_messages <= 0 {
+		// 	panic!("TrafficCredit is finished but it should not be.");
+		// }
+		self.num_messages <= self.total_sent && self.total_sent == self.total_consumed
+	}
+	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
+	{
+		if self.num_messages > self.total_sent {
+			self.traffic.task_state(task, cycle)
+		} else {
+			//We do not know whether someone is sending us data.
+			//if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
+			// Sometimes it could be Finished, but it is not worth computing...
+			TaskTrafficState::FinishedGenerating
+		}
+	}
+
+	fn number_tasks(&self) -> usize {
+		self.tasks
+	}
+}
+
+impl TrafficMessages
+{
+	pub fn new(mut arg:TrafficBuilderArgument) -> TrafficMessages
+	{
+		let mut tasks=None;
+		let mut traffic = None;
+		let mut num_messages = None;
+		let mut messages_per_task = None;
+		match_object_panic!(arg.cv,"Messages",value,
+			"traffic" => traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,rng:&mut arg.rng,..arg})),
+			"tasks" | "servers" => tasks=Some(value.as_usize().expect("bad value for tasks")),
+			"num_messages" => num_messages=Some(value.as_usize().expect("bad value for num_messages")),
+			"messages_per_task" | "messages_per_server" => messages_per_task=Some(value.as_usize().expect("bad value for messages_per_task")),
+		);
+		let tasks=tasks.expect("There were no tasks");
+		let num_messages=num_messages.expect("There were no num_messages");
+		let traffic=traffic.expect("There were no traffic");
+
+		let messages_per_task = if messages_per_task.is_some() {
+			let mpt = messages_per_task.unwrap();
+			if mpt * tasks != num_messages {
+				panic!("Messages per task and total messages are different.");
+			}
+			Some(vec![mpt;tasks])
+		} else{
+			None
+		};
+
+		TrafficMessages{
+			tasks,
+			traffic,
+			num_messages,
+			total_sent: 0,
+			total_consumed: 0,
+			messages_per_task,
+		}
+	}
+}
+
+/**
+Introduces a barrier when all the tasks has sent a number of messages.
+Tasks will generate messages again when all the messages are consumed.
+```ignore
+MessageBarrier{
+	traffic: HomogeneousTraffic{...},
+	tasks: 1000,
+	messages_per_task_to_wait: 10,
+}
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct MessageBarrier
+{
+	///Number of tasks applying this traffic.
+	tasks: usize,
+	///Traffic
+	traffic: Box<dyn Traffic>,
+	///The number of messages to send per iteration
+	messages_per_task_to_wait: usize,
+	///Total sent
+	total_sent_per_task: Vec<usize>,
+	///Total sent
+	total_sent: usize,
+	///Total consumed
+	total_consumed: usize,
+}
+
+impl Traffic for MessageBarrier
+{
+	fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
+	{
+		let message = self.traffic.generate_message(origin,cycle,topology,rng);
+		if !message.is_err(){
+			self.total_sent += 1;
+			self.total_sent_per_task[origin] += 1;
+		}
+		message
+	}
+	fn probability_per_cycle(&self, task:usize) -> f32 //should i check the task?
+	{
+		if self.total_sent_per_task[task] <= self.messages_per_task_to_wait {
+
+			self.traffic.probability_per_cycle(task)
+
+		} else {
+
+			0.0
+		}
+	}
+
+	fn should_generate(&mut self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	{
+		self.total_sent_per_task[task] < self.messages_per_task_to_wait && self.traffic.should_generate(task, cycle, rng)
+	}
+
+	fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+	{
+		self.total_consumed += 1;
+		if self.total_sent == self.total_consumed && self.messages_per_task_to_wait * self.tasks == self.total_sent {
+			self.total_sent = 0;
+			self.total_consumed = 0;
+			self.total_sent_per_task = vec![0; self.tasks];
+		}
+		self.traffic.try_consume(task, message, cycle, topology, rng)
+	}
+	fn is_finished(&self) -> bool
+	{
+		false
+	}
+	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
+	{
+		self.traffic.task_state(task, cycle)
+	}
+
+	fn number_tasks(&self) -> usize {
+		self.tasks
+	}
+}
+
+impl MessageBarrier
+{
+	pub fn new(mut arg:TrafficBuilderArgument) -> MessageBarrier
+	{
+		let mut tasks=None;
+		let mut traffic = None;
+		let mut messages_per_task_to_wait = None;
+		match_object_panic!(arg.cv,"MessageBarrier",value,
+			"traffic" => traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,rng:&mut arg.rng,..arg})),
+			"tasks" | "servers" => tasks=Some(value.as_usize().expect("bad value for tasks")),
+			"messages_per_task_to_wait" => messages_per_task_to_wait=Some(value.as_usize().expect("bad value for messages_per_task_to_wait")),
+		);
+		let tasks=tasks.expect("There were no tasks");
+		let traffic=traffic.expect("There were no traffic");
+		let messages_per_task_to_wait=messages_per_task_to_wait.expect("There were no messages_per_task_to_wait");
+		MessageBarrier {
+			tasks,
+			traffic,
+			messages_per_task_to_wait,
+			total_sent_per_task: vec![0; tasks],
+			total_sent: 0,
+			total_consumed: 0,
+		}
+	}
+}
+
+
+/**
+Traffic which allow tasks to generate messages when they have enough credits.
+After generating the messages, the credits are consumed.
+A task gain credits when it consumes messages, and an initial amount of credits per task can be set.
+```ignore
+TrafficCredit{
+	pattern: RandomPermutation, //specify the pattern of the communication
+	tasks: 1000, //specify the number of tasks
+	credits_to_activate: 10, //specify the number of credits needed to generate messages
+	messages_per_transition: 1, //specify the number of messages each task can sent when consuming credits
+	credits_per_received_message: 1, //specify the number of credits to gain when a message is received
+	message_size: 16, //specify the size of each sent message
+	initial_credits: Hotspots{destinations: [1]}, //specify the initial amount of credits per task
+}
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct TrafficCredit
+{
+	///Number of tasks applying this traffic.
+	tasks: usize,
+	///The pattern of the communication.
+	pattern: Box<dyn Pattern>,
+	///Credits needed to activate the transition
+	credits_to_activate:usize,
+	///Credit count per origin
+	credits: Vec<usize>,
+	///The credits to sum when a message is received
+	credits_per_received_message:usize,
+	///The size of each sent message.
+	message_size: usize,
+	///Messages per transition
+	messages_per_transition:usize,
+	///The number of messages each task has pending to sent.
+	pending_messages: Vec<usize>,
+	///Set of generated messages.
+	generated_messages: BTreeSet<*const Message>,
+}
+
+impl Traffic for TrafficCredit
+{
+	fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
+	{
+		if origin>=self.tasks
+		{
+			panic!("origin {} does not belong to the traffic",origin);
+			// return Err(TrafficError::OriginOutsideTraffic);
+		}
+		if self.pending_messages[origin] == 0
+		{
+			panic!("origin {} has no pending messages",origin);
+		}
+		self.pending_messages[origin]-=1;
+		let destination=self.pattern.get_destination(origin, topology, rng);
+		if origin==destination
+		{
+			return Err(TrafficError::SelfMessage);
+		}
+		let message=Rc::new(Message{
+			origin,
+			destination,
+			size:self.message_size,
+			creation_cycle: cycle,
+		});
+		self.generated_messages.insert(message.as_ref() as *const Message);
+		Ok(message)
+	}
+	fn probability_per_cycle(&self, task:usize) -> f32
+	{
+		if self.pending_messages[task]>0
+		{
+			1.0
+		}
+		else
+		{
+			0.0
+		}
+	}
+
+	fn should_generate(&mut self, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
+	{
+		while self.credits[task] >= self.credits_to_activate
+		{
+			self.pending_messages[task] += self.messages_per_transition;
+			self.credits[task] -= self.credits_to_activate;
+		}
+		self.pending_messages[task] > 0
+	}
+
+	fn try_consume(&mut self, task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+	{
+		let message_ptr=message.as_ref() as *const Message;
+		self.credits[task] += self.credits_per_received_message;
+		self.generated_messages.remove(&message_ptr)
+	}
+	fn is_finished(&self) -> bool
+	{
+		if !self.generated_messages.is_empty() //messages traveling through the network
+		{
+			return false;
+		}
+
+		if self.pending_messages.iter().sum::<usize>() > 0 //messages waiting to be sent
+		{
+			return false;
+		}
+
+		//if there is a task with enough credits to activate, then it is not finished
+		for &c in self.credits.iter()
+		{
+			if c >= self.credits_to_activate
+			{
+				return false;
+			}
+		}
+		true
+	}
+	fn task_state(&self, task:usize, _cycle:Time) -> TaskTrafficState
+	{
+		if self.pending_messages[task]>0 {
+			TaskTrafficState::Generating
+		} else {
+			//We do not know whether someone is sending us data.
+			//if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
+			// Sometimes it could be Finished, but it is not worth computing...
+			TaskTrafficState::UnspecifiedWait
+		}
+	}
+
+	fn number_tasks(&self) -> usize {
+		self.tasks
+	}
+}
+
+impl TrafficCredit
+{
+	pub fn new(arg:TrafficBuilderArgument) -> TrafficCredit
+	{
+		let mut tasks=None;
+		let mut pattern =None;
+		let mut credits_to_activate=None;
+		let mut credits_per_received_message=None;
+		let mut message_size=None;
+		let mut messages_per_transition=None;
+		let mut initial_credits=None;
+		
+		match_object_panic!(arg.cv,"TrafficCredit",value,
+			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"tasks" | "servers" => tasks=Some(value.as_usize().expect("bad value for tasks")),
+			"credits_to_activate" => credits_to_activate=Some(value.as_usize().expect("bad value for credits_to_activate")),
+			"credits_per_received_message" => credits_per_received_message=Some(value.as_usize().expect("bad value for credits_per_received_message")),
+			"message_size" => message_size=Some(value.as_usize().expect("bad value for message_size") ),
+			"messages_per_transition" => messages_per_transition=Some(value.as_usize().expect("bad value for messages_per_transition")),
+			"initial_credits" => initial_credits=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+		);
+		
+		let tasks=tasks.expect("There were no tasks");
+		let mut pattern = pattern.expect("There were no pattern");
+		let credits_to_activate=credits_to_activate.expect("There were no credits_to_activate");
+		let credits_per_received_message=credits_per_received_message.expect("There were no credits_per_received_message");
+		let message_size=message_size.expect("There were no message_size");
+		let messages_per_transition=messages_per_transition.expect("There were no messages_per_transition");
+		let mut initial_credits=initial_credits.expect("There were no initial_credits");
+
+		pattern.initialize(tasks, tasks, arg.topology, arg.rng);
+		initial_credits.initialize(tasks, tasks, arg.topology, arg.rng);
+		let pending_messages = vec![0;tasks];
+
+		let credits = (0..tasks).map(|i| initial_credits.get_destination(i, arg.topology, arg.rng)).collect::<Vec<usize>>();
+
+		TrafficCredit{
+			tasks,
+			pattern,
+			credits_to_activate,
+			credits,
+			credits_per_received_message,
+			message_size,
+			messages_per_transition,
+			pending_messages,
 			generated_messages: BTreeSet::new(),
 		}
 	}
@@ -1081,7 +1607,7 @@ impl Traffic for TimeSequenced
 		}
 		return true;
 	}
-	fn should_generate(&self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	fn should_generate(&mut self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
 	{
 		let mut offset = cycle;
 		let mut traffic_index = 0;
@@ -1152,6 +1678,262 @@ impl TimeSequenced
 }
 
 /**
+* Do nothing until the cycle_to_wake is reached, where the traffic finishes. It is useful to make a task wait for a certain time.
+**/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct Sleep
+{
+	///Number of tasks applying this traffic.
+	cycle_to_wake: Time,
+	///Number of tasks
+	tasks: usize,
+	/// Is finished
+	finished: bool,
+}
+
+impl Traffic for Sleep
+{
+	fn generate_message(&mut self, _origin:usize, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
+	{
+		return Err(TrafficError::OriginOutsideTraffic);
+	}
+	fn probability_per_cycle(&self, _task:usize) -> f32
+	{
+		0.0
+	}
+	fn try_consume(&mut self, _task:usize, _message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+	{
+		false
+	}
+	fn is_finished(&self) -> bool
+	{
+		self.finished
+	}
+
+	fn should_generate(&mut self, _task:usize, cycle:Time, _rng: &mut StdRng) -> bool
+	{
+		if cycle >= self.cycle_to_wake as u64 {
+			self.finished = true;
+		}
+		false
+	}
+	fn task_state(&self, _task:usize, _cycle:Time) -> TaskTrafficState
+	{
+		TaskTrafficState::UnspecifiedWait
+	}
+
+
+	fn number_tasks(&self) -> usize {
+		self.tasks
+	}
+}
+
+impl Sleep
+{
+	pub fn new(arg:TrafficBuilderArgument) -> Sleep
+	{
+		let mut cycle_to_wake=None;
+		let mut tasks=None;
+
+		match_object_panic!(arg.cv,"Sleep",value,
+			"cycle_to_wake" => cycle_to_wake=Some(value.as_time().expect("bad value for cycle_to_wake")),
+			"tasks" | "servers" => tasks=Some(value.as_f64().expect("bad value for tasks") as usize),
+		);
+		let cycle_to_wake=cycle_to_wake.expect("There were no cycle_to_wake");
+		let tasks=tasks.expect("There were no tasks");
+		Sleep {
+			cycle_to_wake,
+			tasks,
+			finished: false,
+		}
+	}
+}
+
+
+
+
+/**
+Selects the traffic from a sequence depending on current cycle. This traffics is useful to make sequences of traffics that do no end by themselves.
+
+All the subtraffics in `traffics` must give the same value for `number_tasks`, which is also used for TimeSequenced. At least one such subtraffic must be provided.
+
+```ignore
+PeriodicBurst{
+	pattern:Uniform,
+	period: 2000,
+	offset: 0,
+	finish: 100000,
+	tasks:1000,
+	messages_per_task:200,
+	message_size: 16,
+}
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct PeriodicBurst
+{
+	///times at which the burst will happen
+	times_to_generate: VecDeque<Time>,
+	///Number of tasks applying this traffic.
+	tasks: usize,
+	///The pattern of the communication.
+	pattern: Box<dyn Pattern>,
+	///The size of each sent message.
+	message_size: usize,
+	///Messages to send per period
+	messages_per_task_per_period: usize,
+	///The number of messages each task has pending to sent.
+	pending_messages: Vec<usize>,
+	///Set of generated messages.
+	generated_messages: BTreeSet<*const Message>,
+}
+
+impl Traffic for PeriodicBurst
+{
+	fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
+	{
+		if origin>=self.tasks
+		{
+			//panic!("origin {} does not belong to the traffic",origin);
+			return Err(TrafficError::OriginOutsideTraffic);
+		}
+		self.pending_messages[origin]-=1;
+		let destination=self.pattern.get_destination(origin,topology,rng);
+		if origin==destination
+		{
+			return Err(TrafficError::SelfMessage);
+		}
+		let message=Rc::new(Message{
+			origin,
+			destination,
+			size:self.message_size,
+			creation_cycle: cycle,
+		});
+		self.generated_messages.insert(message.as_ref() as *const Message);
+		Ok(message)
+	}
+	fn probability_per_cycle(&self, task:usize) -> f32
+	{
+		if self.pending_messages[task]>0
+		{
+			1.0
+		}
+		else
+		{
+			0.0
+		}
+	}
+	fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+	{
+		let message_ptr=message.as_ref() as *const Message;
+		self.generated_messages.remove(&message_ptr)
+	}
+	fn is_finished(&self) -> bool
+	{
+		let times_to_generate = &self.times_to_generate;
+
+		if !self.generated_messages.is_empty() || !times_to_generate.is_empty()
+		{
+			return false;
+		}
+		for &pm in self.pending_messages.iter()
+		{
+			if pm>0
+			{
+				return false;
+			}
+		}
+		true
+	}
+
+	fn should_generate(&mut self, task:usize, cycle:Time, _rng: &mut StdRng) -> bool
+	{
+		// let mut offset = cycle;
+		// let mut traffic_index = 0;
+		// while traffic_index<self.traffics.len() && offset >= self.times[traffic_index]
+		// {
+		// 	offset -= self.times[traffic_index];
+		// 	traffic_index += 1;
+		// }
+		// if traffic_index<self.traffics.len(){
+		// 	self.traffics[traffic_index].should_generate(task,cycle,rng)
+		// } else {
+		// 	false
+		// }
+		let times = &mut self.times_to_generate;
+
+		if !times.is_empty() && cycle >= times[0] {
+			times.pop_front();
+			for i in 0..self.pending_messages.len() {
+				self.pending_messages[i] += self.messages_per_task_per_period;
+			}
+		}
+		self.pending_messages[task] > 0
+	}
+	fn task_state(&self, task:usize, _cycle:Time) -> TaskTrafficState
+	{
+		if self.pending_messages[task]>0 {
+			TaskTrafficState::Generating
+		} else {
+			//We do not know whether someone is sending us data.
+			if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
+			// Sometimes it could be Finished, but it is not worth computing...
+			// TaskTrafficState::UnspecifiedWait
+		}
+	}
+
+
+	fn number_tasks(&self) -> usize {
+		self.tasks
+	}
+}
+
+impl PeriodicBurst
+{
+	pub fn new(arg:TrafficBuilderArgument) -> PeriodicBurst
+	{
+		let mut pattern=None;
+		let mut period=None;
+		let mut offset=None;
+		let mut finish=None;
+		let mut tasks=None;
+		let mut messages_per_task_per_period=None;
+		let mut message_size=None;
+		match_object_panic!(arg.cv,"PeriodicBurst",value,
+			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"period" => period = Some(value.as_usize().expect("bad value in period")),
+			"offset" => offset = Some(value.as_usize().expect("bad value in offset")),
+			"finish" => finish=Some(value.as_usize().expect("bad value for finish")),
+			"tasks" => tasks=Some(value.as_f64().expect("bad value for tasks") as usize),
+			"messages_per_task_per_period" => messages_per_task_per_period=Some(value.as_f64().expect("bad value for messages_per_task_per_period") as usize),
+			"message_size" => message_size=Some(value.as_f64().expect("bad value for message_size") as usize),
+		);
+		let mut pattern =pattern.expect("There were no pattern");
+		let period=period.expect("There were no period");
+		let offset=offset.expect("There were no offset");
+		let finish=finish.expect("There were no finish");
+		let tasks=tasks.expect("There were no tasks");
+		let message_size=message_size.expect("There were no message_size");
+		let messages_per_task_per_period=messages_per_task_per_period.expect("There were no messages_per_task_per_period");
+
+		let times_to_generate = VecDeque::from((0..((finish-offset)/period +1)).into_iter().map(|i| (i*period + offset) as Time).collect::<Vec<Time>>());
+		println!("times_to_generate: {:?}", times_to_generate);
+		pattern.initialize(tasks, tasks, arg.topology, arg.rng);
+		PeriodicBurst {
+			pattern,
+			times_to_generate,
+			tasks,
+			message_size,
+			messages_per_task_per_period,
+			pending_messages: vec![0;tasks],
+			generated_messages: BTreeSet::new(),
+		}
+	}
+}
+
+/**
 A sequence of traffics. When a traffic declares itself to be finished moves to the next.
 
 All the subtraffics in `traffics` must give the same value for `number_tasks`, which is also used for Sequence. At least one such subtraffic must be provided.
@@ -1190,7 +1972,11 @@ impl Traffic for Sequence
 	}
 	fn probability_per_cycle(&self,task:usize) -> f32
 	{
-		self.traffics[self.current_traffic].probability_per_cycle(task)
+		if self.current_traffic < self.traffics.len() {
+			self.traffics[self.current_traffic].probability_per_cycle(task)
+		}else{
+			0.0
+		}
 	}
 	fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
 	{
@@ -1213,8 +1999,13 @@ impl Traffic for Sequence
 		//return current_period == period_limit;
 		return self.current_traffic>=self.traffics.len() || (self.current_traffic==self.traffics.len()-1 && self.traffics[self.current_traffic].is_finished())
 	}
-	fn should_generate(&self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	fn should_generate(&mut self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
 	{
+		while self.traffics.len() > self.current_traffic && self.traffics[self.current_traffic].is_finished()
+		{
+			self.current_traffic += 1;
+			//self.current_traffic = (self.current_traffic + 1) % self.traffics.len();
+		}
 		if self.current_traffic>=self.traffics.len()
 		{
 			false
@@ -1707,7 +2498,7 @@ impl Traffic for TrafficMap
 		}).unwrap_or(0.0) // if the task_app has no origin, it has no probability
 	}
 
-	fn should_generate(&self, task: usize, cycle: Time, rng: &mut StdRng) -> bool {
+	fn should_generate(&mut self, task: usize, cycle: Time, rng: &mut StdRng) -> bool {
 		let task_app = self.from_machine_to_app[task];
 
 		task_app.map(|app| {

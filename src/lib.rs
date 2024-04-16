@@ -565,6 +565,63 @@ impl Network
 			))
 		}).collect()
 	}
+	fn get_temporal_statistics_servers_expr<'a>(&'a self, temporal_server_defined_statistics_definitions: &Vec< (Vec<Expr>, Vec<Expr>)>) -> Vec< Vec< Vec< (Vec<ConfigurationValue>, Vec<f32>, usize) >>>
+	{
+		//measures::jain(self.servers.iter().map(|s|s.statistics.current_measurement.created_phits as f64))
+		let limit:usize = self.servers.iter().map(|s|s.statistics.temporal_statistics.len()).max().unwrap_or(0);
+		let mut temporal_server_defined_statistics_measurement: Vec<Vec<Vec<(Vec<ConfigurationValue>, Vec<f32>, usize)>>> =  vec![vec![vec![]; temporal_server_defined_statistics_definitions.len() ]; limit ];
+
+		for index_cycle in 0..limit
+		{
+			//(0..limit).map(|index_cycle|{
+			for (index,definition) in temporal_server_defined_statistics_definitions.iter().enumerate()
+			{
+				for server in self.servers.iter()
+				{
+					let context_content = vec![
+						(String::from("generated_phits"), ConfigurationValue::Number(server.statistics.temporal_statistics.get(index_cycle).map(|m|m.created_phits as f64).unwrap_or(0f64))),
+						(String::from("accepted_phits"), ConfigurationValue::Number(server.statistics.temporal_statistics.get(index_cycle).map(|m|m.consumed_phits as f64).unwrap_or(0f64))),
+						(String::from("missed_generations"), ConfigurationValue::Number(server.statistics.temporal_statistics.get(index_cycle).map(|m|m.missed_generations as f64).unwrap_or(0f64))),
+						(String::from("server_index"), ConfigurationValue::Number(server.index as f64)),
+						(String::from("switches"), ConfigurationValue::Number( match server.port.0{
+							Location::RouterPort {router_index, router_port: _} => router_index as f64,
+							_ => panic!("Here there should be a router")
+						} )),
+					];
+
+					let context = ConfigurationValue::Object( String::from("packet"), context_content );
+					let path = Path::new(".");
+					let key : Vec<ConfigurationValue> = definition.0.iter().map(|key_expr|config::evaluate( key_expr, &context, path)
+						.unwrap_or_else(|error|panic!("error building user defined statistics: {}",error))).collect();
+
+					let value : Vec<f32> = definition.1.iter().map(|key_expr|
+						match config::evaluate( key_expr, &context, path).unwrap_or_else(|error|panic!("error building user defined statistics: {}",error)){
+							ConfigurationValue::Number(x) => x as f32,
+							_ => 0f32,
+						}).collect();
+
+					//find the measurement
+					let measurement = temporal_server_defined_statistics_measurement[index_cycle][index].iter_mut().find(|m|m.0==key);
+					match measurement
+					{
+						Some(m) =>
+							{
+								for (iv,v) in m.1.iter_mut().enumerate()
+								{
+									*v += value[iv];
+								}
+								m.2+=1;
+							}
+						None => {
+							temporal_server_defined_statistics_measurement[index_cycle][index].push( (key, value, 1) )
+						},
+					};
+				}
+			}
+		} //).collect()
+		temporal_server_defined_statistics_measurement
+		//temporal_packet_defined_statistics_measurement
+	}
 }
 
 ///Description of common properties of sets of links.
@@ -713,6 +770,8 @@ impl<'a> Simulation<'a>
 		let mut statistics_server_percentiles: Vec<u8> = vec![];
 		let mut statistics_packet_percentiles: Vec<u8> = vec![];
 		let mut statistics_packet_definitions:Vec< (Vec<Expr>,Vec<Expr>) > = vec![];
+		let mut statistics_message_definitions:Vec< (Vec<Expr>,Vec<Expr>) > = vec![];
+		let mut temporal_defined_statistics:Vec< (Vec<Expr>, Vec<Expr>) > = vec![];
 		let mut server_queue_size = None;
 		let mut memory_report_period = None;
 		let mut general_frequency_divisor = 1;
@@ -766,6 +825,67 @@ impl<'a> Simulation<'a>
 				}).collect(),
 				_ => panic!("bad value for statistics_packet_definitions"),
 			}
+			"statistics_message_definitions" => match value
+			{
+				&ConfigurationValue::Array(ref l) => statistics_message_definitions=l.iter().map(|definition|match definition {
+					&ConfigurationValue::Array(ref dl) => {
+						if dl.len()!=2
+						{
+							panic!("Each definition of statistics_message_definitions must be composed of [keys,values]");
+						}
+						let keys = match dl[0]
+						{
+							ConfigurationValue::Array(ref lx) => lx.iter().map(|x|match x{
+								ConfigurationValue::Expression(expr) => expr.clone(),
+								_ => panic!("bad value for statistics_message_definitions"),
+								}).collect(),
+							_ => panic!("bad value for statistics_message_definitions"),
+						};
+						let values = match dl[1]
+						{
+							ConfigurationValue::Array(ref lx) => lx.iter().map(|x|match x{
+								ConfigurationValue::Expression(expr) => expr.clone(),
+								_ => panic!("bad value for statistics_message_definitions"),
+								}).collect(),
+							_ => panic!("bad value for statistics_message_definitions"),
+						};
+						(keys,values)
+					},
+					_ => panic!("bad value for statistics_message_definitions"),
+				}).collect(),
+				_ => panic!("bad value for statistics_message_definitions"),
+			}
+			"statistics_temporal_definitions" | "temporal_statistics_packet_definitions" => match value
+			{
+				&ConfigurationValue::Array(ref l) => temporal_defined_statistics=l.iter().map(|definition|match definition {
+					&ConfigurationValue::Array(ref dl) => {
+						if dl.len()!=2
+						{
+							panic!("Each definition of temporal_defined_statistics must be composed of [keys,values]");
+						}
+						let keys = match dl[0]
+						{
+							ConfigurationValue::Array(ref lx) => lx.iter().map(|x|match x{
+								ConfigurationValue::Expression(expr) => expr.clone(),
+								_ => panic!("bad value for temporal_defined_statistics"),
+								}).collect(),
+							_ => panic!("bad value for temporal_defined_statistics"),
+						};
+						let values = match dl[1]
+						{
+							ConfigurationValue::Array(ref lx) => lx.iter().map(|x|match x{
+								ConfigurationValue::Expression(expr) => expr.clone(),
+								_ => panic!("bad value for temporal_defined_statistics"),
+								}).collect(),
+							_ => panic!("bad value for temporal_defined_statistics"),
+						};
+						(keys,values)
+					},
+					_ => panic!("bad value for temporal_defined_statistics"),
+				}).collect(),
+				_ => panic!("bad value for temporal_defined_statistics"),
+			}
+
 			"memory_report_period" => memory_report_period=Some(value.as_time().expect("bad value for memory_report_period")),
 			"general_frequency_divisor" => general_frequency_divisor = value.as_time().expect("bad value for general_frequency_divisor"),
 		);
@@ -853,7 +973,7 @@ impl<'a> Simulation<'a>
 		{
 			println!("WARNING: Generating traffic over {} tasks when the topology has {} servers.",num_tasks,num_servers);
 		}
-		let statistics=Statistics::new(statistics_temporal_step,statistics_server_percentiles,statistics_packet_percentiles,statistics_packet_definitions,topology.as_ref());
+		let statistics=Statistics::new(statistics_temporal_step, statistics_server_percentiles, statistics_packet_percentiles, statistics_packet_definitions, statistics_message_definitions, temporal_defined_statistics, topology.as_ref());
 		Simulation{
 			configuration: cv.clone(),
 			seed,
@@ -1119,14 +1239,17 @@ impl<'a> Simulation<'a>
 						{
 							size
 						};
+						let mut routing_info = RoutingInfo::new();
+						routing_info.source_server = Some(iserver);
 						server.stored_packets.push_back(Packet{
 							size:ps,
-							routing_info: RefCell::new(RoutingInfo::new()),
+							routing_info: RefCell::new(routing_info),
 							message:message.clone(),
 							index:0,
 							cycle_into_network:RefCell::new(0),
 							extra: RefCell::new(None),
 						}.into_ref());
+
 						size-=ps;
 					}
 				}
@@ -1439,6 +1562,91 @@ impl<'a> Simulation<'a>
 			}
 			result_content.push( (String::from("packet_defined_statistics"),ConfigurationValue::Array(pds_content)) );
 		}
+		if !self.statistics.message_defined_statistics_measurement.is_empty()
+		{
+			let mut mds_content=vec![];
+			for definition_measurement in self.statistics.message_defined_statistics_measurement.iter()
+			{
+				let mut dm_list = vec![];
+				for (key,val,count) in definition_measurement
+				{
+					let fcount = *count as f32;
+					//One average for each value field
+					let averages = ConfigurationValue::Array( val.iter().map(|v|ConfigurationValue::Number(f64::from(v/fcount))).collect() );
+					let dm_content: Vec<(String,ConfigurationValue)> = vec![
+						(String::from("key"),ConfigurationValue::Array(key.to_vec())),
+						(String::from("average"),averages),
+						(String::from("count"),ConfigurationValue::Number(*count as f64)),
+					];
+					dm_list.push( ConfigurationValue::Object(String::from("MessageBin"),dm_content) );
+				}
+				mds_content.push(ConfigurationValue::Array(dm_list));
+			}
+			result_content.push( (String::from("message_defined_statistics"),ConfigurationValue::Array(mds_content)) );
+		}
+		if !self.statistics.temporal_defined_statistics_measurement.is_empty() && !self.statistics.temporal_defined_statistics_definitions.is_empty()
+		{
+			let temporal_measurement = self.shared.network.get_temporal_statistics_servers_expr(&self.statistics.temporal_defined_statistics_definitions);
+			let mut all_temporal_measurement = vec![];
+			for cycle in temporal_measurement
+			{
+				let mut pds_content=vec![];
+				for statistic in cycle
+				{
+					let mut dm_list = vec![];
+					for (key,val,count) in statistic
+					{
+						let averages = ConfigurationValue::Array( val.iter().map(|v|ConfigurationValue::Number(*v as f64)).collect() );
+						let dm_content: Vec<(String,ConfigurationValue)> = vec![
+							(String::from("key"),ConfigurationValue::Array(key.to_vec())),
+							(String::from("average"),averages),
+							(String::from("count"),ConfigurationValue::Number(count as f64)),
+						];
+						dm_list.push( ConfigurationValue::Object(String::from("PacketBin"),dm_content) );
+					}
+					pds_content.push(ConfigurationValue::Array(dm_list));
+				}
+				all_temporal_measurement.push(ConfigurationValue::Array(pds_content));
+			}
+			result_content.push( (String::from("temporal_defined_statistics"),ConfigurationValue::Array(all_temporal_measurement)) );
+		}
+
+		if self.shared.traffic.get_statistics().is_some()
+		{
+			let traffic_statistics = self.shared.traffic.get_statistics().unwrap().parse_statistics();
+			result_content.push((String::from("traffic_statistics"), traffic_statistics));
+			// for statistic in traffic_statistics.iter()
+			// {
+			// 	let s = statistic.borrow();
+			//
+			//
+			// 	let temporal_consumed_messages = s.temporal_statistics.iter().map(|i| ConfigurationValue::Number(i.consumed_messages as f64)).collect::<Vec<_>>();
+			// 	let temporal_generated_messages = s.temporal_statistics.iter().map(|i| ConfigurationValue::Number(i.created_messages as f64)).collect::<Vec<_>>();
+			// 	let temporal_total_message_delay = s.temporal_statistics.iter().map(|i| ConfigurationValue::Number(
+			// 		if i.consumed_messages == 0 {0f64} else{(i.total_message_delay / i.consumed_messages as u64) as f64} )
+			// 	).collect::<Vec<_>>();
+			//
+			// 	let temporal_statistics = vec![
+			// 		(String::from("consumed_messages"),ConfigurationValue::Array(temporal_consumed_messages.clone())),
+			// 		(String::from("generated_messages"),ConfigurationValue::Array(temporal_generated_messages.clone())),
+			// 		(String::from("total_message_delay"),ConfigurationValue::Array(temporal_total_message_delay.clone())),
+			// 	];
+			//
+			// 	let total_consumed_messages = s.total_consumed_messages as f64;
+			// 	let total_generated_messages = s.total_created_messages as f64;
+			// 	let average_message_delay = s.total_message_delay / total_consumed_messages as u64;
+			//
+			//
+			// 	let traffic_content = vec![
+			// 		(String::from("total_consumed_messages"),ConfigurationValue::Number(total_consumed_messages)),
+			// 		(String::from("total_generated_messages"),ConfigurationValue::Number(total_generated_messages)),
+			// 		(String::from("average_message_delay"),ConfigurationValue::Number(average_message_delay as f64)),
+			// 		(String::from("temporal_statistics"), ConfigurationValue::Object(String::from("temporal"),temporal_statistics)),
+			// 	];
+			// 	traffics_results.push(ConfigurationValue::Object(String::from("TrafficStatistic"),traffic_content));
+			// }
+		}
+
 		ConfigurationValue::Object(String::from("Result"),result_content)
 	}
 

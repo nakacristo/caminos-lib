@@ -11,7 +11,7 @@ see [`new_virtual_channel_policy`](fn.new_virtual_channel_policy.html) for docum
 use crate::config_parser::ConfigurationValue;
 use crate::routing::CandidateEgress;
 use crate::router::Router;
-use crate::topology::{Topology,Location};
+use crate::topology::{Topology, Location, NeighbourRouterIteratorItem};
 use crate::{Plugs,Phit,match_object_panic};
 use crate::event::Time;
 
@@ -19,7 +19,7 @@ use std::fmt::Debug;
 use std::convert::TryInto;
 use std::rc::Rc;
 
-use ::rand::{Rng,rngs::StdRng};
+use rand::{Rng,rngs::StdRng};
 
 ///Extra information to be used by the policies of virtual channels.
 #[derive(Debug)]
@@ -310,6 +310,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"LabelTransform" => Box::new(LabelTransform::new(arg)),
 			"OccupancyFunction" => Box::new(OccupancyFunction::new(arg)),
 			"AverageOccupancyFunction" => Box::new(AverageOccupancyFunction::new(arg)),
+			"PortDiscardLabelThreshold" => Box::new(PortDiscardLabelThreshold::new(arg)),
 			"NegateLabel" => Box::new(NegateLabel::new(arg)),
 			"VecLabel" => Box::new(VecLabel::new(arg)),
 			"MapLabel" => Box::new(MapLabel::new(arg)),
@@ -321,6 +322,10 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"MapMessageSize" => Box::new(MapMessageSize::new(arg)),
 			"Chain" => Box::new(Chain::new(arg)),
 			"VOQ" => Box::new(VOQ::new(arg)),
+			"CycleIntoNetwork" => Box::new(CycleIntoNetwork::new(arg)),
+			"NextLinkLabel" => Box::new(NextLinkLabel::new(arg)),
+			"CurrentLinkLabel" => Box::new(CurrentLinkLabel::new(arg)),
+			"ChannelHop" => Box::new(ChannelHop::new(arg)),
 			_ => panic!("Unknown policy {}",cv_name),
 		}
 	}
@@ -825,88 +830,86 @@ impl VirtualChannelPolicy for AverageOccupancyFunction
 	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy AverageOccupancyFunction");
-		if router.get_index().expect("we need routers with index") == info.target_router_index
+		if candidates.len()==0
+		{
+			return vec![]; //Funny but true.....
+		}
+		let current_router_index = router.get_index().expect("we need routers with index");
+		if current_router_index == info.target_router_index
 		{
 			//do nothing
 			candidates
 		}
 		else
 		{
-			let distance = topology.distance(router.get_index().expect("Index should be here"),info.target_router_index);
+			let q;
+			let mut q_avg= 0;
+			let mut q_count=0;
+			let distance = topology.distance(current_router_index,info.target_router_index);
+			for NeighbourRouterIteratorItem{link_class: neighbour_link_class,port_index: p_avg,neighbour_router:neighbour_router_index,..} in topology.neighbour_router_iter(current_router_index)
+			{
 
-			candidates.into_iter().map(
-				//|CandidateEgress{port,virtual_channel,label,estimated_remaining_hops}|
-				|candidate|{
-					// let CandidateEgress{port,virtual_channel,label,..} = candidate;
-					let CandidateEgress{label,..} = candidate;
-					//let minimal_neighbour = topology.neighbour(router.get_index().expect("Index should be here"), port);
+				let neighbour_distance = topology.distance(neighbour_router_index,info.target_router_index);
 
-					let mut q_avg= 0;
-					let mut q_count=0;
+				if (self.exclude_minimal_ports && neighbour_distance < distance) || self.exclude_link_classes.contains(&neighbour_link_class)
+				{
+					continue;
+				}
 
-					for p_avg in 0..topology.degree(0)  //info.port_available_output_space.expect("port_available_output_space is needed").len() //all the ports
+				q_count+=1;
+
+				q_avg += if self.use_internal_space
+				{
+					let mut occupied_output_space = 0;
+					for i in 0..self.virtual_channels.len()
 					{
-						let (neighbour_location,neighbour_link_class) = topology.neighbour(router.get_index().expect("Index should be here"), p_avg);
-						let neighbour_router_index = match neighbour_location
-						{
-							Location::RouterPort {router_index: neighbour_router, router_port: _neighbour_port} =>
-								{
-									neighbour_router
-								},
-							_ =>  panic!(),
-						};
-
-						let neighbour_distance = topology.distance(neighbour_router_index,info.target_router_index);
-
-						if (self.exclude_minimal_ports && neighbour_distance < distance) || self.exclude_link_classes.contains(&neighbour_link_class)
-						{
-							continue;
-						}
-
-						q_count+=1;
-
-						q_avg += if self.use_internal_space
-						{
-							let mut occupied_output_space = 0;
-							for i in 0..self.virtual_channels.len()
-							{
-								let virtual_channel_occupied_output_space=info.virtual_channel_occupied_output_space.expect("virtual_channel_occupied_output_space have not been computed for AverageOccupancyFunction");
-								occupied_output_space += virtual_channel_occupied_output_space[p_avg][self.virtual_channels[i]] as i32;
-							}
-
-							if self.average_virtual_channels
-                            {
-								occupied_output_space = occupied_output_space/ self.virtual_channels.len() as i32;
-                            }
-
-								occupied_output_space
-
-						}
-						else {0} + if self.use_neighbour_space
-						{
-							let mut occupied_output_space = 0;
-							let status=router.get_status_at_emisor(p_avg).expect("This router does not have transmission status");
-							for i in 0..self.virtual_channels.len()
-							{
-								let virtual_channel_occupied_output_space=router.get_maximum_credits_towards(p_avg,self.virtual_channels[i]).expect("we need routers with maximum credits") as i32
-									- status.known_available_space_for_virtual_channel(self.virtual_channels[i]).expect("remote available space is not known.") as i32;
-								occupied_output_space += virtual_channel_occupied_output_space;
-							}
-
-							if self.average_virtual_channels
-							{
-								occupied_output_space = occupied_output_space/ self.virtual_channels.len() as i32;
-
-							}
-
-								occupied_output_space
-
-						}
-						else {0};
+						let virtual_channel_occupied_output_space=info.virtual_channel_occupied_output_space.expect("virtual_channel_occupied_output_space have not been computed for AverageOccupancyFunction");
+						occupied_output_space += virtual_channel_occupied_output_space[p_avg][self.virtual_channels[i]] as i32;
 					}
 
-					let q = q_avg /q_count;
+					if self.average_virtual_channels
+					{
+						occupied_output_space = occupied_output_space/ self.virtual_channels.len() as i32;
+					}
 
+					occupied_output_space
+
+				}
+				else {0} + if self.use_neighbour_space
+				{
+					let mut occupied_output_space = 0;
+					let status=router.get_status_at_emisor(p_avg).expect("This router does not have transmission status");
+					for i in 0..self.virtual_channels.len()
+					{
+						let virtual_channel_occupied_output_space=router.get_maximum_credits_towards(p_avg,self.virtual_channels[i]).expect("we need routers with maximum credits") as i32
+							- status.known_available_space_for_virtual_channel(self.virtual_channels[i]).expect("remote available space is not known.") as i32;
+						occupied_output_space += virtual_channel_occupied_output_space;
+					}
+
+					if self.average_virtual_channels
+					{
+						occupied_output_space = occupied_output_space/ self.virtual_channels.len() as i32;
+
+					}
+
+					occupied_output_space
+
+				}
+				else {0};
+			}
+
+			if q_count == 0
+			{
+				//print information about the router
+				println!("router: {:?}", router.get_index().expect("Index should be here"));
+				println!("info: {:?}", info);
+				panic!("No ports to average");
+			}
+			q = q_avg /q_count;
+
+			candidates.into_iter().map(
+				|candidate|{
+					let CandidateEgress{label,..} = candidate;
 					let new_label = self.label_coefficient*label + self.occupancy_coefficient*q + self.product_coefficient*label*q + self.constant_coefficient;
 					CandidateEgress{label:new_label,..candidate}
 				}).collect::<Vec<_>>()
@@ -942,7 +945,7 @@ impl AverageOccupancyFunction
 		let mut use_neighbour_space=false;
 		let mut virtual_channels= None;
 		let mut average_virtual_channels=false;
-		let mut exclude_minimal_ports=true;
+		let mut exclude_minimal_ports=false;
 		let mut exclude_link_classes=Vec::new();
 		//let mut only_minimal_link_class=false;
 		match_object_panic!(arg.cv,"AverageOccupancyFunction",value,
@@ -980,6 +983,208 @@ impl AverageOccupancyFunction
 		}
 	}
 }
+
+/**Discards candidates whose label is greater (lower) than a threshold after applying a policy.
+	Example configuration:
+```ignore
+PortDiscardLabelThreshold{
+	previous_policy: OccupancyFunction{...}
+	threshold: 80,
+	below: true, //discard if above threshold
+}
+ ```
+ **/
+#[derive(Debug)]
+pub struct PortDiscardLabelThreshold
+{
+	///Explicit policy to apply previous to the evaluation
+	previous_policy: Box<dyn VirtualChannelPolicy>,
+	///threshold which cannot supperate
+	threshold: i32,
+	///discard if below
+	below: bool,
+}
+
+impl VirtualChannelPolicy for PortDiscardLabelThreshold
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		if candidates.len()==0
+		{
+			return vec![]; //Funny but true.....
+		}
+		let cand2 =  self.previous_policy.filter(candidates.clone(), router, info, topology, _rng);
+		if cand2.len()!= candidates.len()
+		{
+			panic!("The previous policy of PortDiscardLabelThreshold has changed the number of candidates");
+		}
+		candidates.into_iter().zip(cand2.into_iter()).filter(
+			| (c1,c2) | {
+				if c1.port != c2.port || c1.virtual_channel != c2.virtual_channel
+				{
+					panic!("The previous policy of PortDiscardLabelThreshold has changed the order of the candidates");
+				}
+				if self.below
+				{
+					c2.label < self.threshold
+				} else {
+					c2.label > self.threshold
+				}
+			}
+		).map(
+			| (c1,_c2) | {
+				c1
+			}
+		).collect::<Vec<_>>()
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		false
+	}
+
+}
+
+impl PortDiscardLabelThreshold
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> PortDiscardLabelThreshold
+	{
+		let mut previous_policy=None;
+		let mut threshold=None;
+		let mut below = true;
+		match_object_panic!(arg.cv,"PortDiscardLabelThreshold",value,
+			"previous_policy" => previous_policy = Some(new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg})),
+			"threshold" => threshold = Some(value.as_f64().expect("bad value for threshold") as i32),
+			"below" => below = value.as_bool().expect("bad value for below"),
+		);
+		let previous_policy=previous_policy.expect("There were no previous_policy");
+		let threshold=threshold.expect("There were no threshold");
+
+		PortDiscardLabelThreshold{
+			previous_policy,
+			threshold,
+			below,
+		}
+	}
+}
+
+
+/**
+Applies a `policy` to those candidates that would move to a router closer to the destination.
+**/
+#[derive(Debug)]
+pub struct Minimal
+{
+	policy: Box<dyn VirtualChannelPolicy>,
+}
+
+impl VirtualChannelPolicy for Minimal
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy AverageOccupancyFunction");
+		if candidates.len()==0
+		{
+			return vec![]; //Funny but true.....
+		}
+		let current_router_index = router.get_index().expect("we need routers with index");
+		if current_router_index == info.target_router_index
+		{
+			//do nothing
+			candidates
+		}
+		else
+		{
+			let distance = topology.distance(current_router_index,info.target_router_index);
+			let mut minimos = candidates.clone().into_iter().filter(
+				|candidate|{
+
+					let CandidateEgress{port,..} = candidate;
+					let (next_router, _link_class) =  topology.neighbour(current_router_index, *port);
+					let neighbour_router_index = match next_router {
+						Location::RouterPort{router_index, router_port:_} => router_index,
+						_ => panic!("We trying to go to the server when we are at distance {} greater than 0.",distance)
+					};
+					let neighbour_distance = topology.distance(neighbour_router_index,info.target_router_index);
+
+					if neighbour_distance < distance
+					{
+						true
+					}else{
+						false
+					}
+				}
+			).collect::<Vec<_>>();
+
+			let non_minimal = candidates.clone().into_iter().filter(
+				|candidate|{
+
+					let CandidateEgress{port,..} = candidate;
+					let (next_router, _link_class) =  topology.neighbour(current_router_index, *port);
+					let neighbour_router_index = match next_router {
+						Location::RouterPort{router_index, router_port:_} => router_index,
+						_ => panic!("We trying to go to the server when we are at distance {} greater than 0.",distance)
+					};
+					let neighbour_distance = topology.distance(neighbour_router_index,info.target_router_index);
+
+					if neighbour_distance >= distance
+					{
+						true
+					}else{
+						false
+					}
+				}
+			).collect::<Vec<_>>();
+
+			minimos = self.policy.filter(minimos,router,info,topology,rng);
+			minimos.extend(non_minimal);
+			minimos
+		}
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		false
+	}
+
+}
+
+impl Minimal
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> Minimal
+	{
+		let mut policy=None;
+		match_object_panic!(arg.cv,"Minimal",value,
+			"policy" => policy = Some(new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg})),
+		);
+		let policy=policy.expect("There were no policies");
+
+		Minimal {
+			policy
+		}
+	}
+}
+
 
 
 ///Select the egresses with lowest label.
@@ -2141,6 +2346,246 @@ impl VOQ
 
 
 
+/**
+	Set the label with the cycle the packet entered the network
+ **/
+#[derive(Debug)]
+pub struct CycleIntoNetwork
+{
+}
 
+impl VirtualChannelPolicy for CycleIntoNetwork
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		candidates.iter().map(|cand|{
 
+				let mut cand2 = cand.clone();
+				cand2.label = *info.phit.packet.cycle_into_network.borrow() as i32;
+				cand2
+
+			}
+		).collect::<Vec<CandidateEgress>>()
+		// for mut cand in candidates.into_iter()
+		// {
+		// 	cand.label  = info.phit.packet.cycle_into_network.take() as i32;
+		// }
+		//
+		// candidates
+
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl CycleIntoNetwork
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> CycleIntoNetwork
+	{
+		match_object_panic!(arg.cv,"CycleIntoNetwork",_value,
+
+		);
+		CycleIntoNetwork {
+
+		}
+	}
+}
+
+/**
+	Current link class
+**/
+#[derive(Debug)]
+pub struct CurrentLinkLabel
+{
+}
+
+impl VirtualChannelPolicy for CurrentLinkLabel
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		let (_location, link_class_entry)=topology.neighbour(router.get_index().unwrap(), info.entry_port);
+		let link_class_entry = link_class_entry as i32;
+
+		candidates.iter().map(|cand|{
+
+			let mut cand2 = cand.clone();
+			cand2.label = link_class_entry;
+			cand2
+		}
+		).collect::<Vec<CandidateEgress>>()
+		// for mut cand in candidates.into_iter()
+		// {
+		// 	cand.label  = info.phit.packet.cycle_into_network.take() as i32;
+		// }
+		//
+		// candidates
+
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl CurrentLinkLabel
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> CurrentLinkLabel
+	{
+		match_object_panic!(arg.cv,"CurrentLinkLabel",_value,
+
+		);
+		CurrentLinkLabel {
+
+		}
+	}
+}
+
+/**
+	Label of the link in the next hop
+**/
+#[derive(Debug)]
+pub struct NextLinkLabel
+{
+}
+
+impl VirtualChannelPolicy for NextLinkLabel
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, _info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+
+		candidates.iter().map(|cand|{
+
+			let mut cand2 = cand.clone();
+			let (_location, link_class_exit)= topology.neighbour(router.get_index().unwrap(), cand2.port);
+
+			cand2.label = link_class_exit as i32;
+			cand2
+		}
+		).collect::<Vec<CandidateEgress>>()
+		// for mut cand in candidates.into_iter()
+		// {
+		// 	cand.label  = info.phit.packet.cycle_into_network.take() as i32;
+		// }
+		//
+		// candidates
+
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl NextLinkLabel
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> NextLinkLabel
+	{
+		match_object_panic!(arg.cv,"NextLinkLabel",_value,
+
+		);
+		NextLinkLabel {
+
+		}
+	}
+}
+
+/**
+	Performed Hops in the Label.
+ **/
+#[derive(Debug)]
+pub struct ChannelHop
+{
+
+}
+
+impl VirtualChannelPolicy for ChannelHop
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+
+		candidates.into_iter().map(|f|{
+
+			let CandidateEgress{
+				port,
+				virtual_channel,//: virtual_channel,
+				estimated_remaining_hops,//: estimated_remaining_hops,
+				label: _l,//: _label,
+				router_allows,//: router_allows,
+				annotation,//: annotation
+			} = f;
+
+			CandidateEgress {
+				port: port,
+				virtual_channel:virtual_channel,
+				label: info.performed_hops as i32,
+				estimated_remaining_hops: estimated_remaining_hops,
+				router_allows: router_allows,
+				annotation: annotation
+			}
+		}).collect::<Vec<_>>()
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl ChannelHop
+{
+	pub fn new(_arg:VCPolicyBuilderArgument) -> ChannelHop
+	{
+		ChannelHop{
+		}
+	}
+}
 

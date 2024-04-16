@@ -39,6 +39,7 @@ Dragonfly{
 	//group_size: 8,
 	/// Number of groups. Denoted by `g` in Dally's paper. Defaults to the canonic dragonfly value of `g = a*h+1`.
 	//number_of_groups: 10,
+	global_lag: 1, //parallel links between groups
 }
 ```
 
@@ -77,7 +78,7 @@ pub struct Dragonfly
 	group_size: usize,
 	/// Number of groups. Denoted by `g` in Dally's paper. In a canonic dragonfly `g = a*h+1`.
 	number_of_groups: usize,
-	/// Link arrangment of the trunking. Wether to group the ports of a switch in LAGs.
+	/// Parallel global links
 	lag: usize,
 	// cached values:
 	// Cartesian data [switch_index, group_index]
@@ -218,7 +219,7 @@ impl Dragonfly
 			"global_arrangement" => global_arrangement=Some(new_arrangement(value.into())),
 			"group_size" => group_size=Some(value.as_usize().expect("bad value for group_size")),
 			"number_of_groups" => number_of_groups=Some(value.as_usize().expect("bad value for number_of_groups")),
-			"lag" => lag=value.as_usize().expect("bad value for lag"),
+			"lag" | "global_lag" => lag=value.as_usize().expect("bad value for lag"),
 		);
 		let global_ports_per_router=global_ports_per_router.expect("There were no global_ports_per_router");
 		let servers_per_router=servers_per_router.expect("There were no servers_per_router");
@@ -684,6 +685,8 @@ Valiant4Dragonfly{
 	legend_name: "Using Valiant4Dragonfly scheme, shortest to intermediate and shortest to destination",
 }
 ```
+
+TODO: there are undocumented configuration options.
  **/
 
 
@@ -694,12 +697,13 @@ pub struct Valiant4Dragonfly
 	second: Box<dyn Routing>,
 	//pattern to select intermideate nodes
 	pattern:Box<dyn Pattern>,
+	distance_middle_destination: usize,
 	first_reserved_virtual_channels: Vec<usize>,
 	second_reserved_virtual_channels: Vec<usize>,
 	//exclude_h_groups:bool,
 	intermediate_bypass: Option<Box<dyn Pattern>>,
 	local_missrouting: bool, //only local missrouting if target in the group
-dragonfly_bypass: bool, //lggl routes
+	dragonfly_bypass: bool, //lggl routes
 }
 
 impl Routing for Valiant4Dragonfly
@@ -849,7 +853,8 @@ impl Routing for Valiant4Dragonfly
 			middle = cartesian_data.pack(&middle_coord);
 
 		}else{ //general missrouting
-			while src_coord[1] == middle_coord[1] || trg_coord[1] == middle_coord[1] {
+			while src_coord[1] == middle_coord[1] || trg_coord[1] == middle_coord[1] || topology.distance(middle, target_router) < self.distance_middle_destination
+			{
 				//||(self.exclude_h_groups && (((middle_coord[1] - (degree/2)*middle_coord[0]) % cartesian_data.sides[1])  > trg_coord[1]  &&  ((middle_coord[1] - (degree/2)*middle_coord[0] - (degree/2)) % cartesian_data.sides[1] ) <= trg_coord[1] ))  {
 
 				//	middle = rng.gen_range(0..topology.num_routers());
@@ -862,7 +867,6 @@ impl Routing for Valiant4Dragonfly
 					_ => panic!("The server is not attached to a router"),
 				};
 				middle_coord = cartesian_data.unpack(middle);
-
 			}
 		}
 
@@ -974,6 +978,7 @@ impl Valiant4Dragonfly
 		let mut first=None;
 		let mut second=None;
 		let mut pattern: Box<dyn Pattern> = Box::new(UniformPattern::uniform_pattern(true)); //pattern to intermideate node
+		let mut distance_middle_destination=0;
 		// let mut exclude_h_groups=false;
 		let mut first_reserved_virtual_channels=vec![];
 		let mut second_reserved_virtual_channels=vec![];
@@ -984,6 +989,7 @@ impl Valiant4Dragonfly
 			"first" => first=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
 			"second" => second=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
 			"pattern" => pattern= Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})).expect("pattern not valid for Valiant4Dragonfly"),
+			"distance_middle_destination" => distance_middle_destination=value.as_f64().expect("bad value for distance_middle_destination") as usize,
 			// "exclude_h_groups"=> exclude_h_groups=value.as_bool().expect("bad value for exclude_h_groups"),
 			"first_reserved_virtual_channels" => first_reserved_virtual_channels=value.
 				as_array().expect("bad value for first_reserved_virtual_channels").iter()
@@ -1002,6 +1008,7 @@ impl Valiant4Dragonfly
 			first,
 			second,
 			pattern,
+			distance_middle_destination,
 			first_reserved_virtual_channels,
 			second_reserved_virtual_channels,
 			intermediate_bypass,

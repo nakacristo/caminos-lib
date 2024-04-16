@@ -141,6 +141,178 @@ impl ServerStatistics
 	}
 }
 
+#[derive(Clone,Quantifiable, Debug)]
+pub struct TrafficStatistics
+{
+	///The last cycle in which this server created a phit and sent it to a router. Or 0
+	pub cycle_last_created_message: Time,
+	///The last cycle in that the last phit of a message has been consumed by this server. Or 0.
+	pub cycle_last_consumed_message: Time,
+	///If non-zero then creates statistics for intervals of the given number of cycles.
+	pub temporal_step: Time,
+	///Current measurment for temporal statistics.
+	pub current_measurement: TrafficMeasurement,
+	///The periodic measurements requested by non-zero statistics_temporal_step.
+	pub temporal_statistics: Vec<TrafficMeasurement>,
+	/// The total number of messages created.
+	pub total_created_messages: usize,
+	/// The total number of phits created. Could be in Bytes also.
+	pub total_created_phits: usize,
+	/// The total number of messages consumed.
+	pub total_consumed_messages: usize,
+	/// The total number of phits consumed.
+	pub total_consumed_phits: usize,
+	/// The total delay of all messages.
+	pub total_message_delay: Time,
+	/// The statistics of other subtraffic.
+	pub sub_traffic_statistics: Option<Vec<TrafficStatistics>>,
+}
+
+#[derive(Clone,Default,Quantifiable,Debug)]
+pub struct TrafficMeasurement
+{
+	pub begin_cycle: Time,
+	pub created_messages: usize,
+	pub created_phits: usize,
+	pub consumed_messages: usize,
+	pub consumed_phits: usize,
+	pub total_message_delay: Time,
+}
+
+impl TrafficStatistics
+{
+	pub fn new(temporal_step:Time, sub_traffic_statistics: Option<Vec<TrafficStatistics>>)-> TrafficStatistics
+	{
+		TrafficStatistics {
+			current_measurement: TrafficMeasurement::default(),
+			cycle_last_created_message: 0,
+			cycle_last_consumed_message: 0,
+			temporal_step,
+			temporal_statistics: vec![],
+			total_created_messages: 0,
+			total_created_phits: 0,
+			total_consumed_messages: 0,
+			total_consumed_phits: 0,
+			total_message_delay: 0,
+			sub_traffic_statistics,
+		}
+	}
+	// fn reset(&mut self, next_cycle: Time)
+	// {
+	// 	self.current_measurement= TrafficMeasurement::default();
+	// 	self.current_measurement.begin_cycle=next_cycle;
+	// }
+
+	/// Called when a task recieves a message.
+	pub fn track_consumed_message(&mut self, cycle: Time, delay:Time, size: usize, subtraffic: Option<usize>)
+	{
+		// if delay < 0
+		// {
+		// 	panic!("negative delay");
+		// }
+
+		self.cycle_last_consumed_message = cycle;
+		self.total_consumed_messages+=1;
+		self.total_message_delay+=delay;
+		self.total_consumed_phits+=size;
+
+		if let Some(m) = self.current_temporal_measurement(cycle)
+		{
+			m.consumed_messages+=1;
+			m.consumed_phits+=size;
+			m.total_message_delay+=delay;
+		}
+
+		if let Some(subtraffic) = subtraffic
+		{
+			if let Some(sub) = self.sub_traffic_statistics.as_mut()
+			{
+				sub[subtraffic].track_consumed_message(cycle,delay,size,None);
+			}else {
+				panic!("Subtraffic statistics not initialized");
+			}
+		}
+	}
+	/// Called each time the traffic creates a message.
+	pub fn track_created_message(&mut self, cycle: Time, size:usize, subtraffic: Option<usize>)
+	{
+		self.cycle_last_created_message = cycle;
+		self.total_created_messages+=1;
+		self.total_created_phits+=size;
+		if let Some(m) = self.current_temporal_measurement(cycle)
+		{
+			m.created_messages+=1;
+			m.created_phits+=size;
+		}
+		if let Some(subtraffic) = subtraffic
+		{
+			if let Some(sub) = self.sub_traffic_statistics.as_mut()
+			{
+				sub[subtraffic].track_created_message(cycle,size,None);
+			}else {
+				panic!("Subtraffic statistics not initialized");
+			}
+		}
+
+	}
+
+	pub fn current_temporal_measurement(&mut self, cycle: Time) -> Option<&mut TrafficMeasurement>
+	{
+		if self.temporal_step>0
+		{
+			let index : usize = (cycle / self.temporal_step).try_into().unwrap();
+			if self.temporal_statistics.len()<=index
+			{
+				self.temporal_statistics.resize_with(index+1,Default::default);
+				self.temporal_statistics[index].begin_cycle = index as Time * self.temporal_step;
+			}
+			Some(&mut self.temporal_statistics[index])
+		} else { None }
+	}
+
+	pub fn parse_statistics(&self) -> ConfigurationValue
+	{
+		let mut traffic_content = vec![
+			(String::from("total_consumed_messages"),ConfigurationValue::Number(self.total_consumed_messages as f64)),
+			(String::from("total_consumed_phits"),ConfigurationValue::Number(self.total_consumed_phits as f64)),
+			(String::from("total_created_messages"),ConfigurationValue::Number(self.total_created_messages as f64)),
+			(String::from("total_created_phits"),ConfigurationValue::Number(self.total_created_phits as f64)),
+			(String::from("total_message_delay"),ConfigurationValue::Number((self.total_message_delay/self.total_consumed_messages as u64)as f64)),
+			(String::from("cycle_last_created_message"),ConfigurationValue::Number(self.cycle_last_created_message as f64)),
+			(String::from("cycle_last_consumed_message"),ConfigurationValue::Number(self.cycle_last_consumed_message as f64)),
+		];
+		if self.temporal_step > 0
+		{
+			let temporal_consumed_messages = self.temporal_statistics.iter().map(|m|ConfigurationValue::Number(m.consumed_messages as f64)).collect();
+			let temporal_consumed_phits = self.temporal_statistics.iter().map(|m|ConfigurationValue::Number(m.consumed_phits as f64)).collect();
+			let temporal_created_messages = self.temporal_statistics.iter().map(|m|ConfigurationValue::Number(m.created_messages as f64)).collect();
+			let temporal_created_phits = self.temporal_statistics.iter().map(|m|ConfigurationValue::Number(m.created_phits as f64)).collect();
+			let temporal_message_delay = self.temporal_statistics.iter().map(|m|
+				if m.consumed_messages != 0 {
+					ConfigurationValue::Number((m.total_message_delay/m.consumed_messages as u64)as f64)
+				} else {
+					ConfigurationValue::Number(0f64)
+				}
+			).collect();
+
+			let temporal_content = vec![
+				(String::from("consumed_messages"),ConfigurationValue::Array(temporal_consumed_messages)),
+				(String::from("consumed_phits"),ConfigurationValue::Array(temporal_consumed_phits)),
+				(String::from("created_messages"),ConfigurationValue::Array(temporal_created_messages)),
+				(String::from("created_phits"),ConfigurationValue::Array(temporal_created_phits)),
+				(String::from("message_delay"),ConfigurationValue::Array(temporal_message_delay)),
+			];
+			traffic_content.push((String::from("temporal"), ConfigurationValue::Object(String::from("temporal_statistics"),temporal_content)));
+		}
+
+		if let Some(sub) = &self.sub_traffic_statistics
+		{
+			let sub_content = sub.iter().map(|s|s.parse_statistics()).collect();
+			traffic_content.push((String::from("sub_traffics"), ConfigurationValue::Array(sub_content)));
+		}
+		ConfigurationValue::Object(String::from("traffic_statistics"), traffic_content)
+	}
+}
 
 ///Statistics captured for each link.
 #[derive(Debug,Quantifiable)]
@@ -292,13 +464,26 @@ pub struct Statistics
 	///For each definition of packet statistics, we have a vector with an element for each actual value of `keys`.
 	///Each of these elements have that value of `key`, together with the averages and the count.
 	pub packet_defined_statistics_measurement: Vec< Vec< (Vec<ConfigurationValue>,Vec<f32>,usize) >>,
+	///A list of statistic definitions for message statistics.
+	/// Each definition is a tuple `(keys,values)`, that are evaluated on each message.
+	/// Messages are classified via `keys` into their bin. The number of messages in each bin is counted and the associated `values` are averaged.
+	pub message_defined_statistics_definitions: Vec< (Vec<Expr>,Vec<Expr>) >,
+	///For each definition of message statistics, we have a vector with an element for each actual value of `keys`.
+	/// Each of these elements have that value of `key`, together with the averages and the count.
+	pub message_defined_statistics_measurement: Vec< Vec< (Vec<ConfigurationValue>,Vec<f32>,usize) >>,
+	///A list of statistic definitions for server statistics, indexed by the temporal step.
+	pub temporal_defined_statistics_definitions: Vec< (Vec<Expr>, Vec<Expr>) >,
+	///For each definition of server statistics, we have a vector with an element for each actual value of `keys`.
+	pub temporal_defined_statistics_measurement: Vec< Vec< Vec< (Vec<ConfigurationValue>, Vec<f32>, usize) >>>,
 }
 
 impl Statistics
 {
-	pub fn new(statistics_temporal_step:Time, server_percentiles: Vec<u8>, packet_percentiles: Vec<u8>, statistics_packet_definitions:Vec<(Vec<Expr>,Vec<Expr>)>, topology: &dyn Topology)->Statistics
+	pub fn new(statistics_temporal_step:Time, server_percentiles: Vec<u8>, packet_percentiles: Vec<u8>, packet_defined_statistics_definitions:Vec<(Vec<Expr>, Vec<Expr>)>, message_defined_statistics_definitions:Vec<(Vec<Expr>, Vec<Expr>)>, temporal_defined_statistics_definitions:Vec<(Vec<Expr>, Vec<Expr>)>, topology: &dyn Topology) ->Statistics
 	{
-		let packet_defined_statistics_measurement = vec![ vec![]; statistics_packet_definitions.len() ];
+		let packet_defined_statistics_measurement = vec![vec![]; packet_defined_statistics_definitions.len() ];
+		let message_defined_statistics_measurement = vec![vec![]; message_defined_statistics_definitions.len() ];
+		let temporal_defined_statistics_measurement = vec![ vec![vec![]; temporal_defined_statistics_definitions.len() ] ];
 		Statistics{
 			//begin_cycle:0,
 			//created_phits:0,
@@ -326,8 +511,12 @@ impl Statistics
 				ReportColumnKind::ServerGenerationJainIndex.into(),
 				//ReportColumnKind::ServerConsumptionJainIndex.into(),
 				],
-			packet_defined_statistics_definitions:statistics_packet_definitions,
+			packet_defined_statistics_definitions,
 			packet_defined_statistics_measurement,
+			message_defined_statistics_definitions,
+			message_defined_statistics_measurement,
+			temporal_defined_statistics_definitions,
+			temporal_defined_statistics_measurement,
 		}
 	}
 	///Print in stdout a header showing the statistical columns to be periodically printed.
@@ -486,6 +675,40 @@ impl Statistics
 		if let Some(m) = self.current_temporal_measurement(cycle)
 		{
 			m.total_message_delay+=delay;
+		}
+
+		if !self.message_defined_statistics_definitions.is_empty()
+		{
+			let context_content = vec![
+				(String::from("delay"), ConfigurationValue::Number(delay as f64)),
+			];
+			let context = ConfigurationValue::Object( String::from("message"), context_content );
+			let path = Path::new(".");
+			for (index,definition) in self.message_defined_statistics_definitions.iter().enumerate()
+			{
+				let key : Vec<ConfigurationValue> = definition.0.iter().map(|key_expr|config::evaluate( key_expr, &context, path).unwrap_or_else(|error|panic!("error building user defined statistics: {}",error))).collect();
+				let value : Vec<f32> = definition.1.iter().map(|key_expr|
+					match config::evaluate( key_expr, &context, path).unwrap_or_else(|error|panic!("error building user defined statistics: {}",error)){
+						ConfigurationValue::Number(x) => x as f32,
+						_ => 0f32,
+					}).collect();
+				//find the measurement
+				let measurement = self.message_defined_statistics_measurement[index].iter_mut().find(|m|m.0==key);
+				match measurement
+				{
+					Some(m) =>
+					{
+						for (iv,v) in m.1.iter_mut().enumerate()
+						{
+							*v += value[iv];
+						}
+						m.2+=1;
+					}
+					None => {
+						self.message_defined_statistics_measurement[index].push( (key,value,1) )
+					},
+				};
+			}
 		}
 	}
 	/// Called with a hop from router to router

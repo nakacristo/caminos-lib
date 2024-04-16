@@ -14,9 +14,10 @@ use std::io::{BufRead,BufReader};
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::config_parser::ConfigurationValue;
 use crate::topology::cartesian::CartesianData;//for CartesianTransform
-use crate::topology::{Topology,Location};
+use crate::topology::{Topology, Location};
 use crate::quantify::Quantifiable;
 use crate::{Plugs,match_object_panic};
+use rand::{RngCore, SeedableRng};
 
 /// Some things most uses of the pattern module will use.
 pub mod prelude
@@ -328,7 +329,6 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"Composition" => Box::new(Composition::new(arg)),
 			"Pow" => Box::new(Pow::new(arg)),
 			"CartesianFactor" => Box::new(CartesianFactor::new(arg)),
-			"CartesianFactorDimension" => Box::new(CartesianFactorDimension::new(arg)),
 			"Hotspots" => Box::new(Hotspots::new(arg)),
 			"RandomMix" => Box::new(RandomMix::new(arg)),
 			"ConstantShuffle" =>
@@ -348,6 +348,13 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"RemappedNodes" => Box::new(RemappedNodes::new(arg)),
 			"Switch" => Box::new(Switch::new(arg)),
 			"Debug" => Box::new(DebugPattern::new(arg)),
+			"DestinationSets" => Box::new(DestinationSets::new(arg)),
+			"ElementComposition" => Box::new(ElementComposition::new(arg)),
+			"CandidatesSelection" => Box::new(CandidatesSelection::new(arg)),
+			"Sum" => Box::new(Sum::new(arg)),
+			"RoundRobin" => Box::new(RoundRobin::new(arg)),
+			"RecursiveDistanceHalving" => Box::new(RecursiveDistanceHalving::new(arg)),
+			"BinomialTree" => Box::new(BinomialTree::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -356,6 +363,24 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 		panic!("Trying to create a Pattern from a non-Object");
 	}
 }
+
+/// In case you want to build a list of patterns but some of them are optional.
+pub fn new_optional_pattern(arg:PatternBuilderArgument) -> Option<Box<dyn Pattern>>
+{
+	if let &ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg.cv
+	{
+		match cv_name.as_ref()
+		{
+			"None" => None,
+			_ => Some(new_pattern(arg))
+		}
+	}else {
+		panic!("Trying to create a Pattern from a non-Object");
+	}
+}
+
+
+
 
 ///Just set `destination = origin`.
 ///Mostly to be used inside some meta-patterns.
@@ -482,7 +507,7 @@ impl RandomPermutation
 {
 	fn new(arg:PatternBuilderArgument) -> RandomPermutation
 	{
-		let mut rng = None; 
+		let mut rng = None;
 		match_object_panic!(arg.cv,"RandomPermutation",value,
 			"seed" => rng = Some( value.as_rng().expect("bad value for seed") ),
 		);
@@ -881,7 +906,7 @@ impl Pattern for CartesianTransform
 		}
 		if source_size!=self.cartesian_data.size
 		{
-			panic!("Sizes do not agree on CartesianTransform.");
+			panic!("In a CartesianTransform source_size({}) must be equal to cartesian size({}).",source_size,self.cartesian_data.size);
 		}
 		if let Some(ref mut patterns) = self.patterns
 		{
@@ -1119,6 +1144,72 @@ impl Composition
 }
 
 
+/**
+ For a source, it sums the result of applying several patterns.
+ For instance, the destination of a server a would be: dest(a) = p1(a) + p2(a) + p3(a).
+ middle_sizes indicates the size of the intermediate patters.
+
+ TODO: add an example.
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct Sum
+{
+	patterns: Vec<Box<dyn Pattern>>,
+	middle_sizes: Vec<usize>,
+	target_size: Option<usize>,
+}
+
+impl Pattern for Sum
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		for (index,pattern) in self.patterns.iter_mut().enumerate()
+		{
+			// let current_source = if index==0 { source_size } else { *self.middle_sizes.get(index-1).unwrap_or(&target_size) };
+			let current_target = *self.middle_sizes.get(index).unwrap_or(&target_size);
+			pattern.initialize(source_size,current_target,topology,rng);
+		}
+		self.target_size = Some(target_size);
+	}
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		let target_size = self.target_size.unwrap();
+		let mut destination=0;
+		for pattern in self.patterns.iter()
+		{
+			let next_destination = pattern.get_destination(origin,topology,rng);
+			destination+=next_destination;
+		}
+		if destination>=target_size
+		{
+			panic!("Sum pattern overflowed the target size.")
+		}
+		destination
+	}
+}
+
+impl Sum
+{
+	fn new(arg:PatternBuilderArgument) -> Sum
+	{
+		let mut patterns=None;
+		let mut middle_sizes=None;
+		match_object_panic!(arg.cv,"Sum",value,
+			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+			"middle_sizes" => middle_sizes = Some(value.as_array().expect("bad value for middle_sizes").iter()
+				.map(|v|v.as_usize().expect("bad value for middle_sizes")).collect()),
+		);
+		let patterns=patterns.expect("There were no patterns");
+		let middle_sizes = middle_sizes.unwrap_or_else(||vec![]);
+		Sum{
+			patterns,
+			middle_sizes,
+			target_size: None,
+		}
+	}
+}
 
 ///The pattern resulting of composing a pattern with itself a number of times..
 #[derive(Quantifiable)]
@@ -1217,84 +1308,6 @@ impl CartesianFactor
 			cartesian_data: CartesianData::new(&sides),
 			factors,
 			target_size:0,
-		}
-	}
-}
-
-
-/// Interpretate the origin as with cartesian coordinates. Multiply the first coordinate with a given factor
-/// and divide it by each dimension size until it is smaller than the dimension size of a dimension.
-#[derive(Quantifiable)]
-#[derive(Debug)]
-pub struct CartesianFactorDimension
-{
-	///The Cartesian interpretation.
-	cartesian_data: CartesianData,
-	///The coefficient by which it is multiplied each dimension.
-	factor: usize,
-	///As given in initialization.
-	target_size: usize,
-	///The coefficient by which it is multiplied each dimension.
-	factors: Vec<f64>,
-}
-
-impl Pattern for CartesianFactorDimension
-{
-	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
-	{
-		self.target_size = target_size;
-		if source_size!=self.cartesian_data.size
-		{
-			panic!("Sizes do not agree on CartesianFactorDimension.");
-		}
-	}
-	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
-	{
-		let mut up_origin=self.cartesian_data.unpack(origin);
-		let mut factor = self.factor * up_origin[0];
-
-		for f in 0..up_origin.len()
-		{
-			if factor < self.cartesian_data.sides[f]
-			{
-				up_origin[f] = (up_origin[f]+ factor) % self.cartesian_data.sides[f];
-				break;
-			}
-			factor = factor / self.cartesian_data.sides[f];
-		}
-		let destination = self.cartesian_data.pack(&up_origin); //.iter().zip(self.factors.iter()).map(|(&coord,&f)|coord as f64 * f).sum::<f64>() as usize;
-
-
-		//println!("origin: {}, destination: {}", origin, destination);
-        destination// % self.target_size
-	}
-}
-
-impl CartesianFactorDimension
-{
-	fn new(arg:PatternBuilderArgument) -> CartesianFactorDimension
-	{
-		let mut sides: Option<Vec<_>>=None;
-		let mut factor=None;
-		let mut factors=None;
-
-		match_object_panic!(arg.cv,"CartesianFactorDimension",value,
-			"sides" => sides=Some(value.as_array().expect("bad value for sides").iter()
-				.map(|v|v.as_f64().expect("bad value in sides") as usize).collect()),
-			"factor" => factor=Some(value.as_f64().expect("bad value for factor") as usize),
-			"factors" => factors=Some(value.as_array().expect("bad value for factors").iter()
-				.map(|v|v.as_f64().expect("bad value in factors")).collect()),
-
-		);
-		let sides=sides.expect("There were no sides");
-		let factors=factors.expect("There were no factors");
-		let factor=factor.expect("There were no factor");
-
-		CartesianFactorDimension{
-			cartesian_data: CartesianData::new(&sides),
-			factor,
-			target_size:0,
-			factors
 		}
 	}
 }
@@ -1419,6 +1432,62 @@ impl RandomMix
 		}
 	}
 }
+
+/**
+Use a list of patterns in a round robin fashion, for each source.
+
+TODO: describe an example.
+**/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct RoundRobin
+{
+	///The patterns in the pool to be selected.
+	patterns: Vec<Box<dyn Pattern>>,
+	/// Vec pattern origin
+	index: RefCell<Vec<usize>>,
+}
+
+impl Pattern for RoundRobin
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		if self.patterns.is_empty()
+		{
+			panic!("RoundRobin requires at least one pattern (and 2 to be sensible).");
+		}
+		for pat in self.patterns.iter_mut()
+		{
+			pat.initialize(source_size,target_size,topology,rng);
+		}
+		self.index.replace(vec![0;source_size]);
+	}
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		let mut indexes = self.index.borrow_mut();
+		let pattern_index = indexes[origin];
+		indexes[origin] = (pattern_index+1) % self.patterns.len();
+		self.patterns[pattern_index].get_destination(origin,topology,rng)
+	}
+}
+
+impl RoundRobin
+{
+	fn new(arg:PatternBuilderArgument) -> RoundRobin
+	{
+		let mut patterns=None;
+		match_object_panic!(arg.cv,"RoundRobin",value,
+			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+		);
+		let patterns=patterns.expect("There were no patterns");
+		RoundRobin{
+			patterns,
+			index: RefCell::new(Vec::new()),
+		}
+	}
+}
+
 
 ///It keeps a shuffled list, global for all sources, of destinations to which send. Once all have sent it is rebuilt and shuffled again.
 ///Independently of past requests, decisions or origin.
@@ -1553,6 +1622,90 @@ impl GroupShufflingDestinations
 	}
 }
 
+
+
+/**
+For each server, it keeps a shuffled list of destinations to which send.
+Select each destination with a probability.
+
+TODO: describe `weights` parameter.
+
+```ignore
+DestinationSets{
+	patterns: [RandomPermutation, RandomPermutation], //2 random destinations
+	//weights
+}
+```
+**/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct DestinationSets
+{
+	///Patterns to get the set of destinations
+	patterns: Vec<Box<dyn Pattern>>,
+	///Weights for each pattern
+	weights: Vec<usize>,
+	///Set of destinations.
+	destination_set: Vec<Vec<usize>>,
+}
+
+impl Pattern for DestinationSets
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		for (index,pattern) in self.patterns.iter_mut().enumerate()
+		{
+			pattern.initialize(source_size,target_size,topology,rng);
+			for source in 0..source_size
+			{
+				let destination = pattern.get_destination(source,topology,rng);
+				self.destination_set[index].push(destination);
+			}
+		}
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		let total_weight=self.weights.iter().sum();
+		let mut w = rng.gen_range(0..total_weight);
+		let mut index = 0;
+		while w>self.weights[index]
+		{
+			w-=self.weights[index];
+			index+=1;
+		}
+		self.destination_set[index][origin]
+	}
+}
+
+impl DestinationSets
+{
+	fn new(arg:PatternBuilderArgument) -> DestinationSets
+	{
+		let mut patterns=None;
+		let mut weights: Option<Vec<usize>>=None;
+		match_object_panic!(arg.cv,"DestinationSets",value,
+			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+			"weights" => weights=Some(value.as_array().expect("bad value for weights").iter()
+				.map(|v|v.as_f64().expect("bad value in weights") as usize).collect()),
+		);
+		let patterns:Vec<Box<dyn Pattern>>=patterns.expect("There were no patterns");
+		let weights = if let Some(ref weights)=weights
+		{
+			assert_eq!(patterns.len(),weights.len(),"The number of patterns must match the number of weights");
+			weights.clone()
+		}else {
+			vec![1usize; patterns.len()]
+		};
+		let size = patterns.len();
+
+		DestinationSets{
+			patterns,
+			weights,
+			destination_set:vec![vec![];size],//to be filled in initialization
+		}
+	}
+}
 
 /**
 Each message gets its destination sampled uniformly at random among the servers attached to neighbour routers.
@@ -1690,7 +1843,7 @@ impl FixedRandom
 	fn new(arg:PatternBuilderArgument) -> FixedRandom
 	{
 		let mut allow_self = false;
-		let mut rng = None; 
+		let mut rng = None;
 		match_object_panic!(arg.cv,"FixedRandom",value,
 			"seed" => rng = Some( value.as_rng().expect("bad value for seed") ),
 			"allow_self" => allow_self=value.as_bool().expect("bad value for allow_self"),
@@ -2425,6 +2578,8 @@ Matrix by vector multiplication. Origin is given coordinates as within a block o
 Then the destination coordinate vector is `y=Mx`, with `x` being the origin and `M` the given `matrix`.
 This destination vector is converted into an index into a block of size `target_size`.
 
+TODO: describe parameter `check_admisible`.
+
 Example configuration:
 ```ignore
 LinearTransform{
@@ -2436,6 +2591,7 @@ LinearTransform{
 	],
 	target_size: [4,8,8],
 	legend_name: "Identity",
+	//check_admisible: false,
 }
 ```
  **/
@@ -2457,6 +2613,7 @@ impl Pattern for LinearTransform
 	{
 		if source_size!=self.source_size.size || target_size!=self.target_size.size
 		{
+			println!("source_size({})!=self.source_size.size({}) || target_size({})!=self.target_size.size({})",source_size,self.source_size.size,target_size,self.target_size.size);
 			panic!("Sizes do not agree on LinearTransform.");
 		}
 		//Check that the number of lines of the matrix is the same as the number of dimensions.
@@ -2493,6 +2650,7 @@ impl LinearTransform
 		let mut source_size:Option<Vec<_>>=None;
 		let mut matrix:Option<Vec<Vec<i32>>>=None;
 		let mut target_size:Option<Vec<_>>=None;
+		let mut check_admisible = false;
 
 		match_object_panic!(arg.cv,"LinearTransform",value,
 			"source_size" => source_size = Some(value.as_array().expect("bad value for sides").iter()
@@ -2501,13 +2659,23 @@ impl LinearTransform
 				.map(|v|v.as_array().expect("bad value in matrix").iter().map(|n|n.as_i32().unwrap()).collect() ).collect() ),
 			"target_size" => target_size = Some(value.as_array().expect("bad value for sides").iter()
 				.map(|v|v.as_usize().expect("bad value in sides")).collect()),
-
+			"check_admisible" => check_admisible = value.as_bool().expect("bad value for check_admisible"),
 		);
 		let source_size=source_size.expect("There were no sides");
 		let matrix=matrix.expect("There were no matrix");
 		let target_size=target_size.expect("There were no sides");
 		//let permute=permute.expect("There were no permute");
 		//let complement=complement.expect("There were no complement");
+		//calculate the derminant of the matrix
+		if check_admisible{
+			let determinant = laplace_determinant(&matrix);
+			if determinant == 0
+			{
+				//print warning
+				println!("WARNING: The determinant of the matrix in the LinearTransform is 0.");
+			}
+		}
+
 		LinearTransform{
 			source_size: CartesianData::new(&source_size),
 			matrix,
@@ -2515,6 +2683,48 @@ impl LinearTransform
 		}
 	}
 }
+
+
+/**
+Method to calculate the determinant of a matrix.
+
+TODO: integrate in matrix.rs
+ **/
+fn laplace_determinant(matrix: &Vec<Vec<i32>>) -> i32
+{
+	let mut determinant = 0;
+	if matrix.len() == 1
+	{
+		return matrix[0][0];
+	}
+	else if matrix.len() == 2
+	{
+		return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0];
+	}
+	else
+	{
+		for i in 0..matrix.len()
+		{
+			let mut sub_matrix = vec![vec![0; matrix.len() - 1]; matrix.len() - 1];
+			for j in 1..matrix.len()
+			{
+				let mut index = 0;
+				for k in 0..matrix.len()
+				{
+					if k == i
+					{
+						continue;
+					}
+					sub_matrix[j - 1][index] = matrix[j][k];
+					index += 1;
+				}
+			}
+			determinant += matrix[0][i] * i32::pow(-1, i as u32) * laplace_determinant(&sub_matrix);
+		}
+	}
+	determinant
+}
+
 
 /**
 Use a `indexing` pattern to select among several possible patterns from the input to the output.
@@ -2580,19 +2790,50 @@ Switch{
 	],
 },
 ```
+
+TODO: describe `expand` and `seed`.
+
+This example assigns 10 different RandomPermutations, depending on the `y` value, mentioned earlier.
+```ignore
+Switch{
+	indexing: LinearTansform{
+		source_size: [2, 10],
+		target_size: [10],
+		matrix: [
+			[0, 1],
+		],
+	},
+	patterns: [
+		RandomPermutation,
+	],
+	expand: [10,],
+}
+```
 **/
 #[derive(Debug,Quantifiable)]
 pub struct Switch {
 	indexing: Box<dyn Pattern>,
 	patterns: Vec<Box<dyn Pattern>>,
+	seed: Option<f64>,
 }
 
 impl Pattern for Switch {
 	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		self.indexing.initialize(source_size,self.patterns.len(),topology,rng);
+
+		let mut seed_generator = if let Some(seed) = self.seed{
+			Some(StdRng::seed_from_u64(seed as u64))
+		} else {
+			None
+		};
 		for pattern in self.patterns.iter_mut() {
-			pattern.initialize(source_size,target_size,topology,rng);
+			if let Some( seed_generator) = seed_generator.as_mut(){
+				let seed = seed_generator.next_u64();
+				pattern.initialize(source_size,target_size,topology, &mut StdRng::seed_from_u64(seed));
+			}else{
+				pattern.initialize(source_size,target_size,topology, rng);
+			}
 		}
 	}
 	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
@@ -2606,22 +2847,333 @@ impl Switch {
 	fn new(arg:PatternBuilderArgument) -> Switch
 	{
 		let mut indexing = None;
-		let mut patterns = None;
+		let mut patterns= None;//:Option<Vec<Box<dyn Pattern>>> = None;
+		let mut expand: Option<Vec<usize>> = None;
+		let mut seed = None;
 
 		match_object_panic!(arg.cv,"Switch",value,
 			"indexing" => indexing = Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
-			"patterns" => patterns=Some(value.as_array().expect("bad value for patterns").iter()
-				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
+			"patterns" => patterns=Some( value.as_array().expect("bad value for patterns") ),
+			"expand" => expand = Some(value.as_array().expect("bad value for expand").iter()
+				.map(|v|v.as_usize().expect("bad value in expand")).collect()),
+			"seed" => seed = Some(value.as_f64().expect("bad value for seed")),
 		);
 		let indexing = indexing.expect("Missing indexing in Switch.");
 		let patterns = patterns.expect("Missing patterns in Switch.");
+		let patterns = if let Some(expand) = expand {
+			let mut new_patterns = vec![];
+			for (index, pattern) in patterns.into_iter().enumerate() {
+				for _ in 0..expand[index] {
+					new_patterns.push(new_pattern(PatternBuilderArgument{cv:pattern,..arg}));
+				}
+			}
+			new_patterns
+		} else {
+			patterns.iter().map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()
+		};
 		Switch{
 			indexing,
 			patterns,
+			seed,
 		}
 	}
 }
 
+/**
+For each source, it keeps a state of the last destination used. When applying the pattern, it uses the last destination as the origin for the pattern, and
+the destination is saved for the next call to the pattern.
+```ignore
+ElementComposition{
+	pattern: RandomPermutation,
+}
+```
+**/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct ElementComposition
+{
+	///Pattern to apply.
+	pattern: Box<dyn Pattern>,
+	///Pending destinations.
+	origin_state: RefCell<Vec<usize>>,
+}
+
+impl Pattern for ElementComposition
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		if source_size!= target_size
+		{
+			panic!("ElementComposition requires source and target sets to have same size.");
+		}
+		self.pattern.initialize(source_size,target_size,_topology,_rng);
+		self.origin_state.replace((0..source_size).collect());
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		if origin >= self.origin_state.borrow().len()
+		{
+			panic!("ElementComposition: origin {} is beyond the source size {}",origin,self.origin_state.borrow().len());
+		}
+		let index = self.origin_state.borrow_mut()[origin];
+		let destination = self.pattern.get_destination(index,_topology,rng);
+		self.origin_state.borrow_mut()[origin] = destination;
+		destination
+	}
+}
+
+impl ElementComposition
+{
+	fn new(arg:PatternBuilderArgument) -> ElementComposition
+	{
+		let mut pattern = None;
+		match_object_panic!(arg.cv,"ElementComposition",value,
+			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+		);
+		let pattern = pattern.expect("There were no pattern in configuration of ElementComposition.");
+		ElementComposition{
+			pattern,
+			origin_state: RefCell::new(vec![]),
+		}
+	}
+}
+/**
+* Pattern which simulates an all-gather or all-reduce in log p steps, applying the recursive doubling technique.
+* The communications represent a Hypercube.
+**/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct RecursiveDistanceHalving
+{
+	///Pending destinations.
+	origin_state: RefCell<Vec<usize>>,
+	///Map for the different states
+	cartesian_data: Vec<CartesianData>,
+}
+
+impl Pattern for RecursiveDistanceHalving
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		if source_size!= target_size
+		{
+			panic!("RecursiveDistanceHalving requires source and target sets to have same size.");
+		}
+		//If the source size is not a power of 2, the pattern will not work.
+		if !source_size.is_power_of_two()
+		{
+			panic!("RecursiveDistanceHalving requires source size to be a power of 2.");
+		}
+		let pow = source_size.ilog2();
+		self.origin_state = RefCell::new(vec![0;source_size]);
+		self.cartesian_data = (0..pow).map(|i| CartesianData::new(&[source_size/2_usize.pow(i), 2_usize.pow(i)]) ).collect();
+		//print the cartesian_data
+		// for i in 0..pow
+		// {
+		// 	println!("cartesian_data[{}]: {:?}",i, self.cartesian_data[i as usize].sides);
+		// }
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		if origin >= self.origin_state.borrow().len()
+		{
+			panic!("RecursiveDistanceHalving: origin {} is beyond the source size {}",origin,self.origin_state.borrow().len());
+		}
+		let index = self.origin_state.borrow()[origin];
+		if index >=self.cartesian_data.len()
+		{
+			return origin; //No more to do...
+			//panic!("RecursiveDistanceHalving: index {} is beyond the cartesian_data size {}",index,self.cartesian_data.len());
+		}
+		//print origin_state
+		// println!("origin_state: {:?}",self.origin_state.borrow());
+		self.origin_state.borrow_mut()[origin]+=1;
+		let source_coord = self.cartesian_data[index].unpack(origin);
+		let partition_size = self.cartesian_data[index].sides[0];
+		self.cartesian_data[index].pack(&[ (source_coord[0] + partition_size/2) % partition_size, source_coord[1]])
+
+	}
+}
+
+impl RecursiveDistanceHalving
+{
+	fn new(_arg:PatternBuilderArgument) -> RecursiveDistanceHalving
+	{
+		RecursiveDistanceHalving{
+			origin_state: RefCell::new(vec![]),
+			cartesian_data: vec![],
+		}
+	}
+}
+
+
+/**
+* Pattern to simulate communications in a BinomialTree.
+* Going upwards could be seen as a reduction, and going downwards as a broadcast.
+**/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct BinomialTree
+{
+	///How to go through the tree.
+	upwards: bool,
+	///Tree embedded into a Hypercube
+	cartesian_data: CartesianData,
+	///State indicating the neighbour to send downwards
+	state: RefCell<Vec<usize>>,
+}
+
+impl Pattern for BinomialTree
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		if source_size!= target_size
+		{
+			panic!("BinomialTree requires source and target sets to have same size.");
+		}
+
+		if !source_size.is_power_of_two()
+		{
+			panic!("BinomialTree requires source size to be a power of 2.");
+		}
+
+		let mut tree_order = source_size.ilog2();
+
+		if source_size > 2usize.pow(tree_order)
+		{
+			tree_order +=1;
+		}
+		self.cartesian_data = CartesianData::new(&vec![2; tree_order as usize]); // Tree emdebbed into an hypercube
+		self.state = RefCell::new(vec![0; source_size]);
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		if origin >= self.cartesian_data.size
+		{
+			panic!("BinomialTree: origin {} is beyond the source size {}",origin,self.cartesian_data.size);
+		}
+		let mut source_coord = self.cartesian_data.unpack(origin);
+		let first_one_index = source_coord.iter().enumerate().find(|(_index, &value)| value == 1);
+
+		return if self.upwards
+		{
+			if origin == 0 {
+				0
+			} else {
+				let first_one_index = first_one_index.unwrap().0;
+				let state = self.state.borrow()[origin];
+				if state == 1{
+					origin
+				}else{
+					self.state.borrow_mut()[origin] = 1;
+					source_coord[first_one_index] = 0;
+					self.cartesian_data.pack(&source_coord)
+				}
+			}
+		}else{
+			let first_one_index = if origin == 0{
+					self.cartesian_data.sides.len() //log x in base 2... the number of edges in hypercube
+				} else{
+					first_one_index.unwrap().0
+				};
+			let son_index = self.state.borrow()[origin];
+
+			if first_one_index > son_index
+			{
+				self.state.borrow_mut()[origin] += 1;
+				origin + 2usize.pow(son_index as u32)
+			}else{
+				origin // no sons / no more sons to send
+			}
+		}
+	}
+}
+
+impl BinomialTree
+{
+	fn new(arg:PatternBuilderArgument) -> BinomialTree
+	{
+		let mut upwards = None;
+		match_object_panic!(arg.cv,"BinomialTree",value,
+			"upwards" => upwards = Some(value.as_bool().expect("bad value for upwards for pattern BinomialTree")),
+		);
+		let upwards = upwards.expect("There were no upwards in configuration of BinomialTree.");
+		BinomialTree{
+			upwards,
+			cartesian_data: CartesianData::new(&vec![2;2]),
+			state: RefCell::new(vec![]),
+		}
+	}
+}
+
+
+
+/**
+Boolean function which puts a 1 if the pattern contains the server, and 0 otherwise.
+```ignore
+BooleanFunction{
+	pattern: Hotspots{selected_destinations: [0]}, //1 if the server is 0, 0 otherwise
+	pattern_destination_size: 1,
+}
+```
+**/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct CandidatesSelection
+{
+	///Pattern to apply.
+	selected: Option<Vec<usize>>,
+	///Pattern to apply.
+	pattern: Box<dyn Pattern>,
+	///Pattern destination size.
+	pattern_destination_size: usize,
+}
+
+impl Pattern for CandidatesSelection
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		if target_size != 2
+		{
+			panic!("CandidatesSelection requires target size to be 2.");
+		}
+		self.pattern.initialize(source_size, self.pattern_destination_size, _topology, _rng);
+		let mut selection = vec![0;source_size];
+		for i in 0..source_size
+		{
+			selection[self.pattern.get_destination(i,_topology,_rng)] = 1;
+		}
+		self.selected = Some(selection);
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		if origin >= self.selected.as_ref().unwrap().len()
+		{
+			panic!("CandidatesSelection: origin {} is beyond the source size {}",origin,self.selected.as_ref().unwrap().len());
+		}
+		self.selected.as_ref().unwrap()[origin]
+	}
+}
+
+impl CandidatesSelection
+{
+	fn new(arg:PatternBuilderArgument) -> CandidatesSelection
+	{
+		let mut pattern = None;
+		let mut pattern_destination_size = None;
+		match_object_panic!(arg.cv,"CandidatesSelection",value,
+			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+			"pattern_destination_size" => pattern_destination_size = Some(value.as_usize().expect("bad value for pattern_destination_size")),
+		);
+		let pattern = pattern.expect("There were no pattern in configuration of CandidatesSelection.");
+		let pattern_destination_size = pattern_destination_size.expect("There were no pattern_destination_size in configuration of CandidatesSelection.");
+		CandidatesSelection{
+			selected: None,
+			pattern,
+			pattern_destination_size,
+		}
+	}
+}
 /**
 A transparent meta-pattern to help debug other [Pattern].
 
