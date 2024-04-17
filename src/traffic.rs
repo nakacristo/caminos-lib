@@ -25,7 +25,6 @@ use crate::event::Time;
 use quantifiable_derive::Quantifiable;
 use crate::measures::TrafficStatistics;
 use crate::quantify::Quantifiable;
-use crate::topology::prelude::CartesianData;
 
 ///Possible errors when trying to generate a message with a `Traffic`.
 #[derive(Debug)]

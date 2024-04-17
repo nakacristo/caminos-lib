@@ -19,7 +19,10 @@ use std::fmt::Debug;
 use std::convert::TryInto;
 use std::rc::Rc;
 
-use rand::{Rng,rngs::StdRng};
+use rand::{Rng,rngs::StdRng,SeedableRng};
+// use ::rand::{Rng,rngs::StdRng};
+use crate::pattern::{new_pattern, Pattern, PatternBuilderArgument};
+use crate::topology::prelude::CartesianData;
 
 ///Extra information to be used by the policies of virtual channels.
 #[derive(Debug)]

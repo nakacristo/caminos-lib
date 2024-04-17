@@ -349,6 +349,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"RemappedNodes" => Box::new(RemappedNodes::new(arg)),
 			"Switch" => Box::new(Switch::new(arg)),
 			"Debug" => Box::new(DebugPattern::new(arg)),
+			"MiDebugPattern" => Box::new(MiDebugPattern::new(arg)),
 			"DestinationSets" => Box::new(DestinationSets::new(arg)),
 			"ElementComposition" => Box::new(ElementComposition::new(arg)),
 			"CandidatesSelection" => Box::new(CandidatesSelection::new(arg)),
@@ -2875,7 +2876,6 @@ impl Switch {
 			indexing,
 			patterns,
             seed,
-			seed,
 		}
 	}
 }
@@ -3031,7 +3031,7 @@ impl Pattern for BinomialTree
 		if source_size!= target_size
 		{
 			panic!("BinomialTree requires source and target sets to have same size.");
-        }
+		}
 
 		if !source_size.is_power_of_two()
 		{

@@ -9,6 +9,8 @@ see [`new_allocator`](fn.new_allocator.html) for documentation on the configurat
 pub mod random;
 pub mod random_priority;
 pub mod islip;
+mod label_reduction;
+//pub mod separable_input_first;
 
 use crate::Plugs;
 use crate::config_parser::ConfigurationValue;
@@ -196,6 +198,7 @@ pub fn new_allocator(arg:AllocatorBuilderArgument) -> Box<dyn Allocator>
 		{
 			"Random" => Box::new(RandomAllocator::new(arg)),
 			"RandomWithPriority" => Box::new(RandomPriorityAllocator::new(arg)),
+			"LabelReduction" => Box::new(label_reduction::LabelReduction::new(arg)),
 			"Islip" | "iSLIP" =>
 			{
 				let mut cv = arg.cv.clone();
