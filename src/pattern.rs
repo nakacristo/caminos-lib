@@ -349,6 +349,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"RemappedNodes" => Box::new(RemappedNodes::new(arg)),
 			"Switch" => Box::new(Switch::new(arg)),
 			"Debug" => Box::new(DebugPattern::new(arg)),
+			"MiDebugPattern" => Box::new(MiDebugPattern::new(arg)),
 			"DestinationSets" => Box::new(DestinationSets::new(arg)),
 			"ElementComposition" => Box::new(ElementComposition::new(arg)),
 			"CandidatesSelection" => Box::new(CandidatesSelection::new(arg)),
@@ -1148,12 +1149,26 @@ impl Composition
  For a source, it sums the result of applying several patterns.
  For instance, the destination of a server a would be: dest(a) = p1(a) + p2(a) + p3(a).
  middle_sizes indicates the size of the intermediate patters.
+
+Sum{ //A vector of 2's
+	patterns:[
+		CandidatesSelection{
+				pattern: Identity,
+				pattern_destination_size: 2048,
+		},
+		CandidatesSelection{
+				pattern: Identity,
+				pattern_destination_size: 2048,
+		},
+	],
+	middle_sizes: [2,2],
+},
  **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Sum
 {
-	patterns: RefCell<Vec<Box<dyn Pattern>>>,
+	patterns: Vec<Box<dyn Pattern>>,
 	middle_sizes: Vec<usize>,
 	target_size: Option<usize>,
 }
@@ -1162,7 +1177,7 @@ impl Pattern for Sum
 {
 	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
-		for (index,pattern) in self.patterns.borrow_mut().iter_mut().enumerate()
+		for (index,pattern) in self.patterns.iter_mut().enumerate()
 		{
 			// let current_source = if index==0 { source_size } else { *self.middle_sizes.get(index-1).unwrap_or(&target_size) };
 			let current_target = *self.middle_sizes.get(index).unwrap_or(&target_size);
@@ -1174,7 +1189,7 @@ impl Pattern for Sum
 	{
 		let target_size = self.target_size.unwrap();
 		let mut destination=0;
-		for pattern in self.patterns.borrow_mut().iter_mut()
+		for pattern in self.patterns.iter()
 		{
 			let next_destination = pattern.get_destination(origin,topology,rng);
 			destination+=next_destination;
@@ -1199,7 +1214,7 @@ impl Sum
 			"middle_sizes" => middle_sizes = Some(value.as_array().expect("bad value for middle_sizes").iter()
 				.map(|v|v.as_usize().expect("bad value for middle_sizes")).collect()),
 		);
-		let patterns=RefCell::new(patterns.expect("There were no patterns"));
+		let patterns=patterns.expect("There were no patterns");
 		let middle_sizes = middle_sizes.unwrap_or_else(||vec![]);
 		Sum{
 			patterns,
@@ -1431,7 +1446,13 @@ impl RandomMix
 	}
 }
 
-/// Use a list of patterns in a round robin fashion, for each source.
+/**
+Use a list of patterns in a round robin fashion, for each source.
+
+RoundRobin{ // Alternate between three random permutations
+	patterns: [RandomPermutation, RandomPermutation, RandomPermutation],
+}
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct RoundRobin
@@ -1619,12 +1640,17 @@ impl GroupShufflingDestinations
 
 
 /**
-* For each server, it keeps a shuffled list of destinations to which send.
-* Select each destination with a probability.
-*	´´´ ignore
-* 	DestinationSets{
-*		patterns: [RandomPermutation, RandomPermutation], //2 random destinations
-*	}
+For each server, it keeps a shuffled list of destinations to which send.
+Select each destination with a probability.
+
+TODO: describe `weights` parameter.
+
+```ignore
+DestinationSets{
+	patterns: [RandomPermutation, RandomPermutation, RandomPermutation], //2 random destinations
+	weights: [1, 1, 2], //First 25% of chances, second 25% of chances, and third 50% of chances of being chosen
+}
+```
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -2567,6 +2593,8 @@ Matrix by vector multiplication. Origin is given coordinates as within a block o
 Then the destination coordinate vector is `y=Mx`, with `x` being the origin and `M` the given `matrix`.
 This destination vector is converted into an index into a block of size `target_size`.
 
+If the parameter `check_admisible` is true, it will print a warning if the matrix given is not admissible.
+
 Example configuration:
 ```ignore
 LinearTransform{
@@ -2578,6 +2606,7 @@ LinearTransform{
 	],
 	target_size: [4,8,8],
 	legend_name: "Identity",
+	//check_admisible: false,
 }
 ```
  **/
@@ -2673,6 +2702,8 @@ impl LinearTransform
 
 /**
 Method to calculate the determinant of a matrix.
+
+TODO: integrate in matrix.rs
  **/
 fn laplace_determinant(matrix: &Vec<Vec<i32>>) -> i32
 {
@@ -2775,6 +2806,8 @@ Switch{
 },
 ```
 
+TODO: describe `expand` and `seed`.
+
 This example assigns 10 different RandomPermutations, depending on the `y` value, mentioned earlier.
 ```ignore
 Switch{
@@ -2856,19 +2889,20 @@ impl Switch {
 		Switch{
 			indexing,
 			patterns,
-			seed,
+            seed,
 		}
 	}
 }
+
 /**
-* For each source, it keeps a state of the last destination used. When applying the pattern, it uses the last destination as the origin for the pattern, and
-* the destination is saved for the next call to the pattern.
-* ´´´ignore
-* ElementComposition{
-* 	pattern: RandomPermutation,
-* }
-* ´´´
- **/
+For each source, it keeps a state of the last destination used. When applying the pattern, it uses the last destination as the origin for the pattern, and
+the destination is saved for the next call to the pattern.
+```ignore
+ElementComposition{
+	pattern: RandomPermutation,
+}
+```
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct ElementComposition
@@ -3026,7 +3060,7 @@ impl Pattern for BinomialTree
 		}
 		self.cartesian_data = CartesianData::new(&vec![2; tree_order as usize]); // Tree emdebbed into an hypercube
 		self.state = RefCell::new(vec![0; source_size]);
-	}
+    }
 	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
 		if origin >= self.cartesian_data.size
@@ -3090,13 +3124,13 @@ impl BinomialTree
 
 
 /**
-* Boolean function which puts a 1 if the pattern contains the server, and 0 otherwise.
-* ´´´ignore
-* BooleanFunction{
-* 	pattern: Hotspots{selected_destinations: [0]}, //1 if the server is 0, 0 otherwise
-*	pattern_destination_size: 1,
-* 	}
-* ´´´
+Boolean function which puts a 1 if the pattern contains the server, and 0 otherwise.
+```ignore
+BooleanFunction{
+	pattern: Hotspots{selected_destinations: [0]}, //1 if the server is 0, 0 otherwise
+	pattern_destination_size: 1,
+}
+```
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -3169,6 +3203,82 @@ Debug{
 #[derive(Debug,Quantifiable)]
 struct DebugPattern {
 	/// The pattern being applied transparently.
+	pattern: Box<dyn Pattern>,
+	/// Whether to consider an error not being a permutation.
+	check_permutation: bool,
+	/// Size of source cached at initialization.
+	source_size: usize,
+	/// Size of target cached at initialization.
+	target_size: usize,
+}
+
+impl Pattern for DebugPattern{
+	fn initialize(&mut self, source_size:usize, target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
+	{
+		self.source_size = source_size;
+		self.target_size = target_size;
+		self.pattern.initialize(source_size,target_size,topology,rng);
+		if self.check_permutation {
+			if source_size != target_size {
+				panic!("cannot be a permutation is source size {} and target size {} do not agree.",source_size,target_size);
+			}
+			let mut hits = vec![false;target_size];
+			for origin in 0..source_size {
+				let dst = self.pattern.get_destination(origin,topology,rng);
+				if hits[dst] {
+					panic!("Destination {} hit at least twice.",dst);
+				}
+				hits[dst] = true;
+			}
+		}
+	}
+	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
+	{
+		if origin >= self.source_size {
+			panic!("Received an origin {origin} beyond source size {size}",size=self.source_size);
+		}
+		let dst = self.pattern.get_destination(origin,topology,rng);
+		if dst >= self.target_size {
+			panic!("The destination {dst} is beyond the target size {size}",size=self.target_size);
+		}
+		dst
+	}
+}
+
+impl DebugPattern{
+	fn new(arg:PatternBuilderArgument) -> DebugPattern{
+		let mut pattern = None;
+		let mut check_permutation = false;
+		match_object_panic!(arg.cv,"Debug",value,
+			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"check_permutation" => check_permutation = value.as_bool().expect("bad value for check_permutation"),
+		);
+		let pattern = pattern.expect("Missing pattern in configuration of Debug.");
+		DebugPattern{
+			pattern,
+			check_permutation,
+			source_size:0,
+			target_size:0,
+		}
+	}
+}
+
+
+
+/**
+A transparent meta-pattern to help debug other [Pattern].
+
+```ignore
+Debug{
+	pattern: ...,
+	check_permutation: true,
+}
+```
+ **/
+//TODO: admissible, orders/cycle-finding, suprajective,
+#[derive(Debug,Quantifiable)]
+struct MiDebugPattern {
+	/// The pattern being applied transparently.
 	pattern: Vec<Box<dyn Pattern>>,
 	/// Whether to consider an error not being a permutation.
 	check_permutation: bool,
@@ -3180,7 +3290,7 @@ struct DebugPattern {
 	target_size: usize,
 }
 
-impl Pattern for DebugPattern{
+impl Pattern for MiDebugPattern {
 	fn initialize(&mut self, _source_size:usize, _target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
 	{
 		// self.source_size = source_size;
@@ -3240,8 +3350,8 @@ impl Pattern for DebugPattern{
 	}
 }
 
-impl DebugPattern{
-	fn new(arg:PatternBuilderArgument) -> DebugPattern{
+impl MiDebugPattern {
+	fn new(arg:PatternBuilderArgument) -> MiDebugPattern {
 		let mut pattern = None;
 		let mut check_permutation = false;
 		let mut check_injective = false;
@@ -3259,7 +3369,7 @@ impl DebugPattern{
 		let pattern = pattern.expect("Missing pattern in configuration of Debug.");
 		let source_size = source_size.expect("Missing source_size in configuration of Debug.");
 		let target_size = target_size.expect("Missing target_size in configuration of Debug.");
-		DebugPattern{
+		MiDebugPattern {
 			pattern,
 			check_permutation,
 			check_injective,

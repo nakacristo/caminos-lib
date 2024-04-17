@@ -222,7 +222,7 @@ impl Megafly
 			number_of_groups,
 			group_size,
 			number_of_ports: global_ports_per_spine,
-			lag: lag,
+			lag,
 		},arg.rng);
 		//let group_size = 2*global_ports_per_spine;
 		//let number_of_groups = group_size*global_ports_per_spine + 1;

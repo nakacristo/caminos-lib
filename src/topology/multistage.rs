@@ -314,14 +314,21 @@ impl ProjectiveStage
 }
 
 
-///MLFM stage from Fujitsu.
-/// More details in: https://www.fujitsu.com/global/about/resources/news/press-releases/2014/0715-02.html
+/**
+MLFM stage from Fujitsu.
+ More details in: https://www.fujitsu.com/global/about/resources/news/press-releases/2014/0715-02.html
+FMStage{
+	layers: 4, // number of layers.
+	layer_size: 8, // number of routers per layer.
+}
+TODO: document options
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 struct FMStage
 {
-	k: usize,
-	pods : usize,
+	layers: usize,
+	layer_size: usize,
 }
 
 impl Stage for FMStage
@@ -329,21 +336,21 @@ impl Stage for FMStage
 	fn compose_requirements_upward(&self,_requirements:LevelRequirements,_bottom_level:usize,_height:usize) -> LevelRequirements
 	{
 		LevelRequirements{
-			group_size: self.pods * (self.pods -1) /2,
-			current_level_minimum_size: self.pods * (self.pods -1) /2,
+			group_size: self.layer_size * (self.layer_size -1) /2,
+			current_level_minimum_size: self.layer_size * (self.layer_size -1) /2,
 		}
 	}
 	fn downward_size(&self,top_size:usize,_bottom_group_size:usize,_bottom_level:usize,_height:usize) -> Result<usize,Error>
 	{
-		let mut index = 0;
+		let mut layer_size = 0;
 
-		while index*(index-1)/2 < top_size {
-			index+=1;
+		while layer_size *(layer_size -1)/2 < top_size {
+			layer_size +=1;
 		}
 
-		if index*(index-1)/2 == top_size
+		if layer_size *(layer_size -1)/2 == top_size
 		{
-			Ok(index * self.k)
+			Ok(layer_size * self.layers)
 
 		}else{
 			Err(error!(undetermined))
@@ -352,23 +359,23 @@ impl Stage for FMStage
 	}
 	fn amount_to_above(&self,_below_router:usize, _group_size: usize, _bottom_size:usize) -> usize
 	{
-		self.pods -1
+		self.layer_size -1
 	}
 	fn amount_to_below(&self,_above_router:usize, _group_size: usize, _bottom_size:usize) -> usize
 	{
-		2*self.k
+		2*self.layers
 	}
 	fn to_above(&self, below_router:usize, index:usize, _group_size:usize, _bottom_size:usize) -> (usize,usize)
 	{
-		let pod = below_router / self.k;
-		if index >= pod
+		let layer = below_router / self.layers;
+		if index >= layer
 		{
-			( pod * self.pods - ((pod+1) * pod)/2 + (index - pod), below_router % self.k )
+			(layer * self.layer_size - ((layer +1) * layer)/2 + (index - layer), below_router % self.layers)
 
 		}else{
-			let pod_2 = pod -1;
+			let layer_2 = layer -1;
 
-			(index * self.pods - ((index+1) * (index))/2 + (pod_2- index), (below_router % self.k) + self.k)
+			(index * self.layer_size - ((index+1) * (index))/2 + (layer_2 - index), (below_router % self.layers) + self.layers)
 		}
 	}
 	fn to_below(&self, above_router:usize, index:usize, _group_size:usize, _bottom_size:usize) -> (usize,usize)
@@ -377,26 +384,24 @@ impl Stage for FMStage
 		let mut a_index = 0;
 		let mut count = 0;
 
-		while (count + self.pods - (a_index + 1) )-1 < above_router {
+		while (count + self.layer_size - (a_index + 1) )-1 < above_router {
 			a_index += 1;
-			count += self.pods - a_index;
+			count += self.layer_size - a_index;
 
 			//print!("index {}", a_index)
 		}
 		//a_index -= 1;
 
-		if index < self.k
+		if index < self.layers
 		{
-			(a_index * self.k + index, a_index + above_router - count)	//
+			(a_index * self.layers + index, a_index + above_router - count)	//
 		}
 		else{
 
 			//print!("to_below")
 
-			((a_index +  above_router - count+1) * self.k + index%self.k,  a_index )
+			((a_index +  above_router - count+1) * self.layers + index%self.layers, a_index )
 		}
-
-
 	}
 }
 
@@ -405,8 +410,8 @@ impl FMStage
 {
 	pub fn new(arg:StageBuilderArgument) -> FMStage
 	{
-		let mut k=None;
-		let mut pods=None;
+		let mut layers =None;
+		let mut layer_size =None;
 
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
 		{
@@ -418,14 +423,14 @@ impl FMStage
 			{
 				match name.as_ref()
 				{
-					"k" => match value
+					"layers" => match value
 					{
-						&ConfigurationValue::Number(f) => k=Some(f as usize),
+						&ConfigurationValue::Number(f) => layers =Some(f as usize),
 						_ => panic!("bad value for k"),
 					},
-					"pods" => match value
+					"layer_size" => match value
 					{
-						&ConfigurationValue::Number(f) => pods=Some(f as usize),
+						&ConfigurationValue::Number(f) => layer_size =Some(f as usize),
 						_ => panic!("bad value for pods"),
 					},
 					"legend_name" => (),
@@ -437,11 +442,11 @@ impl FMStage
 		{
 			panic!("Trying to create a FMStage from a non-Object");
 		}
-		let k=k.expect("There were no k");
-		let pods=pods.expect("There were no pods");
+		let layers= layers.expect("There were no k");
+		let layer_size= layer_size.expect("There were no pods");
 		FMStage{
-			k,
-			pods,
+			layers,
+			layer_size,
 			//lane: FlatGeometryCache::new_prime(prime).unwrap_or_else(|_|panic!("{} is not prime, which is required for the ProjectiveStage",prime)),
 		}
 	}
@@ -714,8 +719,12 @@ impl ExplicitStage
 }
 
 
-///A Stage with a explicitly given list of neighbours for each router. Ignores grouping.
-///Apt to build random stages.
+/**
+A Stage with a explicitly given list of neighbours for each router. Ignores grouping.
+Apt to build random stages.
+
+TODO: document and example.
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct ExplicitStageFile
@@ -1009,7 +1018,11 @@ impl WidenedStage
 }
 
 
-///OFT fault tolerance stage, with paralell links.
+/**
+OFT fault tolerance stage, with paralell links.
+
+TODO: document and example.
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct FaultToleranceStage
@@ -1635,8 +1648,8 @@ impl MultiStage
 					//let servers_per_leaf=servers_per_leaf.expect("Not working");
 
 					let stage = FMStage{
-						k,
-						pods,
+						layers: k,
+						layer_size: pods,
 					};
 					stages = vec![Box::new(stage) as Box<dyn Stage>];
 					//stages=

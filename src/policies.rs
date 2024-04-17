@@ -1083,7 +1083,9 @@ impl PortDiscardLabelThreshold
 	}
 }
 
-
+/**
+Applies a `policy` to those candidates that would move to a router closer to the destination.
+ **/
 #[derive(Debug)]
 pub struct Minimal
 {
