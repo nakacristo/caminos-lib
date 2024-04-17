@@ -1150,7 +1150,19 @@ impl Composition
  For instance, the destination of a server a would be: dest(a) = p1(a) + p2(a) + p3(a).
  middle_sizes indicates the size of the intermediate patters.
 
- TODO: add an example.
+Sum{ //A vector of 2's
+	patterns:[
+		CandidatesSelection{
+				pattern: Identity,
+				pattern_destination_size: 2048,
+		},
+		CandidatesSelection{
+				pattern: Identity,
+				pattern_destination_size: 2048,
+		},
+	],
+	middle_sizes: [2,2],
+},
  **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -1437,7 +1449,9 @@ impl RandomMix
 /**
 Use a list of patterns in a round robin fashion, for each source.
 
-TODO: describe an example.
+RoundRobin{ // Alternate between three random permutations
+	patterns: [RandomPermutation, RandomPermutation, RandomPermutation],
+}
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -1633,8 +1647,8 @@ TODO: describe `weights` parameter.
 
 ```ignore
 DestinationSets{
-	patterns: [RandomPermutation, RandomPermutation], //2 random destinations
-	//weights
+	patterns: [RandomPermutation, RandomPermutation, RandomPermutation], //2 random destinations
+	weights: [1, 1, 2], //First 25% of chances, second 25% of chances, and third 50% of chances of being chosen
 }
 ```
 **/
@@ -2579,7 +2593,7 @@ Matrix by vector multiplication. Origin is given coordinates as within a block o
 Then the destination coordinate vector is `y=Mx`, with `x` being the origin and `M` the given `matrix`.
 This destination vector is converted into an index into a block of size `target_size`.
 
-TODO: describe parameter `check_admisible`.
+If the parameter `check_admisible` is true, it will print a warning if the matrix given is not admissible.
 
 Example configuration:
 ```ignore
@@ -2592,7 +2606,6 @@ LinearTransform{
 	],
 	target_size: [4,8,8],
 	legend_name: "Identity",
-	//check_admisible: false,
 }
 ```
  **/

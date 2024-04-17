@@ -21,10 +21,8 @@ struct Client {
     resource: Option<usize>,
 }
 /**
-A random allocator that randomly allocates requests to resources.
-
-TODO: comment on priority.
-
+An allocator that allocates a resource to the request with the highest/lowest priority. Ties are solved randomly.
+The priority of a request is the label assigned by the routing and policies of the router.
 ```
 RandomPriorityAllocator{
 	//seed:0

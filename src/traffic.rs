@@ -391,6 +391,8 @@ All the subtraffics in `list` must give the same value for `number_tasks`, which
 ```ignore
 TrafficSum{
 	list: [HomogeneousTraffic{...},... ],
+	statistics_temporal_step: 1000, //step to record temporal statistics for each subtraffic.
+	box_size: 1000, group results for the messages histogram.
 }
 ```
 

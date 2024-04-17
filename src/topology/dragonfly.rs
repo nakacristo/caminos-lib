@@ -677,6 +677,8 @@ It removes switches from source and target groups as intermediate switches.
 Valiant4Dragonfly{
 	first: Shortest,
 	second: Shortest,
+	pattern: Uniform, // pattern to select intermediate switches
+	distance_middle_destination: 3, // distance between the int switch and destination
 	first_reserved_virtual_channels: [0],//optional parameter, defaults to empty. Reserves some VCs to be used only in the first stage
 	second_reserved_virtual_channels: [1,2],//optional, defaults to empty. Reserves some VCs to be used only in the second stage.
 	intermediate_bypass: CartesianTransform{sides:[4,4],project:[true,false]} //optional, defaults to None. A pattern on the routers such that when reaching a router `x` with `intermediate_bypass(x)==intermediate_bypass(Valiant4Dragonfly_choice)` the first stage is terminated.
@@ -685,8 +687,6 @@ Valiant4Dragonfly{
 	legend_name: "Using Valiant4Dragonfly scheme, shortest to intermediate and shortest to destination",
 }
 ```
-
-TODO: there are undocumented configuration options.
  **/
 
 
