@@ -393,6 +393,7 @@ TrafficSum{
 	list: [HomogeneousTraffic{...},... ],
 	statistics_temporal_step: 1000, //step to record temporal statistics for each subtraffic.
 	box_size: 1000, group results for the messages histogram.
+	finish_when: [0, 1] //finish when the first and second subtraffics are finished.
 }
 ```
 
@@ -410,6 +411,8 @@ pub struct Sum
 	statistics: TrafficStatistics,
 	///Total number of tasks
 	tasks:usize,
+	///Indicate the traffics that should be finished to finish the traffic.
+	finish_when: Vec<usize>,
 }
 
 impl Traffic for Sum
@@ -490,9 +493,9 @@ impl Traffic for Sum
 	}
 	fn is_finished(&self) -> bool
 	{
-		for traffic in self.list.iter()
+		for traffic in self.finish_when.iter()
 		{
-			if !traffic.is_finished()
+			if !self.list[*traffic].is_finished()
 			{
 				return false;
 			}
@@ -544,12 +547,14 @@ impl Sum
 		let mut temporal_step = 0;
 		let mut box_size = 100;
 		let mut tasks = None;
+		let mut finish_when = None;
 		match_object_panic!(arg.cv,"TrafficSum",value,
 			"list" => list = Some(value.as_array().expect("bad value for list").iter()
 				.map(|v|new_traffic(TrafficBuilderArgument{cv:v,rng:&mut arg.rng,..arg})).collect()),
 			"statistics_temporal_step" => temporal_step = value.as_f64().expect("bad value for statistics_temporal_step") as Time,
 			"tasks" => tasks = Some(value.as_f64().expect("bad value for tasks") as usize),
 			"box_size" => box_size = value.as_f64().expect("bad value for box_size") as usize,
+			"finish_when" => finish_when = Some(value.as_array().expect("bad value for finish_when").iter().map(|v|v.as_usize().expect("bad value for finish_when")).collect()),
 		);
 		let list=list.expect("There were no list");
 		assert!( !list.is_empty() , "cannot sum 0 traffics" );
@@ -558,6 +563,7 @@ impl Sum
 		{
 			assert_eq!( traffic.number_tasks(), size , "In SumTraffic all sub-traffics must involve the same number of tasks." );
 		}
+		let finish_when = finish_when.unwrap_or_else(|| (0..list.len()-1).collect()); //default wait for all
 		let list_statistics = list.iter().map(|_| TrafficStatistics::new(temporal_step, box_size, None)).collect();
 		let statistics = TrafficStatistics::new(temporal_step, box_size, Some(list_statistics));
 		let tasks = tasks.unwrap();
@@ -566,6 +572,7 @@ impl Sum
 			index_to_generate: vec![vec![]; tasks ],
 			statistics,
 			tasks,
+			finish_when,
 		}
 	}
 }
