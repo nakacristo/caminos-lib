@@ -28,6 +28,8 @@ the message was created until the cycle in its consumption was completed. Note t
 */
 
 
+use std::cmp;
+use std::cmp::max;
 use std::collections::HashMap;
 use std::path::Path;
 use std::convert::TryInto;
@@ -307,7 +309,7 @@ impl TrafficStatistics
 			(String::from("total_consumed_phits"),ConfigurationValue::Number(self.total_consumed_phits as f64)),
 			(String::from("total_created_messages"),ConfigurationValue::Number(self.total_created_messages as f64)),
 			(String::from("total_created_phits"),ConfigurationValue::Number(self.total_created_phits as f64)),
-			(String::from("total_message_delay"),ConfigurationValue::Number((self.total_message_delay/self.total_consumed_messages as u64)as f64)),
+			(String::from("total_message_delay"),ConfigurationValue::Number((self.total_message_delay/cmp::max(self.total_consumed_messages as u64, 1u64))as f64)),
 			(String::from("cycle_last_created_message"),ConfigurationValue::Number(self.cycle_last_created_message as f64)),
 			(String::from("cycle_last_consumed_message"),ConfigurationValue::Number(self.cycle_last_consumed_message as f64)),
 			(String::from("message_latency_histogram"),ConfigurationValue::Array(messages_latency_histogram)),
