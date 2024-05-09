@@ -445,7 +445,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"UpDownDerouting" => Box::new(UpDownDerouting::new(arg)),
 			"MegaflyAD" => Box::new(MegaflyAD::new(arg)),
 			"AdaptiveStart" => Box::new(AdaptiveStart::new(arg)),
-			"DragonflyDirect" | "PathSelector"  => Box::new(DragonflyDirect::new(arg)),
+			"DragonflyDirect" => Box::new(DragonflyDirect::new(arg)),
 			_ => panic!("Unknown Routing {}",cv_name),
 		}
 	}

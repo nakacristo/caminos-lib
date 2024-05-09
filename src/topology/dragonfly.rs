@@ -1304,16 +1304,7 @@ impl Routing for DragonflyDirect
 {
 	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
 	{
-		//let (target_location,_link_class)=topology.server_neighbour(target_server);
-		//let target_router=match target_location
-		//{
-		//	Location::RouterPort{router_index,router_port:_} =>router_index,
-		//	_ => panic!("The server is not attached to a router"),
-		//};
-		//let distance=topology.distance(current_router,target_router);
 		let distance=*self.distance_matrix.get(current_router, target_router);
-		//let valid = vec![0,1,2,100,101,102];
-		//if !valid.contains(&distance){ panic!("distance={}",distance); }
 		if distance==0
 		{
 			let target_server = target_server.expect("target server was not given.");
@@ -1355,23 +1346,16 @@ impl Routing for DragonflyDirect
 						&& *self.group_matrix.get(router_index, target_router) == 100usize
 				) //This is adapted to DF
 				{
-					//if ![(102,1),(1,1),(101,100),(100,100),(101,1)].contains(&(distance,link_weight)){
-					//	println!("distance={} link_weight={}",distance,link_weight);
-					//}
-					//println!("distance={} link_weight={} hops={}",distance,link_weight,routing_info.hops);
-					//r.extend((0..num_virtual_channels).map(|vc|(i,vc)));
 					r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
 				}
 			}
 		}
-		//println!("From router {} to router {} distance={} cand={}",current_router,target_router,distance,r.len());
 		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
 	}
 	fn initialize(&mut self, topology:&dyn Topology, _rng: &mut StdRng)
 	{
 		let distance_matrix=topology.compute_distance_matrix(Some(&self.class_weight));
 		self.distance_matrix = topology.compute_distance_matrix(Some(&self.class_weight));
-		// let cartesian_data = topology.cartesian_data().expect("Should be a cartesian data");
 		self.local_matrix = Matrix::constant(0, distance_matrix.get_rows(), distance_matrix.get_columns());
 		self.group_matrix = Matrix::constant(0,distance_matrix.get_rows(),distance_matrix.get_columns());
 		for i in 0..distance_matrix.get_rows()
@@ -1405,10 +1389,6 @@ impl Routing for DragonflyDirect
 				}
 			}
 		}
-		//print the global matrix and distance matrix
-		// println!("Distance matrix: {:?}",self.distance_matrix);
-		// println!("Local matrix: {:?}",self.local_matrix);
-		// println!("Group matrix: {:?}",self.group_matrix);
 	}
 
 	fn initialize_routing_info(&self, routing_info: &RefCell<RoutingInfo>, _topology: &dyn Topology, _current_router: usize, _target_touter: usize, _target_server: Option<usize>, _rng: &mut StdRng) {
