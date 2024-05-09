@@ -1184,6 +1184,7 @@ pub struct RateWeightFunction
 	threshold_neighbour_occupancy: usize,
 	threshold_local_occupancy: usize,
 	rate_normalization: usize,
+	default_rate_credits: f64,
 	// map_label: Option<Vec<usize>>,
 }
 
@@ -1201,45 +1202,31 @@ impl VirtualChannelPolicy for RateWeightFunction
 			|candidate|{
 				let CandidateEgress{port, virtual_channel, estimated_remaining_hops, ..} = candidate;
 				let status=router.get_status_at_emisor(port).expect("This router does not have transmission status");
-
-				let credits_available = router.get_status_at_emisor(port).expect("This router does not have transmission status").known_available_space_for_virtual_channel(virtual_channel).expect("remote available space is not known");
-				let virtual_channel_occupied_output_space= router.virtual_port_size(port,virtual_channel) - status.known_available_space_for_virtual_channel(virtual_channel).expect("remote available space is not known.");
-				let neighour_occupancy_vc = router.get_maximum_credits_towards(port,virtual_channel).expect("we need routers with maximum credits") - credits_available;
-
-				let rate = if credits_available < self.threshold_neighbour_occupancy
+				let output_port_occ = info.virtual_channel_occupied_output_space.expect("virtual_channel_occupied_output_space have not been computed for AverageOccupancyFunction");
+				let occupied_credits = router.get_maximum_credits_towards(port,virtual_channel).expect("we need routers with maximum credits") as i32
+					- status.known_available_space_for_virtual_channel(virtual_channel).expect("remote available space is not known.") as i32;
+				let mut free_vc = vec![];
+				let mut congested_vc = vec![];
+				let mut weights = vec![0.0; status.num_virtual_channels()];
+				for i in 0..status.num_virtual_channels()
 				{
-					//Occupation in all vc of the port
-					let mut occupied_output_space = 1f64;
+					let virtual_channel_occupied_credits=router.get_maximum_credits_towards(port,virtual_channel).expect("we need routers with maximum credits") - status.known_available_space_for_virtual_channel(virtual_channel).expect("remote available space is not known.");
 
-					for i in 0..status.num_virtual_channels()
+					if virtual_channel_occupied_credits > self.threshold_neighbour_occupancy
 					{
-						if i == virtual_channel
-						{
-							continue;
-						}
-						let virtual_channel_occupied_output_space= router.virtual_port_size(port,i) - status.known_available_space_for_virtual_channel(i).expect("remote available space is not known.");
-						let virtual_channel_credits_available = router.get_status_at_emisor(port).expect("This router does not have transmission status").known_available_space_for_virtual_channel(i).expect("remote available space is not known");
-						if virtual_channel_occupied_output_space > self.threshold_local_occupancy && virtual_channel_credits_available < self.threshold_neighbour_occupancy
-						{
-							occupied_output_space += 1f64;
-						}
-					}
-					occupied_output_space
-				}else{
-					if let Some(rate) = router.get_rate_output_buffer(port, virtual_channel, info.current_cycle)
-					{
-						if rate as usize/self.rate_normalization > 0usize
-						{
-							1f64 / rate
-						}else{
-							f64::MAX
-						}
-					}else{
-						f64::MAX
-					}
-				};
+						congested_vc.push(i);
+						weights[i] = router.get_rate_output_buffer(port, i, info.current_cycle).unwrap_or(self.default_rate_credits)/self.rate_normalization as f64;
 
-				CandidateEgress{label: ((rate * virtual_channel_occupied_output_space as f64) as usize + neighour_occupancy_vc) as i32, port, virtual_channel, estimated_remaining_hops, ..candidate}
+					} else 	if output_port_occ[port][i] > self.threshold_local_occupancy || i == virtual_channel
+					{
+						free_vc.push(i);
+					}
+				}
+				let congested_rate = congested_vc.iter().map(|a| weights[*a]).sum::<f64>();
+				let free_link_rate = 1.0 - congested_rate;
+				free_vc.iter().for_each(|a| weights[*a] = free_link_rate/free_vc.len() as f64);
+
+				CandidateEgress{label: ((output_port_occ[port][virtual_channel] as i32 + occupied_credits) as f64 * ( 1.0/weights[virtual_channel] )) as i32, port, virtual_channel, estimated_remaining_hops, ..candidate}
 			}
 		).collect::<Vec<_>>()
 	}
@@ -1268,18 +1255,22 @@ impl RateWeightFunction
 		let mut threshold_neighbour_occupancy=None;
 		let mut threshold_local_occupancy=None;
 		let mut rate_normalization = None;
+		let mut default_rate = None;
 		match_object_panic!(arg.cv,"RateWeightFunction",value,
 			"threshold_neighbour_occupancy" => threshold_neighbour_occupancy = Some(value.as_f64().expect("bad value for threshold_neighbour_occupancy") as usize),
 			"threshold_local_occupancy" => threshold_local_occupancy = Some(value.as_f64().expect("bad value for threshold_local_occupancy") as usize),
 			"rate_normalization" => rate_normalization = Some(value.as_f64().expect("bad value for rate_normalization") as usize),
+			"default_rate_credits" => default_rate = Some(value.as_f64().expect("bad value for default_rate")),
 		);
 		let threshold_neighbour_occupancy=threshold_neighbour_occupancy.expect("There were no threshold_neighbour_occupancy");
 		let threshold_local_occupancy=threshold_local_occupancy.expect("There were no threshold_local_occupancy");
 		let rate_normalization=rate_normalization.expect("There were no rate_normalization");
+		let default_rate=default_rate.expect("There were no default_rate");
 		RateWeightFunction{
 			threshold_neighbour_occupancy,
 			threshold_local_occupancy,
 			rate_normalization,
+			default_rate_credits: default_rate,
 		}
 	}
 }
