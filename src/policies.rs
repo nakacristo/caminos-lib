@@ -333,6 +333,8 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"ValiantIntermediate" => Box::new(ValiantIntermediate::new(arg)),
 			"ValiantLastRouterPalmTree" => Box::new(ValiantLastRouterPalmTree::new(arg)),
 			"CartesianSpaceLabel" => Box::new(CartesianSpaceLabel::new(arg)),
+			"RateWeightFunction" => Box::new(RateWeightFunction::new(arg)),
+			"RRRate" => Box::new(RRRate::new(arg)),
 			_ => panic!("Unknown policy {}",cv_name),
 		}
 	}
@@ -1081,6 +1083,203 @@ impl PortDiscardLabelThreshold
 			previous_policy,
 			threshold,
 			below,
+		}
+	}
+}
+
+/**
+```ignore
+GetOccupiedVC{
+
+}
+ ```
+ **/
+#[derive(Debug)]
+pub struct RRRate
+{
+	threshold_local_occupancy: usize,
+}
+
+impl VirtualChannelPolicy for RRRate
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		if candidates.len()==0
+		{
+			return vec![];
+		}
+
+		let output_port_occ = info.virtual_channel_occupied_output_space.expect("virtual_channel_occupied_output_space have not been computed for AverageOccupancyFunction");
+		//change the label to the rate of the port
+		candidates.into_iter().map(
+			|candidate|{
+				let CandidateEgress{port, virtual_channel, estimated_remaining_hops, ..} = candidate;
+				let status=router.get_status_at_emisor(port).expect("This router does not have transmission status");
+				let virtual_channel_occupied_credits=router.get_maximum_credits_towards(port,virtual_channel).expect("we need routers with maximum credits") as i32
+					- status.known_available_space_for_virtual_channel(virtual_channel).expect("remote available space is not known.") as i32;
+				let virtual_channel_occupied_output_space= output_port_occ[port][virtual_channel];
+				let mut occupied_output_space = 1usize;
+				for i in 0..status.num_virtual_channels()
+				{
+					if i == virtual_channel
+					{
+						continue;
+					}
+					if output_port_occ[port][i] > self.threshold_local_occupancy
+					{
+						occupied_output_space += 1usize;
+					}
+				}
+				CandidateEgress{label: (virtual_channel_occupied_output_space * occupied_output_space) as i32 + virtual_channel_occupied_credits, port, virtual_channel, estimated_remaining_hops, ..candidate}
+
+			}
+		).collect::<Vec<_>>()
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		false
+	}
+
+}
+
+impl RRRate
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> RRRate
+	{
+		let mut threshold_local_occupancy=None;
+		match_object_panic!(arg.cv,"RRRate",value,
+			"threshold_local_occupancy" => threshold_local_occupancy = Some(value.as_f64().expect("bad value for threshold_local_occupancy") as usize),
+		);
+		let threshold_local_occupancy=threshold_local_occupancy.expect("There were no threshold_local_occupancy");
+		RRRate{
+			threshold_local_occupancy,
+		}
+	}
+}
+
+
+/**
+```ignore
+RateWeightFunction{
+	previous_policy: OccupancyFunction{...}
+	threshold: 80,
+	below: true, //discard if above threshold
+}
+ ```
+ **/
+#[derive(Debug)]
+pub struct RateWeightFunction
+{
+	threshold_neighbour_occupancy: usize,
+	threshold_local_occupancy: usize,
+	rate_normalization: usize,
+	// map_label: Option<Vec<usize>>,
+}
+
+impl VirtualChannelPolicy for RateWeightFunction
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		if candidates.len()==0
+		{
+			return vec![];
+		}
+
+		//change the label to the rate of the port
+		candidates.into_iter().map(
+			|candidate|{
+				let CandidateEgress{port, virtual_channel, estimated_remaining_hops, ..} = candidate;
+				let status=router.get_status_at_emisor(port).expect("This router does not have transmission status");
+
+				let credits_available = router.get_status_at_emisor(port).expect("This router does not have transmission status").known_available_space_for_virtual_channel(virtual_channel).expect("remote available space is not known");
+				let virtual_channel_occupied_output_space= router.virtual_port_size(port,virtual_channel) - status.known_available_space_for_virtual_channel(virtual_channel).expect("remote available space is not known.");
+				let neighour_occupancy_vc = router.get_maximum_credits_towards(port,virtual_channel).expect("we need routers with maximum credits") - credits_available;
+
+				let rate = if credits_available < self.threshold_neighbour_occupancy
+				{
+					//Occupation in all vc of the port
+					let mut occupied_output_space = 1f64;
+
+					for i in 0..status.num_virtual_channels()
+					{
+						if i == virtual_channel
+						{
+							continue;
+						}
+						let virtual_channel_occupied_output_space= router.virtual_port_size(port,i) - status.known_available_space_for_virtual_channel(i).expect("remote available space is not known.");
+						let virtual_channel_credits_available = router.get_status_at_emisor(port).expect("This router does not have transmission status").known_available_space_for_virtual_channel(i).expect("remote available space is not known");
+						if virtual_channel_occupied_output_space > self.threshold_local_occupancy && virtual_channel_credits_available < self.threshold_neighbour_occupancy
+						{
+							occupied_output_space += 1f64;
+						}
+					}
+					occupied_output_space
+				}else{
+					if let Some(rate) = router.get_rate_output_buffer(port, virtual_channel, info.current_cycle)
+					{
+						if rate as usize/self.rate_normalization > 0usize
+						{
+							1f64 / rate
+						}else{
+							f64::MAX
+						}
+					}else{
+						f64::MAX
+					}
+				};
+
+				CandidateEgress{label: ((rate * virtual_channel_occupied_output_space as f64) as usize + neighour_occupancy_vc) as i32, port, virtual_channel, estimated_remaining_hops, ..candidate}
+			}
+		).collect::<Vec<_>>()
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		false
+	}
+
+}
+
+impl RateWeightFunction
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> RateWeightFunction
+	{
+		let mut threshold_neighbour_occupancy=None;
+		let mut threshold_local_occupancy=None;
+		let mut rate_normalization = None;
+		match_object_panic!(arg.cv,"RateWeightFunction",value,
+			"threshold_neighbour_occupancy" => threshold_neighbour_occupancy = Some(value.as_f64().expect("bad value for threshold_neighbour_occupancy") as usize),
+			"threshold_local_occupancy" => threshold_local_occupancy = Some(value.as_f64().expect("bad value for threshold_local_occupancy") as usize),
+			"rate_normalization" => rate_normalization = Some(value.as_f64().expect("bad value for rate_normalization") as usize),
+		);
+		let threshold_neighbour_occupancy=threshold_neighbour_occupancy.expect("There were no threshold_neighbour_occupancy");
+		let threshold_local_occupancy=threshold_local_occupancy.expect("There were no threshold_local_occupancy");
+		let rate_normalization=rate_normalization.expect("There were no rate_normalization");
+		RateWeightFunction{
+			threshold_neighbour_occupancy,
+			threshold_local_occupancy,
+			rate_normalization,
 		}
 	}
 }
