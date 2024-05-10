@@ -1210,13 +1210,12 @@ impl VirtualChannelPolicy for RateWeightFunction
 				let mut weights = vec![0.0; status.num_virtual_channels()];
 				for i in 0..status.num_virtual_channels()
 				{
-					let virtual_channel_occupied_credits=router.get_maximum_credits_towards(port,virtual_channel).expect("we need routers with maximum credits") - status.known_available_space_for_virtual_channel(virtual_channel).expect("remote available space is not known.");
+					let virtual_channel_occupied_credits=router.get_maximum_credits_towards(port,i).expect("we need routers with maximum credits") - status.known_available_space_for_virtual_channel(i).expect("remote available space is not known.");
 
 					if virtual_channel_occupied_credits > self.threshold_neighbour_occupancy
 					{
 						congested_vc.push(i);
 						weights[i] = router.get_rate_output_buffer(port, i, info.current_cycle).unwrap_or(self.default_rate_credits)/self.rate_normalization as f64;
-
 					} else 	if output_port_occ[port][i] > self.threshold_local_occupancy || i == virtual_channel
 					{
 						free_vc.push(i);
@@ -1225,8 +1224,10 @@ impl VirtualChannelPolicy for RateWeightFunction
 				let congested_rate = congested_vc.iter().map(|a| weights[*a]).sum::<f64>();
 				let free_link_rate = 1.0 - congested_rate;
 				free_vc.iter().for_each(|a| weights[*a] = free_link_rate/free_vc.len() as f64);
-
-				CandidateEgress{label: ((output_port_occ[port][virtual_channel] as i32 + occupied_credits) as f64 * ( 1.0/weights[virtual_channel] )) as i32, port, virtual_channel, estimated_remaining_hops, ..candidate}
+				let label = ((output_port_occ[port][virtual_channel] as i32 + occupied_credits) as f64 * ( 1.0/weights[virtual_channel] )) as i32;
+				//Do a general print to debug
+				// println!("port: {}, vc: {}, congested_vc: {:?}, free_vc: {:?}, weights: {:?}, occ_vc:{:?}, occ_n:{:?}, label: {:?}", port, virtual_channel, congested_vc, free_vc, weights, output_port_occ[port][virtual_channel], occupied_credits, label);
+				CandidateEgress{label, port, virtual_channel, estimated_remaining_hops, ..candidate}
 			}
 		).collect::<Vec<_>>()
 	}
