@@ -14,6 +14,9 @@ use crate::pattern::*; //For Valiant
 
 //extern crate itertools;
 use itertools::Itertools;
+use rand::SeedableRng;
+use crate::quantify::Quantifiable;
+use crate::topology::dragonfly::{Arrangement, ArrangementBuilderArgument, ArrangementPoint, ArrangementSize, Palmtree, RandomArrangement};
 
 ///A Cartesian ortahedral region of arbitrary dimension.
 #[derive(Quantifiable)]
@@ -462,6 +465,7 @@ pub struct Hamming
 {
 	cartesian_data: CartesianData,
 	servers_per_router: usize,
+	wiring: Box<dyn CompleteGraphWiring>,
 }
 
 impl Topology for Hamming
@@ -494,28 +498,20 @@ impl Topology for Hamming
 		}
 		if dimension<m
 		{
-			//let dimension=port/2;
-			//let delta=if port%2==0 { -1i32 as usize } else { 1 };
 			let mut coordinates=self.cartesian_data.unpack(router_index);
-			//coordinates[dimension]=coordinates[dimension].wrapping_add(delta);
-			//if coordinates[dimension]>=self.cartesian_data.sides[dimension]
-			//{
-			//	return Location::None;
-			//}
-			let side=self.cartesian_data.sides[dimension];
-			//coordinates[dimension]=(coordinates[dimension]+side+delta)%side;
-			coordinates[dimension]=(coordinates[dimension]+offset+1)%side;
-			let n_index=self.cartesian_data.pack(&coordinates);
-			//let n_port= if delta==1
-			//{
-			//	dimension*2
-			//}
-			//else
-			//{
-			//	dimension*2+1
-			//};
-			let n_port= (side-2-offset) + (port-offset);
-			return (Location::RouterPort{router_index:n_index, router_port:n_port},dimension);
+			let (dest_switch_dim, dest_port)= self.wiring.map(coordinates[dimension], offset);
+			coordinates[dimension]=dest_switch_dim;
+			//Print all data for debugging
+			// println!("router_index: {} -> port: {} -> dest_switch_dim: {} -> coordinates[dimension]: {} -> dest_port:{}",router_index,port,coordinates[dimension],dest_switch_dim,dest_port);
+			return (Location::RouterPort{
+				router_index: self.cartesian_data.pack(&coordinates),
+				router_port: (port-offset) + dest_port,
+			},dimension);
+			// let side=self.cartesian_data.sides[dimension];
+			// coordinates[dimension]=(coordinates[dimension]+offset+1)%side;
+			// let n_index=self.cartesian_data.pack(&coordinates);
+			// let n_port= (side-2-offset) + (port-offset);
+			// return (Location::RouterPort{router_index:n_index, router_port:n_port},dimension);
 		}
 		(Location::ServerPort(offset + router_index*self.servers_per_router),m)
 	}
@@ -596,6 +592,7 @@ impl Hamming
 	{
 		let mut sides:Option<Vec<_>>=None;
 		let mut servers_per_router=None;
+		let mut wiring:Box<dyn CompleteGraphWiring>= Box::new(CompleteGraphRelative::default());
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
 		{
 			if cv_name!="Hamming"
@@ -619,6 +616,11 @@ impl Hamming
 						&ConfigurationValue::Number(f) => servers_per_router=Some(f as usize),
 						_ => panic!("bad value for servers_per_router"),
 					}
+					"wiring" => match value
+					{
+						&ConfigurationValue::Object(ref cv_name, ref cv_pairs) => wiring= new_complete_graph_wiring(ConfigurationValue::Object(cv_name.clone(),cv_pairs.clone())),
+						_ => todo!(),
+					}
 					"legend_name" => (),
 					_ => panic!("Nothing to do with field {} in Hamming",name),
 				}
@@ -629,12 +631,91 @@ impl Hamming
 			panic!("Trying to create a Hamming from a non-Object");
 		}
 		let sides=sides.expect("There were no sides");
+		//TODO if sides are of different sizes
+		assert_eq!(sides.iter().unique().count(),1,"All sides must be the same");
+
+		let cartesian_data=CartesianData::new(&sides);
 		let servers_per_router=servers_per_router.expect("There were no servers_per_router");
+		wiring.initialize(cartesian_data.sides[0], &mut StdRng::from_entropy());
 		//println!("servers_per_router={}",servers_per_router);
 		Hamming{
-			cartesian_data: CartesianData::new(&sides),
+			cartesian_data,
 			servers_per_router,
+			wiring,
 		}
+	}
+}
+
+pub trait CompleteGraphWiring : Quantifiable + core::fmt::Debug
+{
+	/// Initialization should be called once before any other of its methods.
+	fn initialize(&mut self, size:usize, rng: &mut StdRng);
+	/// Gets the point connected to the `input`.
+	fn map( &self, switch:usize, port:usize ) -> (usize,usize);
+	/// Get the size with the arrangement has been initialized.
+	fn get_size(&self) -> usize;
+}
+
+#[derive(Quantifiable,Debug,Default)]
+pub struct CompleteGraphRelative{
+	switches: usize,
+}
+
+impl CompleteGraphWiring for CompleteGraphRelative
+{
+	fn initialize(&mut self, size:usize, _rng: &mut StdRng)
+	{
+		self.switches=size;
+	}
+	fn map( &self, switch:usize, port:usize) -> (usize,usize)
+	{
+		((switch + port + 1) % self.switches, (self.switches -1 -port -1) % self.switches )
+	}
+
+	fn get_size(&self) -> usize
+	{
+		self.switches
+	}
+}
+
+#[derive(Quantifiable,Debug,Default)]
+pub struct Lacin{
+	switches: usize,
+}
+
+impl CompleteGraphWiring for Lacin
+{
+	fn initialize(&mut self, size:usize, _rng: &mut StdRng)
+	{
+		//Error if size is not a power of 2
+		assert_eq!(size & (size-1),0,"size must be a power of 2");
+		self.switches=size;
+	}
+	fn map( &self, switch:usize, port:usize) -> (usize,usize)
+	{
+		// println!("switch: {}, port: {}, XOR: {}",switch, port, switch ^ (port+1));
+		(switch ^ (port+1), port)
+	}
+	fn get_size(&self) -> usize
+	{
+		self.switches
+	}
+}
+
+pub fn new_complete_graph_wiring(arg:ConfigurationValue) -> Box<dyn CompleteGraphWiring>
+{
+	if let ConfigurationValue::Object(ref cv_name, ref _cv_pairs)=arg
+	{
+		match cv_name.as_ref()
+		{
+			"Lacin" => Box::new(Lacin::default()),
+			"CompleteGraphRelative" => Box::new(CompleteGraphRelative::default()),
+			_ => panic!("Unknown complete graph wiring {}",cv_name),
+		}
+	}
+	else
+	{
+		panic!("Trying to create an arrangement from a non-Object");
 	}
 }
 
