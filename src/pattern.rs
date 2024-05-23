@@ -355,6 +355,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"CandidatesSelection" => Box::new(CandidatesSelection::new(arg)),
 			"Sum" => Box::new(Sum::new(arg)),
 			"RoundRobin" => Box::new(RoundRobin::new(arg)),
+			"Inverse" => Box::new(Inverse::new(arg)),
 			"RecursiveDistanceHalving" => Box::new(RecursiveDistanceHalving::new(arg)),
 			"BinomialTree" => Box::new(BinomialTree::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
@@ -2889,6 +2890,80 @@ impl Switch {
 			indexing,
 			patterns,
             seed,
+		}
+	}
+}
+
+/**
+```
+	Uses the inverse of the pattern specified.
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct Inverse
+{
+	///Pattern to apply.
+	pattern: Box<dyn Pattern>,
+	///Destination
+	inverse_values: Vec<Option<usize>>,
+	///default destination
+	default_destination: Option<usize>,
+}
+
+impl Pattern for Inverse
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		// if source_size!= target_size
+		// {
+		// 	panic!("Inverse requires source and target sets to have same size.");
+		// }
+		self.pattern.initialize(source_size,target_size,_topology,_rng);
+		let mut source = vec![None; source_size];
+		for i in 0..source_size
+		{
+			let destination = self.pattern.get_destination(i,_topology,_rng);
+			if let Some(_) = source[destination]
+			{
+				panic!("Inverse: destination {} is already used by origin {}.",destination,source[destination].unwrap());
+			}
+			source[destination] = Some(i);
+		}
+		self.inverse_values = source;
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		if origin >= self.inverse_values.len()
+		{
+			panic!("Inverse: origin {} is beyond the source size {}",origin,self.inverse_values.len());
+		}
+		if let Some(destination) = self.inverse_values[origin]
+		{
+			destination
+		}
+		else
+		{
+			self.default_destination.expect(&*("Inverse: origin ".to_owned() + &*origin.to_string() + " has no destination and there is no default destination."))
+		}
+	}
+}
+
+impl Inverse
+{
+	fn new(arg:PatternBuilderArgument) -> Inverse
+	{
+		let mut pattern = None;
+		let mut default_destination = None;
+		match_object_panic!(arg.cv,"Inverse",value,
+			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+			"default_destination" => default_destination = Some(value.as_usize().expect("bad value for default_destination")),
+		);
+		let pattern = pattern.expect("There were no pattern in configuration of Inverse.");
+		Inverse{
+			pattern,
+			inverse_values: vec![],
+			default_destination,
 		}
 	}
 }
