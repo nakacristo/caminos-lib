@@ -1856,13 +1856,23 @@ pub fn new_stage(arg:StageBuilderArgument) -> Box<dyn Stage>
 }
 
 
+/**
 
+Routing for indirect networks which follows up-down routes adaptively.
+It asumes there's an up-down path to destination from any leaf.
 
-///Routing for indirect networks which follows up-down routes adaptively.
+```ignore
+	UpDownDerouting{
+		allowed_updowns: 2 // 1 Non-min + 1 Min
+		virtual_channels: [[0, 1], [2, 3]], // 2 phases, 2 VC per phases.
+		stages: 1. // 1 stage in the multistage
+	}
+```
+**/
 #[derive(Debug)]
 pub struct UpDownDerouting
 {
-	///Maximum number of non-shortest (deroutes) hops to make.
+	///Number of up-down stages allowed.
 	allowed_updowns: usize,
 	/// (Optional): VC to take in each UpDown stage. By default one different VC per UpDown path.
 	virtual_channels: Vec<Vec<usize>>,
@@ -1891,23 +1901,15 @@ impl Routing for UpDownDerouting
 			unreachable!();
 		}
 
-		// let visited_routers = routing_info.visited_routers.as_ref().unwrap();
-		// let mut last_router = visited_routers[visited_routers.len() - 1];
-		// if visited_routers.len() > 1
-		// {
-		// 	last_router = visited_routers[visited_routers.len() - 2]; //current router is the last one....
-		// }
-		let avaliable_updown_deroutes = routing_info.selections.as_ref().unwrap()[0] as usize;
+		let avaliable_updown_deroutes = routing_info.selections.as_ref().unwrap()[0] as usize; //Avaliable up-down phases. If its 1, we are in the last updown phase.
 
 		let num_ports=topology.ports(current_router);
 		let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
-		// let binding = routing_info.auxiliar.borrow();
-		// let aux = binding.as_ref().unwrap().downcast_ref::<Vec<usize>>().unwrap(); // To know when to change of virtual channel
-		let vc_index= self.allowed_updowns - avaliable_updown_deroutes;
+		let vc_index= self.allowed_updowns - avaliable_updown_deroutes; // To know the updown phase we are in.
 
 		for NeighbourRouterIteratorItem{link_class: _next_link_class,port_index,neighbour_router:neighbour_router_index,..} in topology.neighbour_router_iter(current_router)
 		{
-			if distance-1 == topology.distance(neighbour_router_index,target_router) //&& neighbour_router_index != last_router
+			if distance-1 == topology.distance(neighbour_router_index,target_router) //Minimal route always welcomed
 			{
 				r.extend(self.virtual_channels[vc_index].iter().map(|&vc|CandidateEgress::new(port_index,vc)));
 
