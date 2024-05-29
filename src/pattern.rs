@@ -19,6 +19,7 @@ use crate::topology::{Topology, Location};
 use crate::quantify::Quantifiable;
 use crate::{Plugs,match_object_panic};
 use rand::{RngCore, SeedableRng};
+use crate::traffic::Traffic;
 
 /// Some things most uses of the pattern module will use.
 pub mod prelude
@@ -356,6 +357,7 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"Sum" => Box::new(Sum::new(arg)),
 			"RoundRobin" => Box::new(RoundRobin::new(arg)),
 			"Inverse" => Box::new(Inverse::new(arg)),
+			"SubApp" => Box::new(SubApp::new(arg)),
 			"RecursiveDistanceHalving" => Box::new(RecursiveDistanceHalving::new(arg)),
 			"BinomialTree" => Box::new(BinomialTree::new(arg)),
 			_ => panic!("Unknown pattern {}",cv_name),
@@ -2967,6 +2969,108 @@ impl Inverse
 		}
 	}
 }
+
+/**
+
+Select a region of tasks to execute a pattern. The size of the application using the pattern is 64.
+```ignore
+	SubApp{
+		subtasks: 8,
+		selection_pattern: CartesianEmbedding{
+			source_sides: [1,8],
+			destination_sides: [8,8],
+		},
+		subapp_pattern: CartesianTransform{
+			sides: [8, 8],
+			shift: [0, 1],
+		},
+		others_pattern: RandomPermutation,
+	}
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct SubApp
+{
+	subtasks: usize,
+	selection_pattern: Box<dyn Pattern>,
+	subapp_pattern: Box<dyn Pattern>,
+	others_pattern: Box<dyn Pattern>,
+	selected_vec: Vec<usize>,
+}
+
+impl Pattern for SubApp
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+
+		if self.subtasks > source_size
+		{
+			panic!("SubApp: subtasks {} is greater than source size {}.",self.subtasks,source_size);
+		}
+
+		self.selection_pattern.initialize( self.subtasks, target_size, _topology, _rng);
+		self.subapp_pattern.initialize(source_size,target_size,_topology,_rng);
+		self.others_pattern.initialize(source_size,target_size,_topology,_rng);
+
+		let mut source = vec![0; source_size];
+		(0..self.subtasks).for_each(|i| {
+			let destination = self.selection_pattern.get_destination(i,_topology,_rng);
+			source[destination] = 1;
+		});
+		self.selected_vec = source;
+
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		if self.selected_vec.len() <= origin
+		{
+			panic!("SubApp: origin {} is beyond the source size {}",origin,self.selected_vec.len());
+		}
+
+		if self.selected_vec[origin] == 1
+		{
+			self.subapp_pattern.get_destination(origin,_topology,_rng)
+		}
+		else
+		{
+			self.others_pattern.get_destination(origin,_topology,_rng)
+		}
+
+	}
+}
+
+impl SubApp
+{
+	fn new(arg:PatternBuilderArgument) -> SubApp
+	{
+		let mut subtasks = None;
+		let mut selection_pattern = None;
+		let mut subapp_pattern = None;
+		let mut others_pattern = None;
+		match_object_panic!(arg.cv,"SubApp",value,
+			"subtasks" => subtasks = Some(value.as_usize().expect("bad value for total_subsize")),
+			"selection_pattern" => selection_pattern = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})), //map of the application over the machine
+			"subapp_pattern" => subapp_pattern = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})), //traffic of the application
+			"others_pattern" => others_pattern = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})), //traffic of the machine
+		);
+
+		let subtasks = subtasks.expect("There were no tasks in configuration of SubApp.");
+		let subapp_pattern = subapp_pattern.expect("There were no subapp_pattern in configuration of SubApp.");
+		let selection_pattern = selection_pattern.expect("There were no selection_pattern in configuration of SubApp.");
+		let others_pattern = others_pattern.expect("There were no others_pattern in configuration of SubApp.");
+
+		SubApp{
+			subtasks,
+			subapp_pattern,
+			selection_pattern,
+			others_pattern,
+			selected_vec: vec![],
+		}
+
+	}
+}
+
 
 /**
 For each source, it keeps a state of the last destination used. When applying the pattern, it uses the last destination as the origin for the pattern, and
