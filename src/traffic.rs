@@ -563,7 +563,7 @@ impl Sum
 		{
 			assert_eq!( traffic.number_tasks(), size , "In SumTraffic all sub-traffics must involve the same number of tasks." );
 		}
-		let finish_when = finish_when.unwrap_or_else(|| (0..list.len()-1).collect()); //default wait for all
+		let finish_when = finish_when.unwrap_or_else(|| (0..list.len()).collect()); //default wait for all
 		let list_statistics = list.iter().map(|_| TrafficStatistics::new(temporal_step, box_size, None)).collect();
 		let statistics = TrafficStatistics::new(temporal_step, box_size, Some(list_statistics));
 		let tasks = tasks.unwrap();
