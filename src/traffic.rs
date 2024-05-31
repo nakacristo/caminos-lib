@@ -16,7 +16,7 @@ use std::fmt::Debug;
 
 use ::rand::{Rng,rngs::StdRng};
 
-use crate::match_object_panic;
+use crate::{match_object_panic};
 use crate::config_parser::ConfigurationValue;
 use crate::{Message,Plugs};
 use crate::pattern::{Pattern,new_pattern,PatternBuilderArgument};
@@ -25,6 +25,7 @@ use crate::event::Time;
 use quantifiable_derive::Quantifiable;
 use crate::measures::TrafficStatistics;
 use crate::quantify::Quantifiable;
+use crate::traffic::TaskTrafficState::{Finished, FinishedGenerating, Generating, UnspecifiedWait};
 
 ///Possible errors when trying to generate a message with a `Traffic`.
 #[derive(Debug)]
@@ -510,6 +511,33 @@ impl Traffic for Sum
 				self.index_to_generate[task].push(index);
 			}
 		}
+		// panic if task generates in more than one traffic
+		if self.index_to_generate[task].len() > 1{
+			panic!("Warning: Multiple traffics are generating messages in the same task.");
+		}
+
+		if self.index_to_generate[task].len() > 0{
+
+			self.statistics.track_task_state(task, Generating, cycle, Some(self.index_to_generate[task][0]) );
+
+		}else{
+
+			let mut state = Finished;
+			let mut t_index = None;
+			for (i,traffic) in self.list.iter().enumerate()
+			{
+				match traffic.task_state(task,cycle)
+				{
+					Finished => (),
+					Generating => { state = Generating; t_index = Some(i); break },
+					FinishedGenerating => { state = FinishedGenerating; t_index = Some(i); break },
+					_ => { state = UnspecifiedWait; t_index = Some(i); break },
+				}
+			}
+			self.statistics.track_task_state(task, state, cycle, t_index );
+
+		}
+
 		self.index_to_generate[task].len() > 0
 	}
 	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
@@ -522,9 +550,9 @@ impl Traffic for Sum
 			match traffic.task_state(task,cycle)
 			{
 				Finished => (),
-				Generating => return Generating,
-				FinishedGenerating => state = FinishedGenerating,
-				_ => state = UnspecifiedWait,
+				Generating => { state = Generating; break },
+				FinishedGenerating => { state = FinishedGenerating; break },
+				_ => { state = UnspecifiedWait; break },
 			}
 		}
 		state
@@ -564,9 +592,10 @@ impl Sum
 			assert_eq!( traffic.number_tasks(), size , "In SumTraffic all sub-traffics must involve the same number of tasks." );
 		}
 		let finish_when = finish_when.unwrap_or_else(|| (0..list.len()).collect()); //default wait for all
-		let list_statistics = list.iter().map(|_| TrafficStatistics::new(temporal_step, box_size, None)).collect();
-		let statistics = TrafficStatistics::new(temporal_step, box_size, Some(list_statistics));
 		let tasks = tasks.unwrap();
+		let list_statistics = list.iter().map(|_| TrafficStatistics::new(tasks,temporal_step, box_size, None)).collect();
+		let statistics = TrafficStatistics::new(tasks,temporal_step, box_size, Some(list_statistics));
+
 		Sum{
 			list,
 			index_to_generate: vec![vec![]; tasks ],
@@ -1227,7 +1256,11 @@ impl Traffic for MessageBarrier
 	}
 	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
 	{
-		self.traffic.task_state(task, cycle)
+		if self.total_sent_per_task[task] < self.messages_per_task_to_wait {
+			self.traffic.task_state(task, cycle)
+		} else {
+			TaskTrafficState::UnspecifiedWait
+		}
 	}
 
 	fn number_tasks(&self) -> usize {

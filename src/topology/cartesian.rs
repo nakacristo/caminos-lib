@@ -16,7 +16,6 @@ use crate::pattern::*; //For Valiant
 use itertools::Itertools;
 use rand::SeedableRng;
 use crate::quantify::Quantifiable;
-use crate::topology::dragonfly::{Arrangement, ArrangementBuilderArgument, ArrangementPoint, ArrangementSize, Palmtree, RandomArrangement};
 
 ///A Cartesian ortahedral region of arbitrary dimension.
 #[derive(Quantifiable)]

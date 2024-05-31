@@ -1102,7 +1102,7 @@ pub struct RRRate
 
 impl VirtualChannelPolicy for RRRate
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		if candidates.len()==0
 		{
@@ -1190,7 +1190,7 @@ pub struct RateWeightFunction
 
 impl VirtualChannelPolicy for RateWeightFunction
 {
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
 	{
 		if candidates.len()==0
 		{

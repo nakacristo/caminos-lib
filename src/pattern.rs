@@ -19,7 +19,6 @@ use crate::topology::{Topology, Location};
 use crate::quantify::Quantifiable;
 use crate::{Plugs,match_object_panic};
 use rand::{RngCore, SeedableRng};
-use crate::traffic::Traffic;
 
 /// Some things most uses of the pattern module will use.
 pub mod prelude

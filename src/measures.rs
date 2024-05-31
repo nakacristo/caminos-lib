@@ -29,14 +29,13 @@ the message was created until the cycle in its consumption was completed. Note t
 
 
 use std::cmp;
-use std::cmp::max;
 use std::collections::HashMap;
 use std::path::Path;
 use std::convert::TryInto;
-	// use itertools::Itertools;
 
 use crate::{Quantifiable,Packet,Phit,Network,Topology,ConfigurationValue,Expr,Time};
 use crate::config;
+use crate::traffic::TaskTrafficState;
 
 #[derive(Clone,Quantifiable)]
 pub struct ServerStatistics
@@ -148,6 +147,8 @@ impl ServerStatistics
 #[derive(Clone,Quantifiable, Debug)]
 pub struct TrafficStatistics
 {
+	///The number of tasks in the traffic
+	pub tasks: usize,
 	///The last cycle in which this server created a phit and sent it to a router. Or 0
 	pub cycle_last_created_message: Time,
 	///The last cycle in that the last phit of a message has been consumed by this server. Or 0.
@@ -178,6 +179,12 @@ pub struct TrafficStatistics
 	pub histogram_messages_delay: HashMap<usize, usize>,
 	/// Messages histogram network delay
 	pub histogram_messages_network_delay: HashMap<usize, usize>,
+	/// Generating Tasks
+	pub generating_tasks_histogram: HashMap<usize, Vec<usize>>,
+	/// Waiting Tasks
+	pub waiting_tasks_histogram: HashMap<usize, Vec<usize>>,
+	///Finished Tasks
+	pub finished_tasks_histogram: HashMap<usize, Vec<usize>>,
 }
 
 #[derive(Clone,Default,Quantifiable,Debug)]
@@ -193,9 +200,10 @@ pub struct TrafficMeasurement
 
 impl TrafficStatistics
 {
-	pub fn new(temporal_step:Time, box_size: usize, sub_traffic_statistics: Option<Vec<TrafficStatistics>>)-> TrafficStatistics
+	pub fn new(tasks: usize, temporal_step:Time, box_size: usize, sub_traffic_statistics: Option<Vec<TrafficStatistics>>)-> TrafficStatistics
 	{
 		TrafficStatistics {
+			tasks,
 			current_measurement: TrafficMeasurement::default(),
 			cycle_last_created_message: 0,
 			cycle_last_consumed_message: 0,
@@ -211,6 +219,9 @@ impl TrafficStatistics
 			box_size,
 			histogram_messages_delay: HashMap::new(),
 			histogram_messages_network_delay: HashMap::new(),
+			generating_tasks_histogram: HashMap::new(),
+			waiting_tasks_histogram: HashMap::new(),
+			finished_tasks_histogram: HashMap::new(),
 		}
 	}
 	// fn reset(&mut self, next_cycle: Time)
@@ -294,6 +305,28 @@ impl TrafficStatistics
 		} else { None }
 	}
 
+	pub fn track_task_state(&mut self, task: usize, state: TaskTrafficState, cycle: Time, subtraffic: Option<usize>)
+	{
+
+		match state
+		{
+			TaskTrafficState::Generating => self.generating_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(|e|{  e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
+			TaskTrafficState::UnspecifiedWait | TaskTrafficState::WaitingData => self.waiting_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(| e|{ e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
+			TaskTrafficState::FinishedGenerating | TaskTrafficState::Finished => self.finished_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(| e|{ e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
+			_ => panic!("Invalid task state"),
+
+		};
+		if let Some(subtraffic) = subtraffic
+		{
+			if let Some(sub) = self.sub_traffic_statistics.as_mut()
+			{
+				sub[subtraffic].track_task_state(task, state, cycle, None);
+			}else {
+				panic!("Subtraffic statistics not initialized");
+			}
+		}
+	}
+
 	pub fn parse_statistics(&self) -> ConfigurationValue
 	{
 		let max = self.histogram_messages_delay.clone().into_keys().max().unwrap();
@@ -303,6 +336,17 @@ impl TrafficStatistics
 		let messages_network_latency_histogram = (0..max+1).map(|i|
 			ConfigurationValue::Number(self.histogram_messages_network_delay.get(&i).unwrap_or(&0).clone() as f64)
 		).collect();
+
+		let max_tasks = cmp::max(cmp::max(self.generating_tasks_histogram.keys().max().unwrap_or(&0), self.waiting_tasks_histogram.keys().max().unwrap_or(&0)), self.finished_tasks_histogram.keys().max().unwrap_or(&0));
+		let generated_tasks_histogram = (0..max_tasks+1).map(|i|
+			ConfigurationValue::Number( self.generating_tasks_histogram.get(&i).unwrap_or(&vec![]).iter().map(|x|*x as f64).sum()
+		)).collect();
+		let waiting_tasks_histogram = (0..max_tasks+1).map(|i|
+			ConfigurationValue::Number( self.waiting_tasks_histogram.get(&i).unwrap_or(&vec![]).iter().map(|x|*x as f64).sum()
+		)).collect();
+		let finished_tasks_histogram = (0..max_tasks+1).map(|i|
+			ConfigurationValue::Number( self.finished_tasks_histogram.get(&i).unwrap_or(&vec![]).iter().map(|x|*x as f64).sum()
+		)).collect();
 
 		let mut traffic_content = vec![
 			(String::from("total_consumed_messages"),ConfigurationValue::Number(self.total_consumed_messages as f64)),
@@ -314,6 +358,9 @@ impl TrafficStatistics
 			(String::from("cycle_last_consumed_message"),ConfigurationValue::Number(self.cycle_last_consumed_message as f64)),
 			(String::from("message_latency_histogram"),ConfigurationValue::Array(messages_latency_histogram)),
 			(String::from("message_network_latency_histogram"),ConfigurationValue::Array(messages_network_latency_histogram)),
+			(String::from("generating_tasks_histogram"),ConfigurationValue::Array(generated_tasks_histogram)),
+			(String::from("waiting_tasks_histogram"),ConfigurationValue::Array(waiting_tasks_histogram)),
+			(String::from("finished_tasks_histogram"),ConfigurationValue::Array(finished_tasks_histogram)),
 		];
 		if self.temporal_step > 0
 		{
