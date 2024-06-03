@@ -1283,6 +1283,11 @@ impl MessageBarrier
 		let tasks=tasks.expect("There were no tasks");
 		let traffic=traffic.expect("There were no traffic");
 		let messages_per_task_to_wait=messages_per_task_to_wait.expect("There were no messages_per_task_to_wait");
+
+		if traffic.number_tasks() != tasks {
+			panic!("The number of tasks in the traffic and the number of tasks in the barrier are different.");
+		}
+
 		MessageBarrier {
 			tasks,
 			traffic,
