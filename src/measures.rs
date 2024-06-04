@@ -338,7 +338,7 @@ impl TrafficStatistics
 		).collect();
 
 		//let max_tasks = cmp::max(cmp::max(self.generating_tasks_histogram.keys().max().unwrap_or(&0), self.waiting_tasks_histogram.keys().max().unwrap_or(&0)), self.finished_tasks_histogram.keys().max().unwrap_or(&0));
-		let max_tasks = max;
+		let max_tasks = self.cycle_last_consumed_message as usize / self.box_size +1;
 		let generated_tasks_histogram = (0..max_tasks+1).map(|i|
 			ConfigurationValue::Number( self.generating_tasks_histogram.get(&i).unwrap_or(&vec![]).iter().map(|x|*x as f64).sum()
 		)).collect();
