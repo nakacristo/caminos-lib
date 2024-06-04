@@ -1259,7 +1259,7 @@ impl Traffic for MessageBarrier
 		if self.total_sent_per_task[task] < self.messages_per_task_to_wait {
 			self.traffic.task_state(task, cycle)
 		} else {
-			TaskTrafficState::UnspecifiedWait
+			UnspecifiedWait
 		}
 	}
 

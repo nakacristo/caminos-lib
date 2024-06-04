@@ -312,7 +312,7 @@ impl TrafficStatistics
 		{
 			TaskTrafficState::Generating => self.generating_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(|e|{  e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
 			TaskTrafficState::UnspecifiedWait | TaskTrafficState::WaitingData => self.waiting_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(| e|{ e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
-			TaskTrafficState::FinishedGenerating | TaskTrafficState::Finished => self.finished_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(| e|{ e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
+			TaskTrafficState::FinishedGenerating => self.finished_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(| e|{ e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
 			_ => panic!("Invalid task state"),
 
 		};
@@ -337,7 +337,8 @@ impl TrafficStatistics
 			ConfigurationValue::Number(self.histogram_messages_network_delay.get(&i).unwrap_or(&0).clone() as f64)
 		).collect();
 
-		let max_tasks = cmp::max(cmp::max(self.generating_tasks_histogram.keys().max().unwrap_or(&0), self.waiting_tasks_histogram.keys().max().unwrap_or(&0)), self.finished_tasks_histogram.keys().max().unwrap_or(&0));
+		//let max_tasks = cmp::max(cmp::max(self.generating_tasks_histogram.keys().max().unwrap_or(&0), self.waiting_tasks_histogram.keys().max().unwrap_or(&0)), self.finished_tasks_histogram.keys().max().unwrap_or(&0));
+		let max_tasks = max;
 		let generated_tasks_histogram = (0..max_tasks+1).map(|i|
 			ConfigurationValue::Number( self.generating_tasks_histogram.get(&i).unwrap_or(&vec![]).iter().map(|x|*x as f64).sum()
 		)).collect();
