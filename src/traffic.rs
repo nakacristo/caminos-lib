@@ -393,7 +393,7 @@ All the subtraffics in `list` must give the same value for `number_tasks`, which
 TrafficSum{
 	list: [HomogeneousTraffic{...},... ],
 	statistics_temporal_step: 1000, //step to record temporal statistics for each subtraffic.
-	box_size: 1000, group results for the messages histogram.
+	box_size: 1000, //group results for the messages histogram.
 	finish_when: [0, 1] //finish when the first and second subtraffics are finished.
 }
 ```
@@ -573,7 +573,7 @@ impl Sum
 	{
 		let mut list : Option<Vec<_>> =None;
 		let mut temporal_step = 0;
-		let mut box_size = 100;
+		let mut box_size = 1000;
 		let mut tasks = None;
 		let mut finish_when = None;
 		match_object_panic!(arg.cv,"TrafficSum",value,
