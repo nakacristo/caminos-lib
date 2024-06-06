@@ -312,7 +312,7 @@ impl TrafficStatistics
 		{
 			TaskTrafficState::Generating => self.generating_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(|e|{  e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
 			TaskTrafficState::UnspecifiedWait | TaskTrafficState::WaitingData => self.waiting_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(| e|{ e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
-			TaskTrafficState::FinishedGenerating => self.finished_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(| e|{ e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
+			TaskTrafficState::Finished | TaskTrafficState::FinishedGenerating => self.finished_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(| e|{ e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
 			_ => panic!("Invalid task state"),
 
 		};
