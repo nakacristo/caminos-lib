@@ -183,8 +183,12 @@ pub struct TrafficStatistics
 	pub generating_tasks_histogram: HashMap<usize, Vec<usize>>,
 	/// Waiting Tasks
 	pub waiting_tasks_histogram: HashMap<usize, Vec<usize>>,
+	/// FinishedGenerating Tasks
+	pub finished_generating_tasks_histogram: HashMap<usize, Vec<usize>>,
 	///Finished Tasks
 	pub finished_tasks_histogram: HashMap<usize, Vec<usize>>,
+	///WaitingData Tasks
+	pub waiting_data_histogram: HashMap<usize, Vec<usize>>,
 }
 
 #[derive(Clone,Default,Quantifiable,Debug)]
@@ -221,7 +225,9 @@ impl TrafficStatistics
 			histogram_messages_network_delay: HashMap::new(),
 			generating_tasks_histogram: HashMap::new(),
 			waiting_tasks_histogram: HashMap::new(),
+			finished_generating_tasks_histogram: HashMap::new(),
 			finished_tasks_histogram: HashMap::new(),
+			waiting_data_histogram: HashMap::new(),
 		}
 	}
 	// fn reset(&mut self, next_cycle: Time)
@@ -307,13 +313,31 @@ impl TrafficStatistics
 
 	pub fn track_task_state(&mut self, task: usize, state: TaskTrafficState, cycle: Time, subtraffic: Option<usize>)
 	{
-
 		match state
 		{
 			TaskTrafficState::Generating => self.generating_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(|e|{  e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
-			TaskTrafficState::UnspecifiedWait | TaskTrafficState::WaitingData => self.waiting_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(| e|{ e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
-			TaskTrafficState::Finished | TaskTrafficState::FinishedGenerating => self.finished_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(| e|{ e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
-			_ => panic!("Invalid task state"),
+			TaskTrafficState::UnspecifiedWait => self.waiting_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(| e|{ e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
+			TaskTrafficState::FinishedGenerating => self.finished_generating_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(| e|{ e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a }),
+			TaskTrafficState::Finished  => {
+				self.finished_tasks_histogram.entry(cycle as usize / self.box_size).and_modify(|e| { e[task] = 1 }).or_insert({
+					let mut a = vec![0; self.tasks];
+					a[task] = 1;
+					a
+				});
+				self.finished_generating_tasks_histogram.entry(cycle as usize / self.box_size).and_modify(|e| { e[task] = 1 }).or_insert({
+					let mut a = vec![0; self.tasks];
+					a[task] = 1;
+					a
+				})
+			},
+			TaskTrafficState::WaitingData => {
+				self.waiting_data_histogram.entry(cycle as usize / self.box_size).and_modify(|e| { e[task] = 1 }).or_insert({
+					let mut a = vec![0; self.tasks];
+					a[task] = 1;
+					a
+				})
+			},
+			_ => panic!("Invalid task state to take metrics"), //| TaskTrafficState::WaitingData
 
 		};
 		if let Some(subtraffic) = subtraffic
@@ -345,6 +369,9 @@ impl TrafficStatistics
 		let waiting_tasks_histogram = (0..max_tasks+1).map(|i|
 			ConfigurationValue::Number( self.waiting_tasks_histogram.get(&i).unwrap_or(&vec![]).iter().map(|x|*x as f64).sum()
 		)).collect();
+		let finished_generating_tasks_histogram = (0..max_tasks+1).map(|i|
+			ConfigurationValue::Number( self.finished_generating_tasks_histogram.get(&i).unwrap_or(&vec![]).iter().map(|x|*x as f64).sum()
+		)).collect();
 		let finished_tasks_histogram = (0..max_tasks+1).map(|i|
 			ConfigurationValue::Number( self.finished_tasks_histogram.get(&i).unwrap_or(&vec![]).iter().map(|x|*x as f64).sum()
 		)).collect();
@@ -361,6 +388,7 @@ impl TrafficStatistics
 			(String::from("message_network_latency_histogram"),ConfigurationValue::Array(messages_network_latency_histogram)),
 			(String::from("generating_tasks_histogram"),ConfigurationValue::Array(generated_tasks_histogram)),
 			(String::from("waiting_tasks_histogram"),ConfigurationValue::Array(waiting_tasks_histogram)),
+			(String::from("finished_generating_tasks_histogram"),ConfigurationValue::Array(finished_generating_tasks_histogram)),
 			(String::from("finished_tasks_histogram"),ConfigurationValue::Array(finished_tasks_histogram)),
 		];
 		if self.temporal_step > 0

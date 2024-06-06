@@ -25,7 +25,7 @@ use crate::event::Time;
 use quantifiable_derive::Quantifiable;
 use crate::measures::TrafficStatistics;
 use crate::quantify::Quantifiable;
-use crate::traffic::TaskTrafficState::{Finished, FinishedGenerating, Generating, UnspecifiedWait};
+use crate::traffic::TaskTrafficState::{Finished, FinishedGenerating, Generating, UnspecifiedWait, WaitingCycle, WaitingData};
 
 ///Possible errors when trying to generate a message with a `Traffic`.
 #[derive(Debug)]
@@ -79,7 +79,7 @@ pub trait Traffic : Quantifiable + Debug
 		// r<p
 	}
 	///Indicates the state of the task within the traffic.
-	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState;
+	fn task_state(&self, task:usize, cycle:Time) -> Option<TaskTrafficState>;
 
 	/// Indicates the number of tasks in the traffic.
 	/// A task is a process that generates traffic.
@@ -344,9 +344,9 @@ impl Traffic for Homogeneous
 	{
 		false
 	}
-	fn task_state(&self, _task:usize, _cycle:Time) -> TaskTrafficState
+	fn task_state(&self, _task:usize, _cycle:Time) -> Option<TaskTrafficState>
 	{
-		TaskTrafficState::Generating
+		Some(Generating)
 	}
 
 	fn number_tasks(&self) -> usize {
@@ -517,45 +517,47 @@ impl Traffic for Sum
 		}
 
 		if self.index_to_generate[task].len() > 0{
+			let task_state = self.list[self.index_to_generate[task][0]].task_state(task,cycle).expect("Should belong to the traffic");
 
-			self.statistics.track_task_state(task, Generating, cycle, Some(self.index_to_generate[task][0]) );
+			self.statistics.track_task_state(task, task_state , cycle, Some(self.index_to_generate[task][0]) );
 
 		}else{
 
-			let mut state = Finished;
+			let mut task_state = Finished;
 			let mut t_index = None;
 			for (i,traffic) in self.list.iter().enumerate()
 			{
-				match traffic.task_state(task,cycle)
+				if let Some(state) = traffic.task_state(task,cycle)
 				{
-					Finished => (),
-					Generating => { state = Generating; t_index = Some(i); break },
-					FinishedGenerating => { state = FinishedGenerating; t_index = Some(i); break },
-					_ => { state = UnspecifiedWait; t_index = Some(i); break },
+					t_index = Some(i);
+					task_state = state;
+					break;
 				}
 			}
-			self.statistics.track_task_state(task, state, cycle, t_index );
+
+			self.statistics.track_task_state(task, task_state, cycle, t_index );
 
 		}
 
 		self.index_to_generate[task].len() > 0
 	}
-	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, cycle:Time) -> Option<TaskTrafficState>
 	{
-		use TaskTrafficState::*;
-		//let states = self.list.iter().map(|t|t.server_state(server,cycle)).collect();
-		let mut state = Finished;
-		for traffic in self.list.iter()
+		let mut task_state = None;
+		for (_i,traffic) in self.list.iter().enumerate()
 		{
-			match traffic.task_state(task,cycle)
+			if let Some(state) = traffic.task_state(task,cycle)
 			{
-				Finished => (),
-				Generating => { state = Generating; break },
-				FinishedGenerating => { state = FinishedGenerating; break },
-				_ => { state = UnspecifiedWait; break },
+				task_state = Some(state);
 			}
 		}
-		state
+		if let Some(state) = task_state
+		{
+			Some(state)
+		}else{
+			None
+		}
+
 	}
 
 	fn number_tasks(&self) -> usize {
@@ -675,7 +677,7 @@ impl Traffic for Shifted
 	{
 		self.traffic.is_finished()
 	}
-	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, cycle:Time) -> Option<TaskTrafficState>
 	{
 		self.traffic.task_state(task-self.shift,cycle)
 	}
@@ -774,7 +776,7 @@ impl Traffic for ProductTraffic
 	{
 		self.block_traffic.is_finished()
 	}
-	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, cycle:Time) -> Option<TaskTrafficState>
 	{
 		let local=task % self.block_size;
 		self.block_traffic.task_state(local,cycle)
@@ -861,7 +863,7 @@ impl Traffic for SubRangeTraffic
 	{
 		self.traffic.is_finished()
 	}
-	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, cycle:Time) -> Option<TaskTrafficState>
 	{
 		self.traffic.task_state(task,cycle)
 	}
@@ -925,6 +927,10 @@ pub struct Burst
 	pending_messages: Vec<usize>,
 	///Set of generated messages.
 	generated_messages: BTreeSet<*const Message>,
+	///Expected messages to consume per task
+	expected_messages_to_consume: Option<usize>,
+	///Messages per task consumed
+	total_consumed_per_task: Vec<usize>,
 }
 
 impl Traffic for Burst
@@ -969,9 +975,10 @@ impl Traffic for Burst
 		self.pending_messages[task]>0
 	}
 
-	fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+	fn try_consume(&mut self, task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
 	{
 		let message_ptr=message.as_ref() as *const Message;
+		self.total_consumed_per_task[task] += 1;
 		self.generated_messages.remove(&message_ptr)
 	}
 	fn is_finished(&self) -> bool
@@ -989,15 +996,19 @@ impl Traffic for Burst
 		}
 		true
 	}
-	fn task_state(&self, task:usize, _cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, _cycle:Time) -> Option<TaskTrafficState>
 	{
 		if self.pending_messages[task]>0 {
-			TaskTrafficState::Generating
-		} else {
-			//We do not know whether someone is sending us data.
-			//if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
-			// Sometimes it could be Finished, but it is not worth computing...
-			TaskTrafficState::FinishedGenerating
+			Some(Generating)
+		}else{
+			if let Some(expected_messages_to_consume) = self.expected_messages_to_consume {
+				return if self.total_consumed_per_task[task] < expected_messages_to_consume {
+					Some(FinishedGenerating)
+				} else {
+					Some(Finished)
+				}
+			}
+			Some(FinishedGenerating)
 		}
 	}
 
@@ -1016,6 +1027,7 @@ impl Burst
 		let mut message_size=None;
 		let mut source_selection = None;
 		let mut source_space_size = None;
+		let mut expected_messages_to_consume = None;
 		match_object_panic!(arg.cv,"Burst",value,
 			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 			"source_selection" => source_selection=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
@@ -1023,6 +1035,7 @@ impl Burst
 			"tasks" | "servers" => tasks=Some(value.as_f64().expect("bad value for tasks") as usize),
 			"messages_per_task" | "messages_per_server" => messages_per_task=Some(value.as_f64().expect("bad value for messages_per_task") as usize),
 			"message_size" => message_size=Some(value.as_f64().expect("bad value for message_size") as usize),
+			"expected_messages_to_consume_per_task" => expected_messages_to_consume=Some(value.as_f64().expect("bad value for expected_messages_to_consume") as usize),
 		);
 		let tasks=tasks.expect("There were no tasks");
 		let message_size=message_size.expect("There were no message_size");
@@ -1046,6 +1059,8 @@ impl Burst
 			message_size,
 			pending_messages,
 			generated_messages: BTreeSet::new(),
+			expected_messages_to_consume,
+			total_consumed_per_task: vec![0;tasks],
 		}
 	}
 }
@@ -1079,6 +1094,10 @@ pub struct TrafficMessages
 	total_consumed: usize,
 	///Restriction to the number of messages to send per task
 	messages_per_task: Option<Vec<usize>>,
+	///The number of messages that a task is expected to consume.
+	expected_messages_to_consume: Option<usize>,
+	///Total consumed per task
+	total_consumed_per_task: Vec<usize>,
 }
 
 impl Traffic for TrafficMessages
@@ -1090,6 +1109,7 @@ impl Traffic for TrafficMessages
 			self.total_sent += 1;
 			if let Some(task_messages) = self.messages_per_task.as_mut() {
 				task_messages[origin] -= 1;
+				self.total_consumed_per_task[origin] -= 1;
 			}
 		}
 		message
@@ -1118,6 +1138,7 @@ impl Traffic for TrafficMessages
 	fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
 	{
 		self.total_consumed += 1;
+		self.total_consumed_per_task[task] += 1;
 		self.traffic.try_consume(task, message, cycle, topology, rng)
 	}
 	fn is_finished(&self) -> bool
@@ -1127,15 +1148,19 @@ impl Traffic for TrafficMessages
 		// }
 		self.num_messages <= self.total_sent && self.total_sent == self.total_consumed
 	}
-	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, cycle:Time) -> Option<TaskTrafficState>
 	{
-		if self.num_messages > self.total_sent {
+		if self.num_messages > self.total_sent && (self.messages_per_task.is_none() || self.messages_per_task.as_ref().unwrap()[task] > 0){
 			self.traffic.task_state(task, cycle)
 		} else {
-			//We do not know whether someone is sending us data.
-			//if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
-			// Sometimes it could be Finished, but it is not worth computing...
-			TaskTrafficState::FinishedGenerating
+			if let Some(expected_messages_to_consume) = self.expected_messages_to_consume {
+				return if self.total_consumed_per_task[task] < expected_messages_to_consume {
+					Some(Finished)
+				} else {
+					Some(FinishedGenerating)
+				}
+			}
+			Some(FinishedGenerating)
 		}
 	}
 
@@ -1152,11 +1177,13 @@ impl TrafficMessages
 		let mut traffic = None;
 		let mut num_messages = None;
 		let mut messages_per_task = None;
+		let mut expected_messages_to_consume = None;
 		match_object_panic!(arg.cv,"Messages",value,
 			"traffic" => traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,rng:&mut arg.rng,..arg})),
 			"tasks" | "servers" => tasks=Some(value.as_usize().expect("bad value for tasks")),
 			"num_messages" => num_messages=Some(value.as_usize().expect("bad value for num_messages")),
 			"messages_per_task" | "messages_per_server" => messages_per_task=Some(value.as_usize().expect("bad value for messages_per_task")),
+			"expected_messages_to_consume_per_task" => expected_messages_to_consume=Some(value.as_usize().expect("bad value for expected_messages_to_consume")),
 		);
 		let tasks=tasks.expect("There were no tasks");
 		let num_messages=num_messages.expect("There were no num_messages");
@@ -1179,6 +1206,8 @@ impl TrafficMessages
 			total_sent: 0,
 			total_consumed: 0,
 			messages_per_task,
+			expected_messages_to_consume,
+			total_consumed_per_task: vec![0; tasks],
 		}
 	}
 }
@@ -1210,6 +1239,10 @@ pub struct MessageBarrier
 	total_sent: usize,
 	///Total consumed
 	total_consumed: usize,
+	///Consumed messages in the barrier
+	total_consumed_per_task: Vec<usize>,
+	///Messages to consume to go waiting
+	expected_messages_to_consume_to_wait: Option<usize>,
 }
 
 impl Traffic for MessageBarrier
@@ -1243,10 +1276,12 @@ impl Traffic for MessageBarrier
 	fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
 	{
 		self.total_consumed += 1;
+		self.total_consumed_per_task[task] += 1;
 		if self.total_sent == self.total_consumed && self.messages_per_task_to_wait * self.tasks == self.total_sent {
 			self.total_sent = 0;
 			self.total_consumed = 0;
 			self.total_sent_per_task = vec![0; self.tasks];
+			self.total_consumed_per_task = vec![0; self.tasks];
 		}
 		self.traffic.try_consume(task, message, cycle, topology, rng)
 	}
@@ -1254,12 +1289,19 @@ impl Traffic for MessageBarrier
 	{
 		false
 	}
-	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, cycle:Time) -> Option<TaskTrafficState>
 	{
 		if self.total_sent_per_task[task] < self.messages_per_task_to_wait {
 			self.traffic.task_state(task, cycle)
 		} else {
-			UnspecifiedWait
+			if let Some(expected_messages_to_consume) = self.expected_messages_to_consume_to_wait {
+				return if self.total_consumed_per_task[task] < expected_messages_to_consume {
+					Some(WaitingData)
+				} else {
+					Some(UnspecifiedWait)
+				}
+			}
+			Some(UnspecifiedWait)
 		}
 	}
 
@@ -1275,10 +1317,12 @@ impl MessageBarrier
 		let mut tasks=None;
 		let mut traffic = None;
 		let mut messages_per_task_to_wait = None;
+		let mut expected_messages_to_consume_to_wait = None;
 		match_object_panic!(arg.cv,"MessageBarrier",value,
 			"traffic" => traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,rng:&mut arg.rng,..arg})),
 			"tasks" | "servers" => tasks=Some(value.as_usize().expect("bad value for tasks")),
 			"messages_per_task_to_wait" => messages_per_task_to_wait=Some(value.as_usize().expect("bad value for messages_per_task_to_wait")),
+			"expected_messages_to_consume_to_wait" => expected_messages_to_consume_to_wait=Some(value.as_usize().expect("bad value for expected_messages_to_consume_to_wait")),
 		);
 		let tasks=tasks.expect("There were no tasks");
 		let traffic=traffic.expect("There were no traffic");
@@ -1295,6 +1339,8 @@ impl MessageBarrier
 			total_sent_per_task: vec![0; tasks],
 			total_sent: 0,
 			total_consumed: 0,
+			total_consumed_per_task: vec![0; tasks],
+			expected_messages_to_consume_to_wait,
 		}
 	}
 }
@@ -1419,15 +1465,15 @@ impl Traffic for TrafficCredit
 		}
 		true
 	}
-	fn task_state(&self, task:usize, _cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, _cycle:Time) -> Option<TaskTrafficState>
 	{
 		if self.pending_messages[task]>0 {
-			TaskTrafficState::Generating
+			Some(Generating)
 		} else {
 			//We do not know whether someone is sending us data.
 			//if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
 			// Sometimes it could be Finished, but it is not worth computing...
-			TaskTrafficState::UnspecifiedWait
+			Some(UnspecifiedWait)
 		}
 	}
 
@@ -1569,20 +1615,20 @@ impl Traffic for Reactive
 		}
 		return true;
 	}
-	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, cycle:Time) -> Option<TaskTrafficState>
 	{
 		use TaskTrafficState::*;
-		let action_state = self.action_traffic.task_state(task,cycle);
+		let action_state = self.action_traffic.task_state(task,cycle).expect("TODO! the none case");
 		if let Finished = action_state
 		{
-			return Finished
+			return Some(Finished)
 		}
-		let reaction_state = self.reaction_traffic.task_state(task,cycle);
+		let reaction_state = self.reaction_traffic.task_state(task,cycle).expect("TODO! the none case");
 		if let Finished = reaction_state
 		{
-			return Finished
+			return Some(Finished)
 		}
-		if self.is_finished() { Finished } else { UnspecifiedWait }
+		if self.is_finished() { Some(Finished) } else { Some(UnspecifiedWait) }
 	}
 
 	fn number_tasks(&self) -> usize {
@@ -1693,7 +1739,7 @@ impl Traffic for TimeSequenced
 			false
 		}
 	}
-	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, cycle:Time) -> Option<TaskTrafficState>
 	{
 		let mut offset = cycle;
 		let mut traffic_index = 0;
@@ -1704,13 +1750,13 @@ impl Traffic for TimeSequenced
 		}
 		if traffic_index == self.traffics.len()
 		{
-			return TaskTrafficState::Finished;
+			return Some(Finished);
 		}
-		let state = self.traffics[traffic_index].task_state(task,cycle);
-		if let TaskTrafficState::Finished = state {
-			TaskTrafficState::WaitingCycle { cycle:self.times[traffic_index] }
+		let state = self.traffics[traffic_index].task_state(task,cycle).expect("TODO! the none case");
+		if let Finished = state {
+			Some(WaitingCycle { cycle:self.times[traffic_index] })
 		} else {
-			state
+			Some(state)
 		}
 	}
 
@@ -1789,9 +1835,9 @@ impl Traffic for Sleep
 		}
 		false
 	}
-	fn task_state(&self, _task:usize, _cycle:Time) -> TaskTrafficState
+	fn task_state(&self, _task:usize, _cycle:Time) -> Option<TaskTrafficState>
 	{
-		TaskTrafficState::UnspecifiedWait
+		Some(TaskTrafficState::UnspecifiedWait)
 	}
 
 
@@ -1944,13 +1990,13 @@ impl Traffic for PeriodicBurst
 		}
 		self.pending_messages[task] > 0
 	}
-	fn task_state(&self, task:usize, _cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, _cycle:Time) -> Option<TaskTrafficState>
 	{
 		if self.pending_messages[task]>0 {
-			TaskTrafficState::Generating
+			Some(TaskTrafficState::Generating)
 		} else {
 			//We do not know whether someone is sending us data.
-			if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
+			if self.is_finished() { Some(TaskTrafficState::Finished) } else { Some(UnspecifiedWait) }
 			// Sometimes it could be Finished, but it is not worth computing...
 			// TaskTrafficState::UnspecifiedWait
 		}
@@ -2085,18 +2131,18 @@ impl Traffic for Sequence
 			self.traffics[self.current_traffic].should_generate(task,cycle,rng)
 		}
 	}
-	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, cycle:Time) -> Option<TaskTrafficState>
 	{
 		use TaskTrafficState::*;
 		if self.current_traffic>=self.traffics.len()
 		{
-			Finished
+			Some(Finished)
 		} else {
-			let state = self.traffics[self.current_traffic].task_state(task,cycle);
+			let state = self.traffics[self.current_traffic].task_state(task,cycle).expect("TODO! the none case");
 			if let Finished=state{
-				UnspecifiedWait
+				Some(UnspecifiedWait)
 			} else {
-				state
+				Some(state)
 			}
 			//In the last traffic we could try to check for FinishedGenerating
 		}
@@ -2252,15 +2298,15 @@ impl Traffic for MultimodalBurst
 		}
 		true
 	}
-	fn task_state(&self, task:usize, _cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, _cycle:Time) -> Option<TaskTrafficState>
 	{
 		if self.pending[task].iter().any(|(total_remaining,_step_remaining)| *total_remaining > 0 ) {
-			TaskTrafficState::Generating
+			Some(TaskTrafficState::Generating)
 		} else {
 			//We do not know whether someone is sending us data.
 			//if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
 			// Sometimes it could be Finished, but it is not worth computing...
-			TaskTrafficState::FinishedGenerating
+			Some(TaskTrafficState::FinishedGenerating)
 		}
 	}
 
@@ -2395,12 +2441,12 @@ impl Traffic for BoundedDifference
 	{
 		false
 	}
-	fn task_state(&self, task:usize, _cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, _cycle:Time) -> Option<TaskTrafficState>
 	{
 		if self.allowance[task]>0 {
-			TaskTrafficState::Generating
+			Some(Generating)
 		} else {
-			TaskTrafficState::WaitingData
+			Some(WaitingData)
 		}
 	}
 
@@ -2603,14 +2649,17 @@ impl Traffic for TrafficMap
 		self.application.is_finished()
 	}
 
-	fn task_state(&self, task: usize, cycle: Time) -> TaskTrafficState
+	fn task_state(&self, task: usize, cycle: Time) -> Option<TaskTrafficState>
 	{
 		let task_app = self.from_machine_to_app[task];
-
-		task_app.map(|app| {
-			// get the state of the task in the application
-			self.application.task_state(app, cycle)
-		}).unwrap_or(TaskTrafficState::Finished) // if the task has no origin, it is finished
+		if let Some(app) = task_app
+		{
+			self.application.task_state(app, cycle).into()
+		}
+		else
+		{
+			None
+		}
 
 	}
 
