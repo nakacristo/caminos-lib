@@ -2805,15 +2805,6 @@ impl Traffic for TrafficMap
 		}).unwrap_or(0.0) // if the task_app has no origin, it has no probability
 	}
 
-	fn should_generate(&mut self, task: usize, cycle: Time, rng: &mut StdRng) -> bool {
-		let task_app = self.from_machine_to_app[task];
-
-		task_app.map(|app| {
-			self.application.should_generate(app, cycle, rng)
-		}).unwrap_or(false)
-	}
-
-
 	fn try_consume(&mut self, task: usize, message: Rc<Message>, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool
 	{
 		// TODO: Maybe we want to return a Result instead of a bool
@@ -2834,9 +2825,18 @@ impl Traffic for TrafficMap
 		self.application.try_consume(task_app, app_message, cycle, topology, rng)
 	}
 
+
 	fn is_finished(&self) -> bool
 	{
 		self.application.is_finished()
+	}
+
+	fn should_generate(&mut self, task: usize, cycle: Time, rng: &mut StdRng) -> bool {
+		let task_app = self.from_machine_to_app[task];
+
+		task_app.map(|app| {
+			self.application.should_generate(app, cycle, rng)
+		}).unwrap_or(false)
 	}
 
 	fn task_state(&self, task: usize, cycle: Time) -> Option<TaskTrafficState>
@@ -2855,6 +2855,10 @@ impl Traffic for TrafficMap
 
 	fn number_tasks(&self) -> usize {
 		self.number_tasks
+	}
+
+	fn get_statistics(&self) -> Option<TrafficStatistics> {
+		self.application.get_statistics()
 	}
 }
 
