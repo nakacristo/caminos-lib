@@ -2817,6 +2817,8 @@ impl Traffic for TrafficMap
 	fn try_consume(&mut self, task: usize, message: Rc<Message>, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool
 	{
 		// TODO: Maybe we want to return a Result instead of a bool
+
+		let cycle_into_network = *message.cycle_into_network.borrow();
 		let message_ptr = message.as_ref() as *const Message;
 		let app_message = match self.generated_messages.remove(&message_ptr)
 		{
@@ -2825,6 +2827,8 @@ impl Traffic for TrafficMap
 		};
 
 		let task_app = self.from_machine_to_app[task].expect("There was no origin for the message");
+
+		app_message.cycle_into_network.replace(cycle_into_network);
 
 		// try to consume the message in the application
 		self.application.try_consume(task_app, app_message, cycle, topology, rng)
