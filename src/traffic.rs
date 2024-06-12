@@ -19,7 +19,7 @@ use ::rand::{Rng,rngs::StdRng};
 use crate::{match_object_panic};
 use crate::config_parser::ConfigurationValue;
 use crate::{Message,Plugs};
-use crate::pattern::{Pattern,new_pattern,PatternBuilderArgument};
+use crate::pattern::{Pattern, new_pattern, PatternBuilderArgument};
 use crate::topology::Topology;
 use crate::event::Time;
 use quantifiable_derive::Quantifiable;
@@ -257,6 +257,8 @@ pub fn new_traffic(arg:TrafficBuilderArgument) -> Box<dyn Traffic>
 			"TrafficCredit" => Box::new(TrafficCredit::new(arg)),
 			"Messages" => Box::new(TrafficMessages::new(arg)),
 			"MessageBarrier" => Box::new(MessageBarrier::new(arg)),
+			"MessageTaskSequence" => Box::new(MessageTaskSequence::new(arg)),
+			"AllReduce" | "ScatterReduce" | "AllGather" | "All2All" => EncapsulatedTraffic::new(cv_name.clone(), arg),
 			_ => panic!("Unknown traffic {}",cv_name),
 		}
 	}
@@ -597,7 +599,8 @@ impl Sum
 		let tasks = tasks.unwrap();
 		let list_statistics = list.iter().map(|_| TrafficStatistics::new(tasks,temporal_step, box_size, None)).collect();
 		let statistics = TrafficStatistics::new(tasks,temporal_step, box_size, Some(list_statistics));
-
+		//Debug and print the traffic list
+		//println!("TrafficSum list: {:?}", list);
 		Sum{
 			list,
 			index_to_generate: vec![vec![]; tasks ],
@@ -1358,6 +1361,7 @@ TrafficCredit{
 	messages_per_transition: 1, //specify the number of messages each task can sent when consuming credits
 	credits_per_received_message: 1, //specify the number of credits to gain when a message is received
 	message_size: 16, //specify the size of each sent message
+	message_size_pattern: Hotspot{destinatinos:[128]} //Variable message size to add depending on the task
 	initial_credits: Hotspots{destinations: [1]}, //specify the initial amount of credits per task
 }
 ```
@@ -1378,6 +1382,8 @@ pub struct TrafficCredit
 	credits_per_received_message:usize,
 	///The size of each sent message.
 	message_size: usize,
+	///Pattern message size, variable
+	message_size_pattern: Option<Box<dyn Pattern>>,
 	///Messages per transition
 	messages_per_transition:usize,
 	///The number of messages each task has pending to sent.
@@ -1405,10 +1411,15 @@ impl Traffic for TrafficCredit
 		{
 			return Err(TrafficError::SelfMessage);
 		}
+		let message_size = self.message_size + if let Some(patron) = self.message_size_pattern.as_ref(){
+			patron.get_destination(origin,topology,rng)
+		}else{
+			0
+		};
 		let message=Rc::new(Message{
 			origin,
 			destination,
-			size:self.message_size,
+			size: message_size,
 			creation_cycle: cycle,
 			cycle_into_network: RefCell::new(None),
 		});
@@ -1493,6 +1504,7 @@ impl TrafficCredit
 		let mut message_size=None;
 		let mut messages_per_transition=None;
 		let mut initial_credits=None;
+		let mut message_size_pattern = None;
 
 		match_object_panic!(arg.cv,"TrafficCredit",value,
 			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
@@ -1502,6 +1514,7 @@ impl TrafficCredit
 			"message_size" => message_size=Some(value.as_usize().expect("bad value for message_size") ),
 			"messages_per_transition" => messages_per_transition=Some(value.as_usize().expect("bad value for messages_per_transition")),
 			"initial_credits" => initial_credits=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"message_size_pattern" => message_size_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 		);
 
 		let tasks=tasks.expect("There were no tasks");
@@ -1518,6 +1531,9 @@ impl TrafficCredit
 
 		let credits = (0..tasks).map(|i| initial_credits.get_destination(i, arg.topology, arg.rng)).collect::<Vec<usize>>();
 
+		if let Some(patron) = message_size_pattern.as_mut(){
+			patron.initialize(tasks, tasks, arg.topology, arg.rng);
+		}
 		TrafficCredit{
 			tasks,
 			pattern,
@@ -1525,6 +1541,7 @@ impl TrafficCredit
 			credits,
 			credits_per_received_message,
 			message_size,
+			message_size_pattern,
 			messages_per_transition,
 			pending_messages,
 			generated_messages: BTreeSet::new(),
@@ -2192,6 +2209,175 @@ impl Sequence
 	}
 }
 
+/**
+	A sequence of traffics. Each task sends/consumes a number of messages before moving to the next traffic.
+**/
+
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct MessageTaskSequence
+{
+	///List of applicable traffics.
+	traffics: Vec<Box<dyn Traffic>>,
+	///The number of messages to send per traffic
+	messages_to_send_per_traffic: Vec<usize>,
+	///The number of messages to consume per traffic
+	messages_to_consume_per_traffic: Option<Vec<usize>>,
+	///The number of messages sent by each task
+	messages_sent: Vec<Vec<usize>>,
+	///The number of messages consumed by each task
+	messages_consumed: Vec<Vec<usize>>,
+	///Generated messages per traffic
+	generated_messages: Vec<BTreeSet<*const Message>>,
+}
+
+impl Traffic for MessageTaskSequence
+{
+	fn generate_message(&mut self, origin: usize, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>, TrafficError> {
+
+		let messages_sent = &mut self.messages_sent[origin];
+		let messages_to_send_per_traffic = &self.messages_to_send_per_traffic;
+		for i in 0..self.traffics.len() {
+			if messages_sent[i] < messages_to_send_per_traffic[i] {
+				let message = self.traffics[i].generate_message(origin, cycle, topology, rng)?;
+				messages_sent[i] += 1;
+				self.generated_messages[i].insert(message.as_ref() as *const Message);
+				return Ok(message);
+			}
+		}
+		panic!("No more messages to send");
+	}
+
+	fn probability_per_cycle(&self, task: usize) -> f32 {
+		let messages_sent = & self.messages_sent[task];
+		let messages_consumed = & self.messages_consumed[task];
+		for i in 0..self.traffics.len() {
+			if messages_sent[i] < self.messages_to_send_per_traffic[i] {
+				return 1.0;
+			}else{
+				if let Some(messages_to_consume_per_traffic) = &self.messages_to_consume_per_traffic {
+					if messages_consumed[i] < messages_to_consume_per_traffic[i] {
+						return 0.0;
+					}
+				}
+			}
+		}
+		0.0
+	}
+
+	fn try_consume(&mut self, task: usize, message: Rc<Message>, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool {
+		let messages_consumed = &mut self.messages_consumed[task];
+		for i in 0..self.generated_messages.len() {
+			if self.generated_messages[i].remove(&(message.as_ref() as *const Message)) {
+				messages_consumed[i] += 1;
+				return self.traffics[i].try_consume(task, message.clone(), cycle, topology, rng);
+			}
+		}
+		panic!("A message was consumed that was not generated by this traffic");
+	}
+
+	fn is_finished(&self) -> bool {
+		for i in 0..self.traffics.len() {
+			if !self.messages_sent.iter().all(|messages_sent| messages_sent[i] >= self.messages_to_send_per_traffic[i])
+				|| self.generated_messages[i].len() > 0{
+				return false;
+			}
+			if let Some(messages_to_consume_per_traffic) = &self.messages_to_consume_per_traffic {
+				if !self.messages_consumed.iter().all(|messages_consumed| messages_consumed[i] >= messages_to_consume_per_traffic[i]) {
+					return false;
+				}
+			}
+		}
+		true
+	}
+
+	fn should_generate(&mut self, task: usize, cycle: Time, rng: &mut StdRng) -> bool {
+		let messages_sent = &mut self.messages_sent[task];
+		let messages_consumed = &mut self.messages_consumed[task];
+		for i in 0..self.traffics.len() {
+			if messages_sent[i] < self.messages_to_send_per_traffic[i] {
+				return self.traffics[i].should_generate(task, cycle, rng); //Maybe true or not
+
+			}else{
+				if let Some(messages_to_consume_per_traffic) = &self.messages_to_consume_per_traffic {
+					if messages_consumed[i] < messages_to_consume_per_traffic[i] {
+						return false;
+					}
+				}
+			}
+		}
+		false
+	}
+
+	fn task_state(&self, task: usize, cycle: Time) -> Option<TaskTrafficState> {
+		for i in 0..self.traffics.len(){
+			if self.messages_sent[task][i] < self.messages_to_send_per_traffic[i]{
+				return self.traffics[i].task_state(task, cycle);
+			}else if self.messages_to_consume_per_traffic.is_some() {
+				let to_consume = self.messages_to_consume_per_traffic.as_ref().unwrap();
+				if self.messages_sent[task][i] < to_consume[i]{
+					return Some(UnspecifiedWait)
+				}
+			}
+		}
+		if self.messages_to_consume_per_traffic.is_some(){
+			let to_consume = self.messages_to_consume_per_traffic.as_ref().unwrap();
+			if self.messages_consumed[task].iter().sum::<usize>() < to_consume.iter().sum::<usize>(){
+				return Some(FinishedGenerating)
+			}else {
+				Some(Finished)
+			}
+		}else{
+			Some(FinishedGenerating)
+		}
+	}
+
+	fn number_tasks(&self) -> usize {
+		self.traffics[0].number_tasks()
+	}
+
+	fn get_statistics(&self) -> Option<TrafficStatistics> {
+		None
+	}
+}
+
+impl MessageTaskSequence
+{
+	pub fn new(arg: TrafficBuilderArgument) -> MessageTaskSequence
+	{
+		let mut traffics_args = None;
+		let mut messages_to_send_per_traffic = None;
+		let mut messages_to_consume_per_traffic = None;
+		let mut tasks= None;
+		match_object_panic!(arg.cv, "MessageTaskSequence", value,
+			"tasks" => tasks = Some(value.as_usize().expect("Number of tasks for MessageTaskSequence wrong")),
+			"traffics" => traffics_args = Some(value.as_array().expect("bad value for traffics")),
+			"messages_to_send_per_traffic" => messages_to_send_per_traffic = Some(value.as_array().expect("bad value for messages_to_send_per_traffic").iter().map(|v| v.as_f64().expect("bad value in messages_to_send_per_traffic") as usize).collect()),
+			"messages_to_consume_per_traffic" => messages_to_consume_per_traffic = Some(value.as_array().expect("bad value for messages_to_consume_per_traffic").iter().map(|v| v.as_f64().expect("bad value in messages_to_consume_per_traffic") as usize).collect()),
+		);
+		let tasks = tasks.expect("Number of tasks for MessageTaskSequence should be indicated");
+		let traffics_args = traffics_args.expect("There were no traffics");
+		let TrafficBuilderArgument { plugs, topology, rng, .. } = arg;
+		let traffics: Vec<_> = traffics_args.iter().map(|v| new_traffic(TrafficBuilderArgument { cv: v, plugs, topology, rng: &mut *rng })).collect();
+		let messages_to_send_per_traffic = messages_to_send_per_traffic.expect("There were no messages_to_send_per_traffic");
+		let messages_to_consume_per_traffic = messages_to_consume_per_traffic;
+		for traffic in traffics.iter()
+		{
+			assert_eq!(traffic.number_tasks(), tasks, "In MessageTaskSequence all sub-traffics must involve the same number of tasks.");
+		}
+		let traffic_len = traffics.len();
+		MessageTaskSequence {
+			traffics,
+			messages_to_send_per_traffic,
+			messages_to_consume_per_traffic,
+			messages_sent: vec![ vec![0; traffic_len ]; tasks ],
+			messages_consumed: vec![ vec![0; traffic_len ]; tasks ],
+			generated_messages: vec![ BTreeSet::new(); traffic_len ],
+		}
+	}
+}
+
+
 /// Like the `Burst` pattern, but generating messages from different patterns and with different message sizes.
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -2710,4 +2896,259 @@ impl TrafficMap
 			generated_messages: BTreeMap::new(),
 		}
 	}
+}
+
+
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct EncapsulatedTraffic {}
+
+impl EncapsulatedTraffic
+{
+	pub fn new(traffic: String, mut arg:TrafficBuilderArgument) ->  Box<dyn Traffic>
+	{
+		let traffic_cv = match traffic.as_str() {
+			"ScatterReduce" =>{
+				let mut tasks = None;
+				let mut data_size = None;
+				let mut algorithm = "Hypercube";
+				match_object_panic!(arg.cv,"ScatterReduce",value,
+					"tasks" => tasks = Some(value.as_f64().expect("bad value for tasks") as usize),
+					"algorithm" => algorithm = value.as_str().expect("bad value for algorithm"),
+					"data_size" => data_size = Some(value.as_f64().expect("bad value for data_size") as usize),
+				);
+				match algorithm {
+					"Hypercube" => Some(get_scatter_reduce_hypercube(tasks.expect("There were no tasks"), data_size.expect("There were no data_size"))),
+					"Ring" => Some(ring_iteration(tasks.expect("There were no tasks"), data_size.expect("There were no data_size"))),
+					_ => panic!("Unknown algorithm: {}", algorithm),
+				}
+			},
+			"AllGather" =>{
+				let mut tasks = None;
+				let mut data_size = None;
+				let mut algorithm = "Hypercube";
+				let mut neighbours_order = None;
+				match_object_panic!(arg.cv,"AllGather",value,
+					"tasks" => tasks = Some(value.as_f64().expect("bad value for tasks") as usize),
+					"algorithm" => algorithm = value.as_str().expect("bad value for algorithm"),
+					"data_size" => data_size = Some(value.as_f64().expect("bad value for data_size") as usize),
+					"neighbours_order" => neighbours_order = Some(value),
+				);
+				match algorithm {
+					"Hypercube" => Some(get_all_gather_hypercube(tasks.expect("There were no tasks"), data_size.expect("There were no data_size"), neighbours_order)),
+					"Ring" => Some(ring_iteration(tasks.expect("There were no tasks"), data_size.expect("There were no data_size"))),
+					_ => panic!("Unknown algorithm: {}", algorithm),
+				}
+			},
+			"AllReduce" =>{
+				let mut tasks = None;
+				let mut data_size = None;
+				let mut algorithm = "Optimal";
+				let mut neighbours_order = None;
+				match_object_panic!(arg.cv,"AllReduce",value,
+					"tasks" => tasks = Some(value.as_f64().expect("bad value for tasks") as usize),
+					"algorithm" => algorithm = value.as_str().expect("bad value for algorithm"),
+					"data_size" => data_size = Some(value.as_f64().expect("bad value for data_size") as usize),
+					"all_gather_neighbours_order" => neighbours_order = Some(value),
+				);
+
+				match algorithm {
+					"Optimal" => Some(get_all_reduce_optimal(tasks.expect("There were no tasks"), data_size.expect("There were no data_size"), neighbours_order)),
+					"Ring" => Some(get_all_reduce_ring(tasks.expect("There were no tasks"), data_size.expect("There were no data_size"))),
+					_ => panic!("Unknown algorithm: {}", algorithm),
+				}
+			},
+			"All2All" =>{
+				let mut tasks = None;
+				let mut data_size = None;
+				match_object_panic!(arg.cv,"All2All",value,
+					"tasks" => tasks = Some(value.as_f64().expect("bad value for tasks") as usize),
+					"data_size" => data_size = Some(value.as_f64().expect("bad value for data_size") as usize),
+				);
+
+				Some(get_all2all(tasks.expect("There were no tasks"), data_size.expect("There were no data_size")))
+			},
+
+			_ => panic!("Unknown traffic type: {}", traffic),
+		};
+
+		new_traffic(TrafficBuilderArgument{cv:&traffic_cv.expect("There should be a CV"),rng:&mut arg.rng,..arg})
+	}
+}
+
+//Scater-reduce or all-gather in a ring
+fn ring_iteration(tasks: usize, data_size: usize) -> ConfigurationValue {
+	let message_size = ConfigurationValue::Number((data_size/tasks) as f64);
+	let traffic_credit = ConfigurationValue::Object("TrafficCredit".to_string(), vec![
+		("pattern".to_string(), ConfigurationValue::Object("CartesianTransform".to_string(), vec![("sides".to_string(), ConfigurationValue::Array(vec![ConfigurationValue::Number(tasks as f64)])), ("shift".to_string(), ConfigurationValue::Array(vec![ConfigurationValue::Number(1f64)]))])),
+		("tasks".to_string(), ConfigurationValue::Number(tasks as f64)),
+		("credits_to_activate".to_string(),  ConfigurationValue::Number(1f64)),
+		("credits_per_received_message".to_string(), ConfigurationValue::Number(1f64)),
+		("messages_per_transition".to_string(), ConfigurationValue::Number(1f64)),
+		("message_size".to_string(), message_size),
+		("initial_credits".to_string() , ConfigurationValue::Object("CandidatesSelection".to_string(), vec![
+			("pattern".to_string(), ConfigurationValue::Object("Identity".to_string(), vec![])),
+			("pattern_destination_size".to_string(), ConfigurationValue::Number(tasks as f64)),
+		])),
+	]);
+
+	let traffic_message = ConfigurationValue::Object("Messages".to_string(), vec![
+		("traffic".to_string(), traffic_credit),
+		("tasks".to_string(), ConfigurationValue::Number(tasks as f64)),
+		("messages_per_task".to_string(), ConfigurationValue::Number((tasks -1) as f64)),
+		("num_messages".to_string(), ConfigurationValue::Number(tasks as f64 * (tasks -1) as f64)),
+		("expected_messages_to_consume_per_task".to_string(), ConfigurationValue::Number(tasks as f64))
+	]);
+
+	traffic_message
+}
+
+
+fn get_scatter_reduce_hypercube(tasks: usize, data_size: usize) -> ConfigurationValue
+{
+	//log2 the number of tasks and panic if its not a power of 2
+	let messages = (tasks as f64).log2().round() as usize;
+	if 2usize.pow(messages as u32) != tasks
+	{
+		panic!("The number of tasks must be a power of 2");
+	}
+	//Now list dividing the data size by to in each iteration till number of messages
+	let messages_size = ConfigurationValue::Array((1..=messages).map(|i| ConfigurationValue::Number((data_size / 2usize.pow(i as u32)) as f64)).collect::<Vec<_>>());
+	let inmediate_sequence_pattern = ConfigurationValue::Object("InmediateSequencePattern".to_string(), vec![
+		("sequence".to_string(), messages_size),
+	]);
+
+	let traffic_credit = ConfigurationValue::Object("TrafficCredit".to_string(), vec![
+		("pattern".to_string(), ConfigurationValue::Object("RecursiveDistanceHalving".to_string(), vec![])),
+		("tasks".to_string(), ConfigurationValue::Number(tasks as f64)),
+		("credits_to_activate".to_string(),  ConfigurationValue::Number(1f64)),
+		("credits_per_received_message".to_string(), ConfigurationValue::Number(1f64)),
+		("messages_per_transition".to_string(), ConfigurationValue::Number(1f64)),
+		("message_size".to_string(), ConfigurationValue::Number(0f64)),
+		("message_size_pattern".to_string(), inmediate_sequence_pattern),
+		("initial_credits".to_string() , ConfigurationValue::Object("CandidatesSelection".to_string(), vec![
+			("pattern".to_string(), ConfigurationValue::Object("Identity".to_string(), vec![])),
+			("pattern_destination_size".to_string(), ConfigurationValue::Number(tasks as f64)),
+		])),
+	]);
+
+
+	let traffic_message = ConfigurationValue::Object("Messages".to_string(), vec![
+		("traffic".to_string(), traffic_credit),
+		("tasks".to_string(), ConfigurationValue::Number(tasks as f64)),
+		("messages_per_task".to_string(), ConfigurationValue::Number(messages as f64)),
+		("num_messages".to_string(), ConfigurationValue::Number( (messages * tasks) as f64)),
+		("expected_messages_to_consume_per_task".to_string(), ConfigurationValue::Number(messages as f64))
+	]);
+	traffic_message
+}
+
+fn get_all_gather_hypercube(tasks: usize, data_size: usize, neighbours_order: Option<&ConfigurationValue>) -> ConfigurationValue
+{
+	//log2 the number of tasks and panic if its not a power of 2
+	let messages = (tasks as f64).log2().round() as usize;
+	if 2usize.pow(messages as u32) != tasks
+	{
+		panic!("The number of tasks must be a power of 2");
+	}
+	//Now list dividing the data size by to in each iteration till number of messages
+	let messages_size = ConfigurationValue::Array((1..=messages).map(|i| ConfigurationValue::Number((data_size / 2usize.pow(i as u32)) as f64)).rev().collect::<Vec<_>>()); //reverse the order, starting from the smallest message to the maximum
+	let inmediate_sequence_pattern = ConfigurationValue::Object("InmediateSequencePattern".to_string(), vec![
+		("sequence".to_string(), messages_size),
+	]);
+
+	let pattern = if let Some(neighbours_order) = neighbours_order {
+		ConfigurationValue::Object("RecursiveDistanceHalving".to_string(), vec![
+			("neighbours_order".to_string(), neighbours_order.clone())
+		])
+	} else {
+		ConfigurationValue::Object("RecursiveDistanceHalving".to_string(), vec![])
+	};
+
+	let traffic_credit = ConfigurationValue::Object("TrafficCredit".to_string(), vec![
+		("pattern".parse().unwrap(), pattern),
+		("tasks".to_string(), ConfigurationValue::Number(tasks as f64)),
+		("credits_to_activate".to_string(),  ConfigurationValue::Number(1f64)),
+		("credits_per_received_message".to_string(), ConfigurationValue::Number(1f64)),
+		("messages_per_transition".to_string(), ConfigurationValue::Number(1f64)),
+		("message_size".to_string(), ConfigurationValue::Number(0f64)),
+		("message_size_pattern".to_string(), inmediate_sequence_pattern),
+		("initial_credits".to_string() , ConfigurationValue::Object("CandidatesSelection".to_string(), vec![
+			("pattern".to_string(), ConfigurationValue::Object("Identity".to_string(), vec![])),
+			("pattern_destination_size".to_string(), ConfigurationValue::Number(tasks as f64)),
+		])),
+	]);
+
+	let traffic_message = ConfigurationValue::Object("Messages".to_string(), vec![
+		("traffic".to_string(), traffic_credit),
+		("tasks".to_string(), ConfigurationValue::Number(tasks as f64)),
+		("messages_per_task".to_string(), ConfigurationValue::Number(messages as f64)),
+		("num_messages".to_string(), ConfigurationValue::Number( (messages * tasks) as f64)),
+		("expected_messages_to_consume_per_task".to_string(), ConfigurationValue::Number(messages as f64))
+	]);
+
+	traffic_message
+}
+
+fn sum_traffics_messages(traffics: ConfigurationValue, tasks:usize, messages_to_send_per_traffic: Vec<usize>, messages_to_consume_per_traffic: Vec<usize>) -> ConfigurationValue
+{
+	ConfigurationValue::Object("MessageTaskSequence".to_string(), vec![
+		("tasks".to_string(), ConfigurationValue::Number(tasks as f64)),
+		("traffics".to_string(), traffics),
+		("messages_to_send_per_traffic".to_string(), ConfigurationValue::Array(messages_to_send_per_traffic.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect())),
+		("messages_to_consume_per_traffic".to_string(), ConfigurationValue::Array(messages_to_consume_per_traffic.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect())),
+	])
+}
+
+fn get_all_reduce_optimal(tasks: usize, data_size: usize, neighbours_order: Option<&ConfigurationValue>) -> ConfigurationValue
+{
+	let scatter_reduce = get_scatter_reduce_hypercube(tasks, data_size);
+	let all_gather = get_all_gather_hypercube(tasks, data_size, neighbours_order);
+	let traffic_list = ConfigurationValue::Array(vec![scatter_reduce, all_gather]);
+	let messages_per_task = (tasks as f64).log2().round() as usize;
+	sum_traffics_messages(traffic_list, tasks,vec![messages_per_task, messages_per_task], vec![messages_per_task, messages_per_task])
+}
+
+fn get_all_reduce_ring(tasks: usize, data_size: usize) -> ConfigurationValue
+{
+	let scatter_reduce = ring_iteration(tasks, data_size);
+	let all_gather = ring_iteration(tasks, data_size);
+	let traffic_list = ConfigurationValue::Array(vec![scatter_reduce, all_gather]);
+	let messages_per_task = tasks - 1;
+	sum_traffics_messages(traffic_list, tasks,vec![messages_per_task, messages_per_task], vec![messages_per_task, messages_per_task])
+}
+
+fn get_all2all(tasks: usize, data_size: usize) -> ConfigurationValue
+{
+	let messages = tasks -1;
+	let message_size = ConfigurationValue::Number((data_size/tasks) as f64);
+	let traffic_credit = ConfigurationValue::Object("TrafficCredit".to_string(), vec![
+		("pattern".to_string(), ConfigurationValue::Object("ElementComposition".to_string(), vec![
+			("pattern".to_string(), ConfigurationValue::Object("CartesianTransform".to_string(), vec![
+				("sides".to_string(), ConfigurationValue::Array(vec![ConfigurationValue::Number(tasks as f64)])),
+				("shift".to_string(), ConfigurationValue::Array(vec![ConfigurationValue::Number(1f64)]))
+			]))
+		])),
+		("tasks".to_string(), ConfigurationValue::Number(tasks as f64)),
+		("credits_to_activate".to_string(),  ConfigurationValue::Number(1f64)),
+		("credits_per_received_message".to_string(), ConfigurationValue::Number(0f64)),
+		("messages_per_transition".to_string(), ConfigurationValue::Number(messages as f64)),
+		("message_size".to_string(), message_size),
+		("initial_credits".to_string() , ConfigurationValue::Object("CandidatesSelection".to_string(), vec![
+			("pattern".to_string(), ConfigurationValue::Object("Identity".to_string(), vec![])),
+			("pattern_destination_size".to_string(), ConfigurationValue::Number(tasks as f64)),
+		])),
+	]);
+
+	ConfigurationValue::Object("Messages".to_string(), vec![
+		("traffic".to_string(), traffic_credit),
+		("tasks".to_string(), ConfigurationValue::Number(tasks as f64)),
+		("messages_per_task".to_string(), ConfigurationValue::Number(messages as f64)),
+		("num_messages".to_string(), ConfigurationValue::Number(tasks as f64 * messages as f64)),
+		("expected_messages_to_consume_per_task".to_string(), ConfigurationValue::Number(messages as f64))
+	])
+}
+
+fn _get_wavefront(_task_space: Vec<usize>, _data_size:usize){
+	todo!("Wavefront")
 }

@@ -7,6 +7,7 @@ see [`new_pattern`](fn.new_pattern.html) for documentation on the configuration 
 */
 
 use std::cell::{RefCell};
+use std::collections::VecDeque;
 use std::convert::TryInto;
 use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom};
 use std::fs::File;
@@ -359,6 +360,8 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"SubApp" => Box::new(SubApp::new(arg)),
 			"RecursiveDistanceHalving" => Box::new(RecursiveDistanceHalving::new(arg)),
 			"BinomialTree" => Box::new(BinomialTree::new(arg)),
+			"InmediateSequencePattern" => Box::new(InmediateSequencePattern::new(arg)),
+			"Stencil" => EncapsulatedPattern::new(cv_name.clone(), arg),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -1720,6 +1723,56 @@ impl DestinationSets
 			patterns,
 			weights,
 			destination_set:vec![vec![];size],//to be filled in initialization
+		}
+	}
+}
+
+
+/**
+For each server, it keeps a shuffled list of destinations to which send.
+Select each destination with a probability.
+
+```ignore
+InmediateSequencePattern{
+
+}
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct InmediateSequencePattern
+{
+	sequence: Vec<usize>,
+	///Sequence for each input
+	sequences_input: RefCell<Vec<VecDeque<usize>>>,
+}
+
+impl Pattern for InmediateSequencePattern
+{
+	fn initialize(&mut self, source_size:usize, _target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		self.sequences_input.replace(vec![VecDeque::from(self.sequence.clone()); source_size]);
+
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		self.sequences_input.borrow_mut()[origin].pop_front().unwrap_or(0)
+	}
+}
+
+impl InmediateSequencePattern
+{
+	fn new(arg:PatternBuilderArgument) -> InmediateSequencePattern
+	{
+		let mut sequence=None;
+		match_object_panic!(arg.cv,"InmediateSequencePattern",value,
+			"sequence" => sequence=Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|v|v.as_usize().expect("List should be of usizes")).collect()),
+		);
+		let sequence = sequence.unwrap();
+		InmediateSequencePattern {
+			sequence,
+			sequences_input: RefCell::new(vec![VecDeque::new()]),
 		}
 	}
 }
@@ -3140,7 +3193,9 @@ pub struct RecursiveDistanceHalving
 	///Pending destinations.
 	origin_state: RefCell<Vec<usize>>,
 	///Map for the different states
-	cartesian_data: Vec<CartesianData>,
+	cartesian_data: CartesianData,
+	///Order of the neighbours
+	neighbours_order: Option<Vec<Vec<usize>>>,
 }
 
 impl Pattern for RecursiveDistanceHalving
@@ -3158,12 +3213,7 @@ impl Pattern for RecursiveDistanceHalving
 		}
 		let pow = source_size.ilog2();
 		self.origin_state = RefCell::new(vec![0;source_size]);
-		self.cartesian_data = (0..pow).map(|i| CartesianData::new(&[source_size/2_usize.pow(i), 2_usize.pow(i)]) ).collect();
-		//print the cartesian_data
-		// for i in 0..pow
-		// {
-		// 	println!("cartesian_data[{}]: {:?}",i, self.cartesian_data[i as usize].sides);
-		// }
+		self.cartesian_data = CartesianData::new(&(vec![2; pow as usize]))//(0..pow).map(|i| CartesianData::new(&[source_size/2_usize.pow(i), 2_usize.pow(i)]) ).collect();
 	}
 	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
@@ -3172,28 +3222,65 @@ impl Pattern for RecursiveDistanceHalving
 			panic!("RecursiveDistanceHalving: origin {} is beyond the source size {}",origin,self.origin_state.borrow().len());
 		}
 		let index = self.origin_state.borrow()[origin];
-		if index >=self.cartesian_data.len()
+		if index >=self.cartesian_data.sides.len()
 		{
 			return origin; //No more to do...
-			//panic!("RecursiveDistanceHalving: index {} is beyond the cartesian_data size {}",index,self.cartesian_data.len());
 		}
-		//print origin_state
-		// println!("origin_state: {:?}",self.origin_state.borrow());
-		self.origin_state.borrow_mut()[origin]+=1;
-		let source_coord = self.cartesian_data[index].unpack(origin);
-		let partition_size = self.cartesian_data[index].sides[0];
-		self.cartesian_data[index].pack(&[ (source_coord[0] + partition_size/2) % partition_size, source_coord[1]])
+
+		let mut state = self.origin_state.borrow_mut();
+		let source_coord = self.cartesian_data.unpack(origin);
+		let to_send = if let Some(vectores) = self.neighbours_order.as_ref()
+		{
+			vectores[state[origin]].clone()
+		}else {
+			self.cartesian_data.unpack(2_i32.pow(state[origin].try_into().unwrap()) as usize)
+		};
+
+		let dest = source_coord.iter().zip(to_send.iter()).map(|(a,b)| a^b).collect::<Vec<usize>>();
+		state[origin]+=1;
+		self.cartesian_data.pack(&dest)
 
 	}
 }
 
 impl RecursiveDistanceHalving
 {
-	fn new(_arg:PatternBuilderArgument) -> RecursiveDistanceHalving
+	fn new(arg:PatternBuilderArgument) -> RecursiveDistanceHalving
 	{
+		let mut neighbours_order: Option<Vec<usize>> = None; //Array of vectors which represent the order of the neighbours
+		match_object_panic!(arg.cv,"RecursiveDistanceHalving",value,
+			"neighbours_order" => neighbours_order = Some(value.as_array().expect("bad value for neighbours_order").iter()
+				.map(|n|n.as_usize().unwrap()).collect() ),
+		);
+
+		//now each number in the array transform it into an array of binary numbers
+		let binary_order = if let Some(n) = neighbours_order
+		{
+			//get the biggest number
+			let max = n.iter().max().unwrap();
+			//calculate the number of bits
+			let bits = max.ilog2() as usize + 1usize;
+			//transform each number into a binary number with the same number of bits
+			let bin_n = n.iter().map(|&x| {
+				let mut v = vec![0; bits];
+				let mut x = x;
+				for i in 0..bits
+				{
+					v[i] = x%2;
+					x = x/2;
+				}
+				v
+			}).collect();
+			Some(bin_n)
+
+		}else{
+			None
+		};
+
 		RecursiveDistanceHalving{
 			origin_state: RefCell::new(vec![]),
-			cartesian_data: vec![],
+			cartesian_data: CartesianData::new(&vec![0;0]),
+			neighbours_order: binary_order,
 		}
 	}
 }
@@ -3323,12 +3410,12 @@ pub struct CandidatesSelection
 
 impl Pattern for CandidatesSelection
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	fn initialize(&mut self, source_size:usize, _target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
-		if target_size != 2
-		{
-			panic!("CandidatesSelection requires target size to be 2.");
-		}
+		// if target_size != 2
+		// {
+		// 	panic!("CandidatesSelection requires target size to be 2.");
+		// }
 		self.pattern.initialize(source_size, self.pattern_destination_size, _topology, _rng);
 		let mut selection = vec![0;source_size];
 		for i in 0..source_size
@@ -3440,6 +3527,62 @@ impl DebugPattern{
 	}
 }
 
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct EncapsulatedPattern {}
+
+impl EncapsulatedPattern {
+	fn new(pattern: String, arg:PatternBuilderArgument) -> Box<dyn Pattern> {
+		let pattern_cv = match pattern.as_str(){
+			"Stencil" =>{
+				let mut task_space = None;
+				match_object_panic!(arg.cv,"Stencil",value,
+					"task_space" => task_space = Some(value.as_array().expect("bad value for task_space").iter()
+						.map(|v|v.as_usize().expect("bad value in task_space")).collect()),
+				);
+				let task_space = task_space.expect("There were no task_space in configuration of Stencil.");
+				Some(get_stencil(task_space))
+			},
+			_ => panic!("Pattern {} not found.",pattern),
+		};
+		new_pattern(PatternBuilderArgument{cv:&pattern_cv.unwrap(),..arg})
+	}
+}
+
+fn get_stencil(task_space: Vec<usize>) -> ConfigurationValue
+{
+	let space_cv = ConfigurationValue::Array(task_space.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect::<Vec<_>>());
+
+	let mut transforms = vec![];
+	for i in 0..task_space.len()
+	{
+		let mut transform_suc = vec![0;task_space.len()]; //next element in dimension
+		transform_suc[i] = 1;
+		let transform_suc_cv = ConfigurationValue::Array(transform_suc.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect::<Vec<_>>());
+
+		let mut transform_pred = vec![0;task_space.len()]; //previous element in dimension
+		transform_pred[i] = (task_space[i] -1).rem_euclid(task_space[i]);
+		let transform_pred_cv = ConfigurationValue::Array(transform_pred.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect::<Vec<_>>());
+
+		transforms.push(
+			ConfigurationValue::Object("CartesianTransform".to_string(), vec![
+				("sides".to_string(), space_cv.clone()),
+				("shift".to_string(), transform_suc_cv),
+			]),
+		);
+
+		transforms.push(
+			ConfigurationValue::Object("CartesianTransform".to_string(), vec![
+				("sides".to_string(), space_cv.clone()),
+				("shift".to_string(), transform_pred_cv),
+			]),
+		);
+	}
+
+	ConfigurationValue::Object( "RoundRobin".to_string(), vec![
+		("patterns".to_string(), ConfigurationValue::Array(transforms)),
+	])
+}
 
 
 /**
