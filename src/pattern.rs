@@ -3585,6 +3585,40 @@ fn get_stencil(task_space: Vec<usize>) -> ConfigurationValue
 }
 
 
+pub fn get_switch_pattern(index_pattern: ConfigurationValue, patterns: Vec<ConfigurationValue>) -> ConfigurationValue{
+	ConfigurationValue::Object("Switch".to_string(), vec![
+		("indexing".to_string(), index_pattern),
+		("patterns".to_string(), ConfigurationValue::Array(patterns)),
+	])
+}
+
+pub fn get_candidates_selection(pattern: ConfigurationValue, pattern_destination_size: usize) -> ConfigurationValue{
+	ConfigurationValue::Object("CandidatesSelection".to_string(), vec![
+		("pattern".to_string(), pattern),
+		("pattern_destination_size".to_string(), ConfigurationValue::Number(pattern_destination_size as f64)),
+	])
+}
+
+pub fn get_cartesian_transform(sides: Vec<usize>, shift: Option<Vec<usize>>, patterns: Option<Vec<ConfigurationValue>>) -> ConfigurationValue{
+	let mut config = vec![
+		("sides".to_string(), ConfigurationValue::Array(sides.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect::<Vec<_>>())),
+	];
+	if let Some(shift) = shift{
+		config.push(("shift".to_string(), ConfigurationValue::Array(shift.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect::<Vec<_>>())));
+	}
+	if let Some(patterns) = patterns{
+		config.push(("patterns".to_string(), ConfigurationValue::Array(patterns)));
+	}
+	ConfigurationValue::Object("CartesianTransform".to_string(), config)
+}
+
+pub fn get_hotspot_destination(selected_destinations: Vec<usize>) -> ConfigurationValue{
+	ConfigurationValue::Object("Hotspots".to_string(), vec![
+		("destinations".to_string(), ConfigurationValue::Array(selected_destinations.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect::<Vec<_>>()), )
+	])
+}
+
+
 /**
 A transparent meta-pattern to help debug other [Pattern].
 

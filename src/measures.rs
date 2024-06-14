@@ -459,7 +459,7 @@ pub struct StatisticMeasurement
 	pub consumed_packets: usize,
 	///Number of messages for which all their phits have beeen consumed.
 	pub consumed_messages: usize,
-	///Accumulated delay of al messages. From message creation (in traffic.rs) to server consumption.
+	///Accumulated delay of al messages. From message creation (in mod) to server consumption.
 	pub total_message_delay: Time,
 	///Accumulated network delay for all packets. From the leading phit being inserted into a router to the consumption of the tail phit.
 	pub total_packet_network_delay: Time,
