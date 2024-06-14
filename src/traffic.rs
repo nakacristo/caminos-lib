@@ -19,7 +19,7 @@ use ::rand::{Rng,rngs::StdRng};
 use crate::{match_object_panic};
 use crate::config_parser::ConfigurationValue;
 use crate::{Message,Plugs};
-use crate::pattern::{Pattern, new_pattern, PatternBuilderArgument};
+use crate::pattern::{Pattern, new_pattern, PatternBuilderArgument, get_cartesian_transform, get_hotspot_destination, get_candidates_selection, get_switch_pattern};
 use crate::topology::Topology;
 use crate::event::Time;
 use quantifiable_derive::Quantifiable;
@@ -2906,6 +2906,18 @@ impl TrafficMap
 	}
 }
 
+pub fn get_traffic_credit(tasks: usize, credits_to_activate:usize, messages_per_transition: usize, credits_per_received_message: usize, pattern: ConfigurationValue, initial_credits: ConfigurationValue) -> ConfigurationValue
+{
+	ConfigurationValue::Object("TrafficCredit".to_string(), vec![
+		("pattern".to_string(), pattern),
+		("tasks".to_string(), ConfigurationValue::Number(tasks as f64)),
+		("credits_to_activate".to_string(), ConfigurationValue::Number(credits_to_activate as f64)),
+		("credits_per_received_message".to_string(), ConfigurationValue::Number(credits_per_received_message as f64)),
+		("messages_per_transition".to_string(), ConfigurationValue::Number(messages_per_transition as f64)),
+		("initial_credits".to_string(), initial_credits),
+	])
+}
+
 
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -3157,6 +3169,57 @@ fn get_all2all(tasks: usize, data_size: usize) -> ConfigurationValue
 	])
 }
 
-fn _get_wavefront(_task_space: Vec<usize>, _data_size:usize){
-	todo!("Wavefront")
-}
+// fn get_wavefront(task_space: Vec<usize>, data_size:usize, num_messages: usize) -> ConfigurationValue{
+// 	let tasks = task_space.iter().product();
+// 	let task_space_cv = task_space.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect();
+//
+// 	let identity_pattern_vector = vec![ConfigurationValue::Object("Identity".to_string(), vec![]); task_space.len()];
+//
+// 	let initial_credits = ConfigurationValue::Object("Sum".to_string(), vec![
+// 		("patterns".to_string(), ConfigurationValue::Array(
+// 			(0..task_space.len()).into_iter().enumerate().map(|i|
+// 				ConfigurationValue::Object("CandidatesSelection".to_string(), vec![
+// 						("pattern".to_string(), ConfigurationValue::Object("CartesianTransform".to_string(), vec![
+// 								("sides".to_string(), ConfigurationValue::Array(task_space_cv)),
+// 								("patterns".to_string(), ConfigurationValue::Array(
+// 									{
+// 										let mut aux = identity_pattern_vector.clone();
+// 										aux[i] = ConfigurationValue::Object("Hotspot".to_string(), vec![("destinations".to_string(),ConfigurationValue::Array(vec![ConfigurationValue::Number(0f64)]))]);
+// 										aux
+// 									}
+// 								))
+// 							])
+// 						),
+// 					("pattern_destination_size".to_string(), ConfigurationValue::Number(task_space[i].clone() as f64)),
+// 				])
+// 			).collect())
+// 		),
+// 		("middle_sizes".to_string(), ConfigurationValue::Array(vec![ConfigurationValue::Number(2f64); task_space.len()])),
+// 	]);
+//
+// 	let traffic_credit_pattern = (0..task_space.len()).iter().map(|i|
+// 		 {
+// 			 let mut patterns = identity_pattern_vector.clone();
+// 			 patterns[i]= get_hotspot_destination(vec![0]);
+// 			 let cartesian_transform = get_cartesian_transform(task_space.clone(), None, patterns);
+// 			 let switch_indexing = get_candidates_selection(cartesian_transform, tasks);
+// 			 let shift = vec![0; task_space.len()];
+// 			 shift[i] = 1;
+// 			 let switch_patterns = vec![
+// 				 get_cartesian_transform(task_space.clone(), Some(shift), None),
+// 				 ConfigurationValue::Object("Identity".to_string(), vec![]) //Its in a edge of the n-dimensional space
+// 			 ];
+// 			 get_switch_pattern(switch_indexing, switch_patterns)
+// 		 }
+// 	);
+//
+// 	let traffic_credit = get_traffic_credit(tasks, task_space.len(), task_space.len(), 1, traffic_credit_pattern, initial_credits);
+//
+//
+// 	ConfigurationValue::Object("Messages".to_string(), vec![
+// 		("traffic".to_string(), traffic_credit),
+// 		("tasks".to_string(), ConfigurationValue::Number(tasks)),
+// 		("num_messages".to_string(), ConfigurationValue::Number(num_messages)),
+// 		("expected_messages_to_consume_per_task".to_string(), ConfigurationValue::Number(task_space.len() as f64))
+// 	])
+// }
