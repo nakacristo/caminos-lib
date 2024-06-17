@@ -3,9 +3,12 @@ use quantifiable_derive::Quantifiable;
 use rand::prelude::StdRng;
 use crate::config_parser::ConfigurationValue;
 use crate::{match_object_panic, Message, Time};
+use crate::pattern::{get_candidates_selection, get_cartesian_transform};
 use crate::topology::Topology;
 use crate::traffic::{new_traffic, TaskTrafficState, Traffic, TrafficBuilderArgument, TrafficError};
 use crate::traffic::basic::{build_message_cv, BuildMessageCVArgs};
+use crate::traffic::mini_apps::{BuildTrafficCreditCVArgs, get_traffic_credit};
+use crate::traffic::sequences::{BuilderMessageTaskSequenceCVArgs, get_traffic_message_task_sequence};
 use crate::traffic::TaskTrafficState::{UnspecifiedWait, WaitingData};
 
 
@@ -147,20 +150,29 @@ impl MessageBarrier
 MPI collectives implementations based on TrafficCredit
 
 ```ignore
-Allreduce{
-
-}
-
 Allgather{
-
+    tasks: 64,
+    data_size: 1000, //The total data size to all-gather. Each task starts with a data slice of size data_size/tasks.
+    algorithm: "Hypercube",
+    neighbours_order: [32, 16, 8, 4, 2, 1], //Optional, the order to iter hypercube neighbours
 }
 
 ScatterReduce{
+    tasks: 64,
+    data_size: 1000, //The total data size to scatter-reduce. Each task ends with a data slice reduced of size data_size/tasks.
+    algorithm: "Hypercube",
+}
 
+Allreduce{
+    tasks: 64,
+    data_size: 1000, //The total data size to all-reduce.
+    algorithm: "Optimal",
+    all_gather_neighbours_order: [32, 16, 8, 4, 2, 1], //Optional, the order to iter hypercube neighbours in the all-gather
 }
 
 All2All{
-
+    tasks: 64,
+    data_size: 1000, //The total data size to all2all. Each task sends a data slice of size data_size/tasks to all the other tasks.
 }
 ```
  **/
@@ -243,19 +255,32 @@ impl MPICollective
 
 //Scater-reduce or all-gather in a ring
 fn ring_iteration(tasks: usize, data_size: usize) -> ConfigurationValue {
-    let message_size = ConfigurationValue::Number((data_size/tasks) as f64);
-    let traffic_credit = ConfigurationValue::Object("TrafficCredit".to_string(), vec![
-        ("pattern".to_string(), ConfigurationValue::Object("CartesianTransform".to_string(), vec![("sides".to_string(), ConfigurationValue::Array(vec![ConfigurationValue::Number(tasks as f64)])), ("shift".to_string(), ConfigurationValue::Array(vec![ConfigurationValue::Number(1f64)]))])),
-        ("tasks".to_string(), ConfigurationValue::Number(tasks as f64)),
-        ("credits_to_activate".to_string(),  ConfigurationValue::Number(1f64)),
-        ("credits_per_received_message".to_string(), ConfigurationValue::Number(1f64)),
-        ("messages_per_transition".to_string(), ConfigurationValue::Number(1f64)),
-        ("message_size".to_string(), message_size),
-        ("initial_credits".to_string() , ConfigurationValue::Object("CandidatesSelection".to_string(), vec![
-            ("pattern".to_string(), ConfigurationValue::Object("Identity".to_string(), vec![])),
-            ("pattern_destination_size".to_string(), ConfigurationValue::Number(tasks as f64)),
-        ])),
-    ]);
+
+    let message_size = data_size/tasks;
+
+    let candidates_selection = get_candidates_selection(
+        ConfigurationValue::Object("Identity".to_string(), vec![]),
+        tasks,
+    );
+
+    let pattern_cartesian_transform = get_cartesian_transform(
+    vec![tasks],
+        Some(vec![1]),
+        None,
+    );
+
+    let traffic_credit_args = BuildTrafficCreditCVArgs{
+        tasks,
+        credits_to_activate: 1,
+        credits_per_received_message: 1,
+        messages_per_transition: 1,
+        message_size,
+        pattern: pattern_cartesian_transform,
+        initial_credits: candidates_selection,
+        message_size_pattern: None,
+    };
+
+    let traffic_credit = get_traffic_credit(traffic_credit_args);
 
     let traffic_message_cv_builder = BuildMessageCVArgs{
         traffic: traffic_credit,
@@ -283,19 +308,25 @@ fn get_scatter_reduce_hypercube(tasks: usize, data_size: usize) -> Configuration
         ("sequence".to_string(), messages_size),
     ]);
 
-    let traffic_credit = ConfigurationValue::Object("TrafficCredit".to_string(), vec![
-        ("pattern".to_string(), ConfigurationValue::Object("RecursiveDistanceHalving".to_string(), vec![])),
-        ("tasks".to_string(), ConfigurationValue::Number(tasks as f64)),
-        ("credits_to_activate".to_string(),  ConfigurationValue::Number(1f64)),
-        ("credits_per_received_message".to_string(), ConfigurationValue::Number(1f64)),
-        ("messages_per_transition".to_string(), ConfigurationValue::Number(1f64)),
-        ("message_size".to_string(), ConfigurationValue::Number(0f64)),
-        ("message_size_pattern".to_string(), inmediate_sequence_pattern),
-        ("initial_credits".to_string() , ConfigurationValue::Object("CandidatesSelection".to_string(), vec![
-            ("pattern".to_string(), ConfigurationValue::Object("Identity".to_string(), vec![])),
-            ("pattern_destination_size".to_string(), ConfigurationValue::Number(tasks as f64)),
-        ])),
-    ]);
+    let candidates_selection = get_candidates_selection(
+        ConfigurationValue::Object("Identity".to_string(), vec![]),
+        tasks,
+    );
+
+    let pattern_distance_halving = ConfigurationValue::Object("RecursiveDistanceHalving".to_string(), vec![]);
+
+    let traffic_credit_args = BuildTrafficCreditCVArgs{
+        tasks,
+        credits_to_activate: 1,
+        credits_per_received_message: 1,
+        messages_per_transition: 1,
+        message_size: 0,
+        pattern: pattern_distance_halving,
+        initial_credits: candidates_selection,
+        message_size_pattern: Some(inmediate_sequence_pattern),
+    };
+
+    let traffic_credit = get_traffic_credit(traffic_credit_args);
 
     let traffic_message_cv_builder = BuildMessageCVArgs{
         traffic: traffic_credit,
@@ -322,7 +353,13 @@ fn get_all_gather_hypercube(tasks: usize, data_size: usize, neighbours_order: Op
         ("sequence".to_string(), messages_size),
     ]);
 
-    let pattern = if let Some(neighbours_order) = neighbours_order {
+
+    let candidates_selection = get_candidates_selection(
+        ConfigurationValue::Object("Identity".to_string(), vec![]),
+        tasks,
+    );
+
+    let pattern_distance_halving = if let Some(neighbours_order) = neighbours_order {
         ConfigurationValue::Object("RecursiveDistanceHalving".to_string(), vec![
             ("neighbours_order".to_string(), neighbours_order.clone())
         ])
@@ -330,19 +367,18 @@ fn get_all_gather_hypercube(tasks: usize, data_size: usize, neighbours_order: Op
         ConfigurationValue::Object("RecursiveDistanceHalving".to_string(), vec![])
     };
 
-    let traffic_credit = ConfigurationValue::Object("TrafficCredit".to_string(), vec![
-        ("pattern".parse().unwrap(), pattern),
-        ("tasks".to_string(), ConfigurationValue::Number(tasks as f64)),
-        ("credits_to_activate".to_string(),  ConfigurationValue::Number(1f64)),
-        ("credits_per_received_message".to_string(), ConfigurationValue::Number(1f64)),
-        ("messages_per_transition".to_string(), ConfigurationValue::Number(1f64)),
-        ("message_size".to_string(), ConfigurationValue::Number(0f64)),
-        ("message_size_pattern".to_string(), inmediate_sequence_pattern),
-        ("initial_credits".to_string() , ConfigurationValue::Object("CandidatesSelection".to_string(), vec![
-            ("pattern".to_string(), ConfigurationValue::Object("Identity".to_string(), vec![])),
-            ("pattern_destination_size".to_string(), ConfigurationValue::Number(tasks as f64)),
-        ])),
-    ]);
+    let traffic_credit_args = BuildTrafficCreditCVArgs{
+        tasks,
+        credits_to_activate: 1,
+        credits_per_received_message: 1,
+        messages_per_transition: 1,
+        message_size: 0,
+        pattern: pattern_distance_halving,
+        initial_credits: candidates_selection,
+        message_size_pattern: Some(inmediate_sequence_pattern),
+    };
+
+    let traffic_credit = get_traffic_credit(traffic_credit_args);
 
     let traffic_message_cv_builder = BuildMessageCVArgs{
         traffic: traffic_credit,
@@ -355,55 +391,69 @@ fn get_all_gather_hypercube(tasks: usize, data_size: usize, neighbours_order: Op
     build_message_cv(traffic_message_cv_builder)
 }
 
-fn sum_traffics_messages(traffics: ConfigurationValue, tasks:usize, messages_to_send_per_traffic: Vec<usize>, messages_to_consume_per_traffic: Vec<usize>) -> ConfigurationValue
-{
-    ConfigurationValue::Object("MessageTaskSequence".to_string(), vec![
-        ("tasks".to_string(), ConfigurationValue::Number(tasks as f64)),
-        ("traffics".to_string(), traffics),
-        ("messages_to_send_per_traffic".to_string(), ConfigurationValue::Array(messages_to_send_per_traffic.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect())),
-        ("messages_to_consume_per_traffic".to_string(), ConfigurationValue::Array(messages_to_consume_per_traffic.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect())),
-    ])
-}
-
 fn get_all_reduce_optimal(tasks: usize, data_size: usize, neighbours_order: Option<&ConfigurationValue>) -> ConfigurationValue
 {
-    let scatter_reduce = get_scatter_reduce_hypercube(tasks, data_size);
-    let all_gather = get_all_gather_hypercube(tasks, data_size, neighbours_order);
-    let traffic_list = ConfigurationValue::Array(vec![scatter_reduce, all_gather]);
+    let scatter_reduce_hypercube = get_scatter_reduce_hypercube(tasks, data_size);
+    let all_gather_hypercube = get_all_gather_hypercube(tasks, data_size, neighbours_order);
+
     let messages_per_task = (tasks as f64).log2().round() as usize;
-    sum_traffics_messages(traffic_list, tasks,vec![messages_per_task, messages_per_task], vec![messages_per_task, messages_per_task])
+    let traffic_message_task_sequence_args = BuilderMessageTaskSequenceCVArgs{
+        tasks,
+        traffics: vec![scatter_reduce_hypercube, all_gather_hypercube],
+        messages_to_send_per_traffic: vec![messages_per_task, messages_per_task],
+        messages_to_consume_per_traffic: Some(vec![messages_per_task, messages_per_task]),
+    };
+    get_traffic_message_task_sequence(traffic_message_task_sequence_args)
 }
 
 fn get_all_reduce_ring(tasks: usize, data_size: usize) -> ConfigurationValue
 {
-    let scatter_reduce = ring_iteration(tasks, data_size);
-    let all_gather = ring_iteration(tasks, data_size);
-    let traffic_list = ConfigurationValue::Array(vec![scatter_reduce, all_gather]);
+    let scatter_reduce_ring = ring_iteration(tasks, data_size);
+    let all_gather_ring = ring_iteration(tasks, data_size);
     let messages_per_task = tasks - 1;
-    sum_traffics_messages(traffic_list, tasks,vec![messages_per_task, messages_per_task], vec![messages_per_task, messages_per_task])
+
+    let traffic_message_task_sequence_args = BuilderMessageTaskSequenceCVArgs{
+        tasks,
+        traffics: vec![scatter_reduce_ring, all_gather_ring],
+        messages_to_send_per_traffic: vec![messages_per_task, messages_per_task],
+        messages_to_consume_per_traffic: Some(vec![messages_per_task, messages_per_task]),
+    };
+
+    get_traffic_message_task_sequence(traffic_message_task_sequence_args)
 }
 
 fn get_all2all(tasks: usize, data_size: usize) -> ConfigurationValue
 {
     let messages = tasks -1;
-    let message_size = ConfigurationValue::Number((data_size/tasks) as f64);
-    let traffic_credit = ConfigurationValue::Object("TrafficCredit".to_string(), vec![
-        ("pattern".to_string(), ConfigurationValue::Object("ElementComposition".to_string(), vec![
-            ("pattern".to_string(), ConfigurationValue::Object("CartesianTransform".to_string(), vec![
-                ("sides".to_string(), ConfigurationValue::Array(vec![ConfigurationValue::Number(tasks as f64)])),
-                ("shift".to_string(), ConfigurationValue::Array(vec![ConfigurationValue::Number(1f64)]))
-            ]))
-        ])),
-        ("tasks".to_string(), ConfigurationValue::Number(tasks as f64)),
-        ("credits_to_activate".to_string(),  ConfigurationValue::Number(1f64)),
-        ("credits_per_received_message".to_string(), ConfigurationValue::Number(0f64)),
-        ("messages_per_transition".to_string(), ConfigurationValue::Number(messages as f64)),
-        ("message_size".to_string(), message_size),
-        ("initial_credits".to_string() , ConfigurationValue::Object("CandidatesSelection".to_string(), vec![
-            ("pattern".to_string(), ConfigurationValue::Object("Identity".to_string(), vec![])),
-            ("pattern_destination_size".to_string(), ConfigurationValue::Number(tasks as f64)),
-        ])),
+    let message_size = data_size/tasks;
+
+    let candidates_selection = get_candidates_selection(
+        ConfigurationValue::Object("Identity".to_string(), vec![]),
+        tasks,
+    );
+
+    let pattern_cartesian_transform = get_cartesian_transform(
+        vec![tasks],
+        Some(vec![1]),
+        None,
+    );
+
+    let element_composition = ConfigurationValue::Object("ElementComposition".to_string(), vec![
+        ("pattern".to_string(), pattern_cartesian_transform),
     ]);
+
+    let traffic_credit_args = BuildTrafficCreditCVArgs{
+        tasks,
+        credits_to_activate: 1,
+        credits_per_received_message: 0,
+        messages_per_transition: messages,
+        message_size,
+        pattern: element_composition,
+        initial_credits: candidates_selection,
+        message_size_pattern: None,
+    };
+
+    let traffic_credit = get_traffic_credit(traffic_credit_args);
 
     let traffic_message_cv_builder = BuildMessageCVArgs{
         traffic: traffic_credit,

@@ -321,6 +321,27 @@ impl MessageTaskSequence
     }
 }
 
+pub struct BuilderMessageTaskSequenceCVArgs {
+    pub tasks: usize,
+    pub traffics: Vec<ConfigurationValue>,
+    pub messages_to_send_per_traffic: Vec<usize>,
+    pub messages_to_consume_per_traffic: Option<Vec<usize>>,
+}
+
+pub fn get_traffic_message_task_sequence(args: BuilderMessageTaskSequenceCVArgs) -> ConfigurationValue{
+    let mut arg_vec = vec![
+        ("tasks".to_string(), ConfigurationValue::Number(args.tasks as f64)),
+        ("traffics".to_string(), ConfigurationValue::Array(args.traffics)),
+        ("messages_to_send_per_traffic".to_string(), ConfigurationValue::Array(args.messages_to_send_per_traffic.iter().map(|v| ConfigurationValue::Number(*v as f64)).collect())),
+    ];
+
+    if let Some(messages_to_consume_per_traffic) = args.messages_to_consume_per_traffic {
+        arg_vec.push(("messages_to_consume_per_traffic".to_string(), ConfigurationValue::Array(messages_to_consume_per_traffic.iter().map(|v| ConfigurationValue::Number(*v as f64)).collect())));
+    }
+
+    ConfigurationValue::Object("MessageTaskSequence".to_string(), arg_vec)
+}
+
 
 /// Like the `Burst` pattern, but generating messages from different patterns and with different message sizes.
 #[derive(Quantifiable)]
