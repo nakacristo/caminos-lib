@@ -1278,11 +1278,15 @@ impl PAR
 }
 
 
-/*
+/**
 * Experimental routing for Dragonfly which allow direct routes instead of only Minimal
 * Direct routes use the same resources as minimal routes, but they are not minimal paths over the graph
 * Used in Dragonflies with trunking
-*/
+* ```ignore
+* DragonflyDirect{
+* }
+* TODO: Add doc and refactor the code
+**/
 #[derive(Debug)]
 pub struct DragonflyDirect
 {
@@ -1297,7 +1301,7 @@ pub struct DragonflyDirect
 	///Max weight distance
 	total_max_weight_distance:usize,
 	///Max weight distance
-	local_max_weight_distance:Vec<usize>,
+	max_hops_per_class:Vec<usize>,
 }
 
 impl Routing for DragonflyDirect
@@ -1341,7 +1345,7 @@ impl Routing for DragonflyDirect
 				let new_distance = *self.distance_matrix.get(router_index, target_router);
 				if new_distance + link_weight == distance
 					|| (current_weight + link_weight + new_distance <= self.total_max_weight_distance
-						&& selections[link_class] +1 <= self.local_max_weight_distance[link_class] as i32
+						&& selections[link_class] +1 <= self.max_hops_per_class[link_class] as i32
 						&& distance > self.class_weight[1] && selections[0] == 0
 						&& *self.group_matrix.get(router_index, target_router) == 100usize
 				) //This is adapted to DF
@@ -1412,28 +1416,28 @@ impl Routing for DragonflyDirect
 
 impl DragonflyDirect
 {
-	pub fn new(arg: RoutingBuilderArgument) -> DragonflyDirect
+	pub fn new(_arg: RoutingBuilderArgument) -> DragonflyDirect
 	{
-		let mut class_weight=None;
-		let mut total_max_weight_distance=0;
-		let mut local_max_weight_distance=vec![];
-		match_object_panic!(arg.cv,"DragonflyDirect",value,
-			"class_weight" => class_weight = Some(value.as_array()
-				.expect("bad value for class_weight").iter()
-				.map(|v|v.as_f64().expect("bad value in class_weight") as usize).collect()),
-			"total_max_weight_distance" => total_max_weight_distance = value.as_f64().expect("bad value for total_max_weight_distance") as usize,
-			"max_hops_per_class" => local_max_weight_distance = value.as_array()
-				.expect("bad value for local_max_weight_distance").iter()
-				.map(|v|v.as_f64().expect("bad value in local_max_weight_distance") as usize).collect(),
-		);
-		let class_weight=class_weight.expect("There were no class_weight");
+		let class_weight=vec![1, 100];
+		let total_max_weight_distance= 120;
+		let max_hops_per_class =vec![2, 1];
+		// match_object_panic!(arg.cv,"DragonflyDirect",value,
+		// 	"class_weight" => class_weight = Some(value.as_array()
+		// 		.expect("bad value for class_weight").iter()
+		// 		.map(|v|v.as_f64().expect("bad value in class_weight") as usize).collect()),
+		// 	"total_max_weight_distance" => total_max_weight_distance = value.as_f64().expect("bad value for total_max_weight_distance") as usize,
+		// 	"max_hops_per_class" => max_hops_per_class = value.as_array()
+		// 		.expect("bad value for local_max_weight_distance").iter()
+		// 		.map(|v|v.as_f64().expect("bad value in local_max_weight_distance") as usize).collect(),
+		// );
+		// let class_weight=class_weight.expect("There were no class_weight");
 		DragonflyDirect {
 			class_weight,
 			distance_matrix:Matrix::constant(0, 0, 0),
 			local_matrix:Matrix::constant(0, 0, 0),
 			group_matrix:Matrix::constant(0,0,0),
 			total_max_weight_distance,
-			local_max_weight_distance,
+			max_hops_per_class,
 		}
 	}
 }
