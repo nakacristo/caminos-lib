@@ -464,7 +464,7 @@ pub struct Hamming
 {
 	cartesian_data: CartesianData,
 	servers_per_router: usize,
-	wiring: Box<dyn CompleteGraphWiring>,
+	wiring: Vec<Box<dyn CompleteGraphWiring>>,
 }
 
 impl Topology for Hamming
@@ -498,7 +498,7 @@ impl Topology for Hamming
 		if dimension<m
 		{
 			let mut coordinates=self.cartesian_data.unpack(router_index);
-			let (dest_switch_dim, dest_port)= self.wiring.map(coordinates[dimension], offset);
+			let (dest_switch_dim, dest_port)= self.wiring[dimension].map(coordinates[dimension], offset);
 			coordinates[dimension]=dest_switch_dim;
 			//Print all data for debugging
 			// println!("router_index: {} -> port: {} -> dest_switch_dim: {} -> coordinates[dimension]: {} -> dest_port:{}",router_index,port,coordinates[dimension],dest_switch_dim,dest_port);
@@ -591,7 +591,7 @@ impl Hamming
 	{
 		let mut sides:Option<Vec<_>>=None;
 		let mut servers_per_router=None;
-		let mut wiring:Box<dyn CompleteGraphWiring>= Box::new(CompleteGraphRelative::default());
+		let mut wiring_str= ConfigurationValue::Object("CompleteGraphRelative".to_string(), vec![]); // Box::new(CompleteGraphRelative::default());
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=cv
 		{
 			if cv_name!="Hamming"
@@ -617,7 +617,7 @@ impl Hamming
 					}
 					"wiring" => match value
 					{
-						&ConfigurationValue::Object(ref cv_name, ref cv_pairs) => wiring= new_complete_graph_wiring(ConfigurationValue::Object(cv_name.clone(),cv_pairs.clone())),
+						&ConfigurationValue::Object(ref cv_name, ref _cv_pairs) => wiring_str= ConfigurationValue::Object(cv_name.clone(),cv_pairs.clone()),//new_complete_graph_wiring(ConfigurationValue::Object(cv_name.clone(),cv_pairs.clone())),
 						_ => todo!(),
 					}
 					"legend_name" => (),
@@ -631,11 +631,18 @@ impl Hamming
 		}
 		let sides=sides.expect("There were no sides");
 		//TODO if sides are of different sizes
-		assert_eq!(sides.iter().unique().count(),1,"All sides must be the same");
+		// assert_eq!(sides.iter().unique().count(),1,"All sides must be the same");
 
 		let cartesian_data=CartesianData::new(&sides);
 		let servers_per_router=servers_per_router.expect("There were no servers_per_router");
-		wiring.initialize(cartesian_data.sides[0], &mut StdRng::from_entropy());
+		let wiring = (0..cartesian_data.sides.len()).map(|i|
+			{
+				let mut w=new_complete_graph_wiring(wiring_str.clone());
+				w.initialize(cartesian_data.sides[i], &mut StdRng::from_entropy());
+				w
+			}
+		).collect();
+		// wiring.initialize(cartesian_data.sides[0], &mut StdRng::from_entropy());
 		//println!("servers_per_router={}",servers_per_router);
 		Hamming{
 			cartesian_data,
