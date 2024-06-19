@@ -12,9 +12,12 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 
 use ::rand::{rngs::StdRng,Rng};
+use rand::SeedableRng;
 
 use crate::match_object_panic;
 use crate::config_parser::ConfigurationValue;
+use crate::matrix::Matrix;
+use crate::pattern::{new_pattern, Pattern, PatternBuilderArgument};
 use crate::routing::*;
 use crate::topology::prelude::*;
 //use crate::topology::{Topology,Location};
@@ -765,7 +768,185 @@ impl AdaptiveStart
 	}
 }
 
+#[derive(Debug)]
+pub struct SubTopologyRouting
+{
+	logical_topology: Box<dyn Topology>,
+	map: Box<dyn Pattern>,
+	physical_to_logical: Vec<usize>,
+	logical_to_physical: Vec<usize>,
+	logical_topology_connections: Matrix<usize>,
+	logical_routing: Box<dyn Routing>,
+	opportunistic_hops: bool,
+	opportunistic_set_label: i32,
+}
+
+impl Routing for SubTopologyRouting
+{
+	fn next(&self, routing_info: &RoutingInfo, topology: &dyn Topology, current_router: usize, target_router: usize, target_server: Option<usize>, num_virtual_channels: usize, rng: &mut StdRng) -> Result<RoutingNextCandidates, Error> {
+		if target_router == current_router
+		{
+			let target_server = target_server.expect("target server was not given.");
+			for i in 0..topology.ports(current_router)
+			{
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router, i)
+				{
+					if server==target_server
+					{
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
+					}
+				}
+			}
+			unreachable!();
+		}
+
+		let logical_current = self.physical_to_logical[current_router];
+		let logical_target = self.physical_to_logical[target_router];
+		let logical_candidates = self.logical_routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(), self.logical_topology.as_ref(), logical_current, logical_target, None, num_virtual_channels, rng)?;
+		let mut candidates =vec![];
+		for CandidateEgress{port,virtual_channel,label,annotation,..} in logical_candidates.candidates
+		{
+			let Location::RouterPort{router_index: next_physical_router, .. } = self.logical_topology.neighbour(logical_current, port).0 else { panic!("There should be a port") };
+			let physical_port = topology.neighbour_router_iter(current_router).find(|item| item.neighbour_router == next_physical_router).expect("port not found").port_index;
+			let physical_label = label;
+			candidates.push(CandidateEgress{port:physical_port,virtual_channel,label:physical_label, estimated_remaining_hops: None, router_allows: None, annotation});
+		}
+
+		if self.opportunistic_hops
+		{
+			for neighbour in topology.neighbour_router_iter(current_router).into_iter()
+			{
+				let physical_neighbour = neighbour.neighbour_router;
+				let logical_neighbour = self.physical_to_logical[physical_neighbour];
+				if self.logical_topology.distance(logical_neighbour, logical_target) < self.logical_topology.distance(logical_current, logical_target)
+					&& *self.logical_topology_connections.get(current_router, physical_neighbour) == 0
+				{
+					let physical_port = neighbour.port_index;
+					candidates.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:physical_port,virtual_channel:vc,label:self.opportunistic_set_label, estimated_remaining_hops: None, router_allows: None, annotation: None}));
+				}
+
+			}
+		}
+		Ok(RoutingNextCandidates{candidates, idempotent: logical_candidates.idempotent})
+	}
+
+	fn initialize_routing_info(&self, routing_info: &RefCell<RoutingInfo>, _topology: &dyn Topology, current_router: usize, target_router: usize, _target_server: Option<usize>, rng: &mut StdRng) {
+		let logical_current = self.physical_to_logical[current_router];
+		let logical_target = self.physical_to_logical[target_router];
+
+		let mut bri = routing_info.borrow_mut();
+		bri.meta = Some(vec![ RefCell::new(RoutingInfo::new()) ]);
+		let bri_sub = &bri.meta.as_ref().unwrap()[0];
+		self.logical_routing.initialize_routing_info(bri_sub, self.logical_topology.as_ref(), logical_current, logical_target, None, rng);
+	}
+
+	fn update_routing_info(&self, routing_info: &RefCell<RoutingInfo>, topology: &dyn Topology, current_router: usize, current_port: usize, target_router: usize, _target_server: Option<usize>, rng: &mut StdRng) {
+		let logical_current = self.physical_to_logical[current_router];
+		let logical_target = self.physical_to_logical[target_router];
+		let (previous_physical_router_loc, _link_class) = topology.neighbour(current_router, current_port);
+
+		// println!("current_router={}, current_port={}, previous_physical_router_loc={:?}", current_router, current_port, previous_physical_router_loc);
+		//TODO: Reduce the complexity of this operation. It can be O(1) instead of O(degree) but a new method is needed in the trait.
+		let mut routing_info = routing_info.borrow_mut();
+		if let Location::RouterPort{router_index: previous_physical_router,..} = previous_physical_router_loc {
+			let prev_logical_router = self.physical_to_logical[previous_physical_router];
+			if let Some(a) = self.logical_topology.neighbour_router_iter(logical_current)
+				.find(|item| item.neighbour_router == prev_logical_router)
+			{
+				let logical_port  = a.port_index;
+				self.logical_routing.update_routing_info(&(routing_info.meta.as_ref().unwrap()[0]), self.logical_topology.as_ref(), logical_current, logical_port, logical_target, None, rng);
+			}else{
+				let routing_info_sub = RefCell::new(RoutingInfo::new());
+				routing_info.meta = Some(vec![routing_info_sub]);
+
+				self.logical_routing.initialize_routing_info(&routing_info.meta.as_ref().unwrap()[0], self.logical_topology.as_ref(), logical_current, logical_target, None, rng);
+			}
+		}else {
+			panic!("!!")
+		}
+	}
+
+	fn initialize(&mut self, topology: &dyn Topology, rng: &mut StdRng) {
+
+		self.map.initialize(self.logical_topology.num_routers(), self.logical_topology.num_routers(), self.logical_topology.as_ref(), rng);
+		for i in 0..topology.num_routers() {
+			let logical = self.map.get_destination(i, topology, rng);
+			self.physical_to_logical[i] = logical;
+			self.logical_to_physical[logical] = i;
+		}
+
+		//Check that neighbours in the logical topology are neighbours in the physical topology
+		self.logical_topology_connections = Matrix::constant(0,topology.num_routers(), topology.num_routers()); //physical matrix but logical connections
+		//TODO: Reduce the complexity of this operation.
+		for i in 0..self.logical_topology.num_routers() {
+			let physical_i = self.logical_to_physical[i];
+			for NeighbourRouterIteratorItem{neighbour_router,..} in self.logical_topology.neighbour_router_iter(i) {
+				let physical_neighbour = self.logical_to_physical[neighbour_router];
+				let neighbour = topology.neighbour_router_iter(physical_i).find(|item| item.neighbour_router == physical_neighbour).is_some();
+				assert!(neighbour);
+				*self.logical_topology_connections.get_mut(physical_i, physical_neighbour) = 1;
+
+			}
+		}
+		// println!("logical_topology_connections={:?}",self.logical_topology_connections);
+
+		self.logical_routing.initialize(self.logical_topology.as_ref(), rng);
+	}
+
+	fn statistics(&self, _cycle: Time) -> Option<ConfigurationValue> {
+		None
+	}
+}
+
+impl SubTopologyRouting
+{
+	pub fn new(arg: RoutingBuilderArgument) -> SubTopologyRouting
+	{
+		let mut logical_topology = None;
+		let mut map = None;
+		let mut logical_routing = None;
+		let mut opportunistic_hops = false;
+		let mut opportunistic_set_label = 0i32;
+		//new rng for the subtopology
+		let rng =  &mut StdRng::from_entropy();
+		match_object_panic!(arg.cv,"SubTopologyRouting",value,
+			"logical_topology" => logical_topology = Some(new_topology(TopologyBuilderArgument{cv:value, rng, plugs: arg.plugs})),
+			"map" => map = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})), //map of the application over the machine
+			"logical_routing" => logical_routing = Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"opportunistic_hops" => opportunistic_hops = value.as_bool().expect("bad value for opportunistic_hops"),
+			"opportunistic_set_label" => opportunistic_set_label = value.as_i32().expect("bad value for opportunistic_set_label"),
+		);
+		let logical_topology = logical_topology.expect("missing topology");
+		let map = map.expect("missing physical_to_logical");
+		let logical_routing = logical_routing.expect("missing routing");
+
+		let physical_to_logical = vec![0; logical_topology.num_routers()];
+		let logical_to_physical = vec![0; logical_topology.num_routers()];
 
 
+		SubTopologyRouting {
+			logical_topology,
+			map,
+			physical_to_logical,
+			logical_to_physical,
+			logical_topology_connections: Matrix::constant(0,0,0),
+			logical_routing,
+			opportunistic_hops,
+			opportunistic_set_label,
+		}
+	}
+}
 
-
+// /**
+// * Depending on the pair (current, neighbor) the routing is selected.
+// * If both current and neighbour belong to the same selection, the routing is selected.
+// * TODO: This is a stub, it should be implemented.
+// **/
+// #[derive(Debug)]
+// pub struct PlaceRouting
+// {
+// 	selection_patterns: Vec<Box<dyn Pattern>>,
+// 	routings: Vec<Box<dyn Routing>>,
+// 	default_routing: Box<dyn Routing>,
+// }
+//
