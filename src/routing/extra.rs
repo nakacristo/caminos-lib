@@ -804,12 +804,26 @@ impl Routing for SubTopologyRouting
 		let logical_target = self.physical_to_logical[target_router];
 		let logical_candidates = self.logical_routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(), self.logical_topology.as_ref(), logical_current, logical_target, None, num_virtual_channels, rng)?;
 		let mut candidates =vec![];
-		for CandidateEgress{port,virtual_channel,label,annotation,..} in logical_candidates.candidates
+		for CandidateEgress{port,virtual_channel,label: _,annotation,..} in logical_candidates.candidates
 		{
 			let Location::RouterPort{router_index: next_physical_router, .. } = self.logical_topology.neighbour(logical_current, port).0 else { panic!("There should be a port") };
 			let physical_port = topology.neighbour_router_iter(current_router).find(|item| item.neighbour_router == next_physical_router).expect("port not found").port_index;
-			let physical_label = label;
-			candidates.push(CandidateEgress{port:physical_port,virtual_channel,label:physical_label, estimated_remaining_hops: None, router_allows: None, annotation});
+			//let physical_label = label;
+
+			let label = if topology.distance(next_physical_router, target_router) < topology.distance(current_router, target_router)
+			{
+				0
+
+			} else if topology.distance(next_physical_router, target_router) == topology.distance(current_router, target_router)
+			{
+				1
+
+			}else {
+
+				2
+
+			};
+			candidates.push(CandidateEgress{port:physical_port,virtual_channel,label, estimated_remaining_hops: None, router_allows: None, annotation});
 		}
 
 		if self.opportunistic_hops
@@ -822,7 +836,20 @@ impl Routing for SubTopologyRouting
 					&& *self.logical_topology_connections.get(current_router, physical_neighbour) == 0
 				{
 					let physical_port = neighbour.port_index;
-					candidates.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:physical_port,virtual_channel:vc,label:self.opportunistic_set_label, estimated_remaining_hops: None, router_allows: None, annotation: None}));
+					let label = if topology.distance(physical_neighbour, target_router) < topology.distance(current_router, target_router)
+					{
+						0
+
+					} else if topology.distance(physical_neighbour, target_router) == topology.distance(current_router, target_router)
+					{
+						1
+
+					}else {
+
+						2
+
+					};
+					candidates.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:physical_port,virtual_channel:vc,label, estimated_remaining_hops: None, router_allows: None, annotation: None}));
 				}
 
 			}
