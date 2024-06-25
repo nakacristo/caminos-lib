@@ -72,7 +72,7 @@ impl Traffic for Sequence
             return false;
         }
 
-        while self.traffics[self.current_traffic].is_finished()
+        while self.current_traffic < self.traffics.len() && self.traffics[self.current_traffic].is_finished()
         {
             self.current_traffic += 1;
         }
