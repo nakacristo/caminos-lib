@@ -41,12 +41,12 @@ impl Traffic for Sequence
 {
     fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
     {
-        while self.traffics[self.current_traffic].is_finished()
-        {
-            self.current_traffic += 1;
-            //self.current_traffic = (self.current_traffic + 1) % self.traffics.len();
-        }
-        assert!(self.current_traffic<self.traffics.len());
+        // while self.traffics[self.current_traffic].is_finished()
+        // {
+        //     self.current_traffic += 1;
+        //     //self.current_traffic = (self.current_traffic + 1) % self.traffics.len();
+        // }
+        assert!(self.current_traffic<=self.traffics.len());
         self.traffics[self.current_traffic].generate_message(origin,cycle,topology,rng)
     }
     fn probability_per_cycle(&self,task:usize) -> f32
@@ -59,32 +59,24 @@ impl Traffic for Sequence
     }
     fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
-        for traffic in self.traffics.iter_mut()
-        {
-            if traffic.try_consume(task,message.clone(),cycle,topology,rng)
-            {
-                while self.current_traffic < self.traffics.len() && self.traffics[self.current_traffic].is_finished()
-                {
-                    //self.current_traffic = (self.current_traffic + 1) % self.traffics.len();
-                    self.current_traffic += 1;
-                }
-                return true;
-            }
-        }
-        return false;
+        self.traffics[self.current_traffic].try_consume(task,message.clone(),cycle,topology,rng)
     }
     fn is_finished(&self) -> bool
     {
-        //return current_period == period_limit;
         return self.current_traffic>=self.traffics.len() || (self.current_traffic==self.traffics.len()-1 && self.traffics[self.current_traffic].is_finished())
     }
     fn should_generate(&mut self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
     {
-        while self.traffics.len() > self.current_traffic && self.traffics[self.current_traffic].is_finished()
+        if self.current_traffic>=self.traffics.len()
+        {
+            return false;
+        }
+
+        while self.traffics[self.current_traffic].is_finished()
         {
             self.current_traffic += 1;
-            //self.current_traffic = (self.current_traffic + 1) % self.traffics.len();
         }
+
         if self.current_traffic>=self.traffics.len()
         {
             false
@@ -178,7 +170,6 @@ pub struct MessageTaskSequence
 impl Traffic for MessageTaskSequence
 {
     fn generate_message(&mut self, origin: usize, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>, TrafficError> {
-
         let messages_sent = &mut self.messages_sent[origin];
         let messages_to_send_per_traffic = &self.messages_to_send_per_traffic;
         for i in 0..self.traffics.len() {
@@ -222,8 +213,8 @@ impl Traffic for MessageTaskSequence
 
     fn is_finished(&self) -> bool {
         for i in 0..self.traffics.len() {
-            if !self.messages_sent.iter().all(|messages_sent| messages_sent[i] >= self.messages_to_send_per_traffic[i])
-                || self.generated_messages[i].len() > 0{
+            if self.generated_messages[i].len() > 0 || !self.messages_sent.iter().all(|messages_sent| messages_sent[i] >= self.messages_to_send_per_traffic[i])
+            {
                 return false;
             }
             if let Some(messages_to_consume_per_traffic) = &self.messages_to_consume_per_traffic {
