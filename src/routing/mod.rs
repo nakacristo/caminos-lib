@@ -447,6 +447,7 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"AdaptiveStart" => Box::new(AdaptiveStart::new(arg)),
 			"DragonflyDirect" => Box::new(DragonflyDirect::new(arg)),
 			"SubTopologyRouting" => Box::new(SubTopologyRouting::new(arg)),
+			"PlaceRouting" => Box::new(PlaceRouting::new(arg)),
 			_ => panic!("Unknown Routing {}",cv_name),
 		}
 	}
