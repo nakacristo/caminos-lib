@@ -770,6 +770,27 @@ impl AdaptiveStart
 	}
 }
 
+/**
+Routing that embeds a logical topology and a logical routing over the physical topology.
+Each router is mapped to a router in the logical topology.
+All logical connections are mapped to physical connections, and the remaining physical connections are used to opportunistically route.
+An opportunistic hop can be made if the hop nears the logical target router in the logical topology.
+# Example
+```ignore
+SubTopologyRouting{
+	logical_topology: Hamming{ //Hypercube
+		servers_per_router: 2, //useless
+		sides:[2,2],
+	},
+	map:Identity,
+	logical_routing: DOR{order:[0,1]},
+	opportunistic_hops:true,
+	opportunistic_set_label:0,
+	legend_name: "Hypercube-DOR opportunistic"
+}
+```
+**/
+
 #[derive(Debug)]
 pub struct SubTopologyRouting
 {
@@ -780,7 +801,6 @@ pub struct SubTopologyRouting
 	logical_topology_connections: Matrix<usize>,
 	logical_routing: Box<dyn Routing>,
 	opportunistic_hops: bool,
-	opportunistic_set_label: i32,
 }
 
 impl Routing for SubTopologyRouting
@@ -935,7 +955,6 @@ impl SubTopologyRouting
 		let mut map = None;
 		let mut logical_routing = None;
 		let mut opportunistic_hops = false;
-		let mut opportunistic_set_label = 0i32;
 		//new rng for the subtopology
 		let rng =  &mut StdRng::from_entropy();
 		match_object_panic!(arg.cv,"SubTopologyRouting",value,
@@ -943,7 +962,6 @@ impl SubTopologyRouting
 			"map" => map = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})), //map of the application over the machine
 			"logical_routing" => logical_routing = Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
 			"opportunistic_hops" => opportunistic_hops = value.as_bool().expect("bad value for opportunistic_hops"),
-			"opportunistic_set_label" => opportunistic_set_label = value.as_i32().expect("bad value for opportunistic_set_label"),
 		);
 		let logical_topology = logical_topology.expect("missing topology");
 		let map = map.expect("missing physical_to_logical");
@@ -961,17 +979,62 @@ impl SubTopologyRouting
 			logical_topology_connections: Matrix::constant(0,0,0),
 			logical_routing,
 			opportunistic_hops,
-			opportunistic_set_label,
 		}
 	}
 }
 
 /**
-* Depending on the pair (current, neighbour) the routing is selected.
-* If both current and neighbour belong to the same selection, the routing is selected.
+Routing that selects a routing based on the current and next candiate routers.
+If the pair of routers belongs to the same region, the routing is selected from the region routing. If not, the default routing is selected.
+Main use is to mark faulty regions and use a different routing for them.
+# Example
+```ignore
+RegionRouting{
+	physical_to_logical:[
+		LinearTransform{
+			source_size:[4,4],
+			matrix:[[1,0]],
+			target_size:[4],
+		},
+	],
+	selected_region_size:[4],
+	logical_to_physical:[
+		LinearTransform{
+			source_size:[4],
+			matrix:[[1], [0]],
+			target_size:[4,4],
+		},
+
+	],
+	region_logical_topology:[
+		Hamming{
+			sides:[4],
+			servers_per_router:4,
+		},
+	],
+	routings:[
+		SubTopologyRouting{
+			logical_topology: Hamming //Hypercube
+			{
+				servers_per_router: 2, //useless
+				sides:[2,2],
+			},
+			map:Identity,
+			logical_routing: DOR{order:[0,1]},
+			opportunistic_hops:true,
+			opportunistic_set_label:0,
+			legend_name: "Hypercube-DOR opportunistic"
+		},
+
+	],
+	extra_label_selection: 4,
+	default_routing: Polarized{include_labels:true,strong:false, panic_on_empty:false},
+	legend_name: "Fault tolerant routing",
+},
+
 **/
 #[derive(Debug)]
-pub struct PlaceRouting
+pub struct RegionRouting
 {
 	physical_to_logical: Vec<Box<dyn Pattern>>,
 	logical_to_physical: Vec<Box<dyn Pattern>>,
@@ -984,7 +1047,7 @@ pub struct PlaceRouting
 	default_routing: Box<dyn Routing>,
 }
 
-impl Routing for PlaceRouting
+impl Routing for RegionRouting
 {
 	fn next(&self, routing_info: &RoutingInfo, topology: &dyn Topology, current_router: usize, target_router: usize, target_server: Option<usize>, num_virtual_channels: usize, rng: &mut StdRng) -> Result<RoutingNextCandidates, Error> {
 
@@ -1154,9 +1217,9 @@ impl Routing for PlaceRouting
 	}
 }
 
-impl PlaceRouting
+impl RegionRouting
 {
-	pub fn new(arg: RoutingBuilderArgument) -> PlaceRouting
+	pub fn new(arg: RoutingBuilderArgument) -> RegionRouting
 	{
 		let mut physical_to_logical = vec![];
 		let mut logical_to_physical = vec![];
@@ -1190,7 +1253,7 @@ impl PlaceRouting
 		}
 
 		let len = physical_to_logical.len();
-		PlaceRouting {
+		RegionRouting {
 			physical_to_logical,
 			logical_to_physical,
 			selected_region_size,
