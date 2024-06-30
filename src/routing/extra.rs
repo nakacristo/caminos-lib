@@ -1228,7 +1228,7 @@ impl RegionRouting
 		let mut routings = vec![];
 		let mut default_routing = None;
 		let mut extra_label_selection = 0;
-		match_object_panic!(arg.cv,"PlaceRouting",value,
+		match_object_panic!(arg.cv,"RegionRouting",value,
 			"physical_to_logical" => physical_to_logical = value.as_array().expect("bad value for selection_patterns").iter().map(|v|new_pattern(PatternBuilderArgument{cv:v,plugs:arg.plugs})).collect(),
 			"logical_to_physical" => logical_to_physical = value.as_array().expect("bad value for map_region").iter().map(|v|new_pattern(PatternBuilderArgument{cv:v,plugs:arg.plugs})).collect(),
 			"selected_region_size" => selected_region_size = value.as_array().expect("bad value for selected_size").iter().map(|v|v.as_usize().expect("bad value in selected_size")).collect(),
