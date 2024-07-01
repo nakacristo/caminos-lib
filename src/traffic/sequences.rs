@@ -22,19 +22,19 @@ Sequence{
 	traffics: [Burst{...}, Burst{...}],
 }
 ```
- **/
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Sequence
 {
-    ///List of applicable traffics.
-    traffics: Vec<Box<dyn Traffic>>,
-    //How many times to apply the whole traffic period. default to 1.
-    //period_limit: usize,
-    ///The traffic which is currently in use.
-    current_traffic: usize,
-    //The period number, starting at 0. The whole traffic finishes before `current_period` reaching `period_limit`.
-    //current_period: usize,
+	///List of applicable traffics.
+	traffics: Vec<Box<dyn Traffic>>,
+	//How many times to apply the whole traffic period. default to 1.
+	//period_limit: usize,
+	///The traffic which is currently in use.
+	current_traffic: usize,
+	//The period number, starting at 0. The whole traffic finishes before `current_period` reaching `period_limit`.
+	//current_period: usize,
 }
 
 impl Traffic for Sequence
@@ -57,7 +57,7 @@ impl Traffic for Sequence
             0.0
         }
     }
-    fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
         self.traffics[self.current_traffic].try_consume(task,message.clone(),cycle,topology,rng)
     }
@@ -109,40 +109,40 @@ impl Traffic for Sequence
 
 impl Sequence
 {
-    pub fn new(arg:TrafficBuilderArgument) -> Sequence
-    {
-        let mut traffics_args =None;
-        let mut period_number=1usize;
-        match_object_panic!(arg.cv,"Sequence",value,
+	pub fn new(arg:TrafficBuilderArgument) -> Sequence
+	{
+		let mut traffics_args =None;
+		let mut period_number=1usize;
+		match_object_panic!(arg.cv,"Sequence",value,
 			"traffics" => traffics_args = Some(value.as_array().expect("bad value for traffics")),
 			"period_number" => period_number=value.as_f64().expect("bad value for period_number") as usize,
 		);
-        let traffics_args=traffics_args.expect("There were no traffics");
-        let TrafficBuilderArgument{plugs,topology,rng, ..} = arg;
-        let traffics : Vec<_> = (0..period_number).flat_map(|_ip| traffics_args.iter().map(
-            |v|new_traffic(TrafficBuilderArgument{cv:v,plugs,topology,rng:&mut *rng})
-        ).collect::<Vec<_>>() ).collect();
-        //let mut traffics = Vec::with_capacity(period_number*traffics_args.len());
-        //for _ip in 0..period_number
-        //{
-        //	for v in traffics_args
-        //	{
-        //		//traffics.push( new_traffic(TrafficBuilderArgument{cv:v,..arg}) );
-        //		traffics.push( new_traffic(TrafficBuilderArgument{cv:v,plugs,topology,rng}) );
-        //	}
-        //}
-        assert!( !traffics.is_empty() , "Cannot make a Sequence of 0 traffics." );
-        let size = traffics[0].number_tasks();
-        for traffic in traffics.iter().skip(1)
-        {
-            assert_eq!( traffic.number_tasks(), size , "In Sequence all sub-traffics must involve the same number of tasks." );
-        }
-        Sequence{
-            traffics,
-            current_traffic:0,
-            //current_period:0,
-        }
-    }
+		let traffics_args=traffics_args.expect("There were no traffics");
+		let TrafficBuilderArgument{plugs,topology,rng, ..} = arg;
+		let traffics : Vec<_> = (0..period_number).flat_map(|_ip| traffics_args.iter().map(
+			|v|new_traffic(TrafficBuilderArgument{cv:v,plugs,topology,rng:&mut *rng})
+		).collect::<Vec<_>>() ).collect();
+		//let mut traffics = Vec::with_capacity(period_number*traffics_args.len());
+		//for _ip in 0..period_number
+		//{
+		//	for v in traffics_args
+		//	{
+		//		//traffics.push( new_traffic(TrafficBuilderArgument{cv:v,..arg}) );
+		//		traffics.push( new_traffic(TrafficBuilderArgument{cv:v,plugs,topology,rng}) );
+		//	}
+		//}
+		assert!( !traffics.is_empty() , "Cannot make a Sequence of 0 traffics." );
+		let size = traffics[0].number_tasks();
+		for traffic in traffics.iter().skip(1)
+		{
+			assert_eq!( traffic.number_tasks(), size , "In Sequence all sub-traffics must involve the same number of tasks." );
+		}
+		Sequence{
+			traffics,
+			current_traffic:0,
+			//current_period:0,
+		}
+	}
 }
 
 /**
@@ -347,131 +347,136 @@ pub fn get_traffic_message_task_sequence(args: BuilderMessageTaskSequenceCVArgs)
 #[derive(Debug)]
 pub struct MultimodalBurst
 {
-    ///Number of tasks applying this traffic.
-    tasks: usize,
-    /// For each kind of message `provenance` we have
-    /// `(pattern,total_messages,message_size,step_size)`
-    /// a Pattern deciding the destination of the message
-    /// a usize with the total number of messages of this kind that each task must generate
-    /// a usize with the size of each message size.
-    /// a usize with the number of messages to send of this kind before switching to the next one.
-    provenance: Vec< (Box<dyn Pattern>,usize,usize,usize) >,
-    ///For each task and kind we track `pending[task][kind]=(total_remaining,step_remaining)`.
-    ///where `total_remaining` is the total number of messages of this kind that this task has yet to send.
-    ///and `step_remaining` is the number of messages that the task will send before switch to the next kind.
-    pending: Vec<Vec<(usize,usize)>>,
-    ///For each task we track which provenance kind is the next one.
-    ///If for the annotated provenance there is not anything else to send then use the next one.
-    next_provenance: Vec<usize>,
-    ///Set of generated messages.
-    generated_messages: BTreeSet<*const Message>,
+	///Number of tasks applying this traffic.
+	tasks: usize,
+	/// For each kind of message `provenance` we have
+	/// `(pattern,total_messages,message_size,step_size)`
+	/// a Pattern deciding the destination of the message
+	/// a usize with the total number of messages of this kind that each task must generate
+	/// a usize with the size of each message size.
+	/// a usize with the number of messages to send of this kind before switching to the next one.
+	provenance: Vec< (Box<dyn Pattern>,usize,usize,usize) >,
+	///For each task and kind we track `pending[task][kind]=(total_remaining,step_remaining)`.
+	///where `total_remaining` is the total number of messages of this kind that this task has yet to send.
+	///and `step_remaining` is the number of messages that the task will send before switch to the next kind.
+	pending: Vec<Vec<(usize,usize)>>,
+	///For each task we track which provenance kind is the next one.
+	///If for the annotated provenance there is not anything else to send then use the next one.
+	next_provenance: Vec<usize>,
+	///Set of generated messages.
+	generated_messages: BTreeSet<u128>,
+	next_id: u128,
 }
 
 impl Traffic for MultimodalBurst
 {
-    fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
-    {
-        if origin>=self.tasks
-        {
-            //panic!("origin {} does not belong to the traffic",origin);
-            return Err(TrafficError::OriginOutsideTraffic);
-        }
-        let pending = &mut self.pending[origin];
-        // Determine the kind to use.
-        let mut provenance_index = self.next_provenance[origin];
-        loop
-        {
-            let (ref mut total_remaining, ref mut step_remaining) = pending[provenance_index];
-            if *total_remaining > 0
-            {
-                *step_remaining -=1;
-                *total_remaining -=1;
-                if *step_remaining == 0
-                {
-                    //When the whole step is performed advance `next_provenance`.
-                    let (ref _pattern, _total_messages, _message_size, step_size) = self.provenance[provenance_index];
-                    *step_remaining = step_size;
-                    self.next_provenance[origin] = (provenance_index+1) % pending.len();
-                }
-                break;
-            }
-            provenance_index = (provenance_index+1) % pending.len();
-        }
-        // Build the message
-        let (ref pattern,_total_messages,message_size,_step_size) = self.provenance[provenance_index];
-        let destination=pattern.get_destination(origin,topology,rng);
-        if origin==destination
-        {
-            return Err(TrafficError::SelfMessage);
-        }
-        let message = Rc::new(Message{
-            origin,
-            destination,
-            size:message_size,
-            creation_cycle: cycle,
-            cycle_into_network: RefCell::new(None),
-        });
-        self.generated_messages.insert(message.as_ref() as *const Message);
-        Ok(message)
-    }
-    fn probability_per_cycle(&self, task:usize) -> f32
-    {
-        for (total_remaining,_step_remaining) in self.pending[task].iter()
-        {
-            if *total_remaining > 0
-            {
-                return 1.0;
-            }
-        }
-        0.0
-    }
-    fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
-    {
-        let message_ptr=message.as_ref() as *const Message;
-        self.generated_messages.remove(&message_ptr)
-    }
-    fn is_finished(&self) -> bool
-    {
-        if !self.generated_messages.is_empty()
-        {
-            return false;
-        }
-        for task_pending in self.pending.iter()
-        {
-            for (total_remaining, _step_remaining) in task_pending.iter()
-            {
-                if *total_remaining > 0
-                {
-                    return false;
-                }
-            }
-        }
-        true
-    }
-    fn task_state(&self, task:usize, _cycle:Time) -> Option<TaskTrafficState>
-    {
-        if self.pending[task].iter().any(|(total_remaining,_step_remaining)| *total_remaining > 0 ) {
-            Some(TaskTrafficState::Generating)
-        } else {
-            //We do not know whether someone is sending us data.
-            //if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
-            // Sometimes it could be Finished, but it is not worth computing...
-            Some(TaskTrafficState::FinishedGenerating)
-        }
-    }
+	fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
+	{
+		if origin>=self.tasks
+		{
+			//panic!("origin {} does not belong to the traffic",origin);
+			return Err(TrafficError::OriginOutsideTraffic);
+		}
+		let pending = &mut self.pending[origin];
+		// Determine the kind to use.
+		let mut provenance_index = self.next_provenance[origin];
+		loop
+		{
+			let (ref mut total_remaining, ref mut step_remaining) = pending[provenance_index];
+			if *total_remaining > 0
+			{
+				*step_remaining -=1;
+				*total_remaining -=1;
+				if *step_remaining == 0
+				{
+					//When the whole step is performed advance `next_provenance`.
+					let (ref _pattern, _total_messages, _message_size, step_size) = self.provenance[provenance_index];
+					*step_remaining = step_size;
+					self.next_provenance[origin] = (provenance_index+1) % pending.len();
+				}
+				break;
+			}
+			provenance_index = (provenance_index+1) % pending.len();
+		}
+		// Build the message
+		let (ref pattern,_total_messages,message_size,_step_size) = self.provenance[provenance_index];
+		let destination=pattern.get_destination(origin,topology,rng);
+		if origin==destination
+		{
+			return Err(TrafficError::SelfMessage);
+		}
+		let id = self.next_id;
+		self.next_id += 1;
+		let message = Rc::new(Message{
+			origin,
+			destination,
+			size:message_size,
+			creation_cycle: cycle,
+			payload: id.to_le_bytes().into(),
+		});
+		self.generated_messages.insert(id);
+		Ok(message)
+	}
+	fn probability_per_cycle(&self, task:usize) -> f32
+	{
+		for (total_remaining,_step_remaining) in self.pending[task].iter()
+		{
+			if *total_remaining > 0
+			{
+				return 1.0;
+			}
+		}
+		0.0
+	}
+	fn try_consume(&mut self, _task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+	{
+		//let message_ptr=message.as_ref() as *const Message;
+		//self.generated_messages.remove(&message_ptr)
+		let id = u128::from_le_bytes(message.payload()[0..16].try_into().expect("bad payload"));
+		self.generated_messages.remove(&id)
+	}
+	fn is_finished(&self) -> bool
+	{
+		if !self.generated_messages.is_empty()
+		{
+			return false;
+		}
+		for task_pending in self.pending.iter()
+		{
+			for (total_remaining, _step_remaining) in task_pending.iter()
+			{
+				if *total_remaining > 0
+				{
+					return false;
+				}
+			}
+		}
+		true
+	}
+	fn task_state(&self, task:usize, _cycle:Time) -> TaskTrafficState
+	{
+		if self.pending[task].iter().any(|(total_remaining,_step_remaining)| *total_remaining > 0 ) {
+			TaskTrafficState::Generating
+		} else {
+			//We do not know whether someone is sending us data.
+			//if self.is_finished() { TaskTrafficState::Finished } else { TaskTrafficState::UnspecifiedWait }
+			// Sometimes it could be Finished, but it is not worth computing...
+			TaskTrafficState::FinishedGenerating
+		}
+	}
 
-    fn number_tasks(&self) -> usize {
-        self.tasks
-    }
+	fn number_tasks(&self) -> usize {
+		self.tasks
+	}
 }
 
 impl MultimodalBurst
 {
-    pub fn new(arg:TrafficBuilderArgument) -> MultimodalBurst
-    {
-        let mut tasks=None;
-        let mut provenance : Option<Vec<(_,_,_,_)>> = None;
-        match_object_panic!(arg.cv,"MultimodalBurst",value,
+	pub fn new(arg:TrafficBuilderArgument) -> MultimodalBurst
+	{
+		let mut tasks=None;
+		let mut provenance : Option<Vec<(_,_,_,_)>> = None;
+		match_object_panic!(arg.cv,"MultimodalBurst",value,
 			"tasks" | "servers" => tasks=Some(value.as_f64().expect("bad value for tasks") as usize),
 			"provenance" => match value
 			{
@@ -496,21 +501,22 @@ impl MultimodalBurst
 				_ => panic!("bad value for provenance"),
 			}
 		);
-        let tasks=tasks.expect("There were no tasks");
-        let mut provenance=provenance.expect("There were no provenance");
-        for (pattern,_total_messages,_message_size,_step_size) in provenance.iter_mut()
-        {
-            pattern.initialize(tasks, tasks, arg.topology, arg.rng);
-        }
-        let each_pending = provenance.iter().map(|(_pattern,total_messages,_message_size,step_size)|(*total_messages,*step_size)).collect();
-        MultimodalBurst{
-            tasks,
-            provenance,
-            pending: vec![each_pending;tasks],
-            next_provenance:vec![0;tasks],
-            generated_messages: BTreeSet::new(),
-        }
-    }
+		let tasks=tasks.expect("There were no tasks");
+		let mut provenance=provenance.expect("There were no provenance");
+		for (pattern,_total_messages,_message_size,_step_size) in provenance.iter_mut()
+		{
+			pattern.initialize(tasks, tasks, arg.topology, arg.rng);
+		}
+		let each_pending = provenance.iter().map(|(_pattern,total_messages,_message_size,step_size)|(*total_messages,*step_size)).collect();
+		MultimodalBurst{
+			tasks,
+			provenance,
+			pending: vec![each_pending;tasks],
+			next_provenance:vec![0;tasks],
+			generated_messages: BTreeSet::new(),
+			next_id: 0,
+		}
+	}
 }
 
 

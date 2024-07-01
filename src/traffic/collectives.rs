@@ -69,12 +69,12 @@ impl Traffic for MessageBarrier
         }
     }
 
-    fn should_generate(self: &mut MessageBarrier, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+    fn should_generate(&mut self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
     {
         self.total_sent_per_task[task] < self.messages_per_task_to_wait && self.traffic.should_generate(task, cycle, rng)
     }
 
-    fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
         self.total_consumed += 1;
         self.total_consumed_per_task[task] += 1;

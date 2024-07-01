@@ -335,7 +335,7 @@ impl Traffic for Sum
     {
         self.list.iter().map(|t|t.probability_per_cycle(task)).sum()
     }
-    fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
         for (index, traffic) in self.list.iter_mut().enumerate()
         {
@@ -482,100 +482,109 @@ ProductTraffic{
 	global_pattern: RandomPermutation,
 }
 ```
- **/
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct ProductTraffic
 {
-    block_size: usize,
-    block_traffic: Box<dyn Traffic>,
-    global_pattern: Box<dyn Pattern>,
-    global_size: usize,
-    ///Set of generated messages.
-    generated_messages: BTreeMap<*const Message,Rc<Message>>,
+	block_size: usize,
+	block_traffic: Box<dyn Traffic>,
+	global_pattern: Box<dyn Pattern>,
+	global_size: usize,
+	//Set of generated messages.
+	//generated_messages: BTreeMap<*const Message,Rc<Message>>,
 }
 
 impl Traffic for ProductTraffic
 {
-    fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
-    {
-        let local=origin % self.block_size;
-        let global=origin / self.block_size;
-        //let local_dest=self.block_pattern.get_destination(local,topology,rng);
-        let global_dest=self.global_pattern.get_destination(global,topology,rng);
-        //global_dest*self.block_size+local_dest
-        let inner_message=self.block_traffic.generate_message(local,cycle,topology,rng)?;
-        let outer_message=Rc::new(Message{
-            origin,
-            destination:global_dest*self.block_size+inner_message.destination,
-            size:inner_message.size,
-            creation_cycle: cycle,
-            cycle_into_network: RefCell::new(None),
-        });
-        self.generated_messages.insert(outer_message.as_ref() as *const Message,inner_message);
-        Ok(outer_message)
-    }
-    fn probability_per_cycle(&self,task:usize) -> f32
-    {
-        let local=task % self.block_size;
-        self.block_traffic.probability_per_cycle(local)
-    }
-    fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
-    {
-        let message_ptr=message.as_ref() as *const Message;
-        let outer_message=match self.generated_messages.remove(&message_ptr)
-        {
-            None => return false,
-            Some(m) => m,
-        };
-        if !self.block_traffic.try_consume(task,outer_message,cycle,topology,rng)
-        {
-            panic!("ProductTraffic traffic consumed a message but its child did not.");
-        }
-        true
-    }
-    fn is_finished(&self) -> bool
-    {
-        self.block_traffic.is_finished()
-    }
-    fn task_state(&self, task:usize, cycle:Time) -> Option<TaskTrafficState>
-    {
-        let local=task % self.block_size;
-        self.block_traffic.task_state(local,cycle)
-    }
+	fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
+	{
+		let local=origin % self.block_size;
+		let global=origin / self.block_size;
+		//let local_dest=self.block_pattern.get_destination(local,topology,rng);
+		let global_dest=self.global_pattern.get_destination(global,topology,rng);
+		//global_dest*self.block_size+local_dest
+		let inner_message=self.block_traffic.generate_message(local,cycle,topology,rng)?;
+		let mut payload = Vec::with_capacity(inner_message.payload().len() + 8);
+		let destination = global_dest*self.block_size+inner_message.destination;
+		payload.extend_from_slice( &(local as u32).to_le_bytes() );
+		payload.extend_from_slice( &(destination as u32).to_le_bytes() );
+		payload.extend_from_slice(inner_message.payload());
+		let outer_message=Rc::new(Message{
+			origin,
+			destination,
+			size:inner_message.size,
+			creation_cycle: cycle,
+			payload,
+		});
+		//self.generated_messages.insert(outer_message.as_ref() as *const Message,inner_message);
+		Ok(outer_message)
+	}
+	fn probability_per_cycle(&self,task:usize) -> f32
+	{
+		let local=task % self.block_size;
+		self.block_traffic.probability_per_cycle(local)
+	}
+	fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+	{
+		//let message_ptr=message.as_ref() as *const Message;
+		//let inner_message=match self.generated_messages.remove(&message_ptr)
+		//{
+		//	None => return false,
+		//	Some(m) => m,
+		//};
+		let mut inner_message = ReferredPayload::from(message);
+		inner_message.origin = u32::from_le_bytes( inner_message.payload[0..4].try_into().unwrap() ) as usize;
+		inner_message.destination = u32::from_le_bytes( inner_message.payload[4..8].try_into().unwrap() ) as usize;
+		inner_message.payload = &inner_message.payload[8..];
+		if !self.block_traffic.try_consume(task,&inner_message,cycle,topology,rng)
+		{
+			panic!("ProductTraffic traffic consumed a message but its child did not.");
+		}
+		true
+	}
+	fn is_finished(&self) -> bool
+	{
+		self.block_traffic.is_finished()
+	}
+	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
+	{
+		let local=task % self.block_size;
+		self.block_traffic.task_state(local,cycle)
+	}
 
-    fn number_tasks(&self) -> usize {
-        self.block_traffic.number_tasks() * self.global_size
-    }
+	fn number_tasks(&self) -> usize {
+		self.block_traffic.number_tasks() * self.global_size
+	}
 }
 
 impl ProductTraffic
 {
-    pub fn new(mut arg:TrafficBuilderArgument) -> ProductTraffic
-    {
-        let mut block_size=None;
-        let mut block_traffic=None;
-        let mut global_pattern=None;
-        match_object_panic!(arg.cv,"ProductTraffic",value,
+	pub fn new(mut arg:TrafficBuilderArgument) -> ProductTraffic
+	{
+		let mut block_size=None;
+		let mut block_traffic=None;
+		let mut global_pattern=None;
+		match_object_panic!(arg.cv,"ProductTraffic",value,
 			"block_traffic" => block_traffic=Some(new_traffic(TrafficBuilderArgument{cv:value,rng:&mut arg.rng,..arg})),
 			"global_pattern" => global_pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 			"block_size" => block_size=Some(value.as_f64().expect("bad value for block_size") as usize),
 		);
-        let block_size=block_size.expect("There were no block_size");
-        let block_traffic=block_traffic.expect("There were no block_traffic");
-        let mut global_pattern=global_pattern.expect("There were no global_pattern");
-        // TODO: should receive a `global_size` argument. When missing, fall back to use topology size.
-        // TODO: Also check for divisibility.
-        let global_size=arg.topology.num_servers()/block_size;
-        global_pattern.initialize(global_size,global_size,arg.topology,arg.rng);
-        ProductTraffic{
-            block_size,
-            block_traffic,
-            global_pattern,
-            global_size,
-            generated_messages: BTreeMap::new(),
-        }
-    }
+		let block_size=block_size.expect("There were no block_size");
+		let block_traffic=block_traffic.expect("There were no block_traffic");
+		let mut global_pattern=global_pattern.expect("There were no global_pattern");
+		// TODO: should receive a `global_size` argument. When missing, fall back to use topology size.
+		// TODO: Also check for divisibility.
+		let global_size=arg.topology.num_servers()/block_size;
+		global_pattern.initialize(global_size,global_size,arg.topology,arg.rng);
+		ProductTraffic{
+			block_size,
+			block_traffic,
+			global_pattern,
+			global_size,
+			//generated_messages: BTreeMap::new(),
+		}
+	}
 }
 
 
@@ -587,121 +596,127 @@ impl ProductTraffic
 #[derive(Debug)]
 pub struct BoundedDifference
 {
-    ///Number of tasks applying this traffic.
-    tasks: usize,
-    ///The pattern of the communication.
-    pattern: Box<dyn Pattern>,
-    ///The size of each sent message.
-    message_size: usize,
-    ///The load offered to the network. Proportion of the cycles that should be injecting phits.
-    load: f32,
-    ///The number of messages each task may generate over the amount it has received.
-    bound: usize,
-    ///Set of generated messages.
-    generated_messages: BTreeSet<*const Message>,
-    ///The number of messages each task is currently allowed to generate until they consume more.
-    ///It is initialized to `bound`.
-    allowance: Vec<usize>,
+	///Number of tasks applying this traffic.
+	tasks: usize,
+	///The pattern of the communication.
+	pattern: Box<dyn Pattern>,
+	///The size of each sent message.
+	message_size: usize,
+	///The load offered to the network. Proportion of the cycles that should be injecting phits.
+	load: f32,
+	///The number of messages each task may generate over the amount it has received.
+	bound: usize,
+	///Set of generated messages.
+	generated_messages: BTreeSet<u128>,
+	next_id: u128,
+	///The number of messages each task is currently allowed to generate until they consume more.
+	///It is initialized to `bound`.
+	allowance: Vec<usize>,
 }
 
 impl Traffic for BoundedDifference
 {
-    fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
-    {
-        if origin>=self.tasks
-        {
-            //panic!("origin {} does not belong to the traffic",origin);
-            return Err(TrafficError::OriginOutsideTraffic);
-        }
-        assert!(self.allowance[origin]>0,"Origin {} has no allowance to send more messages.",origin);
-        let destination=self.pattern.get_destination(origin,topology,rng);
-        if origin==destination
-        {
-            return Err(TrafficError::SelfMessage);
-        }
-        self.allowance[origin]-=1;
-        let message=Rc::new(Message{
-            origin,
-            destination,
-            size:self.message_size,
-            creation_cycle: cycle,
-            cycle_into_network: RefCell::new(None),
-        });
-        self.generated_messages.insert(message.as_ref() as *const Message);
-        Ok(message)
-    }
-    fn probability_per_cycle(&self, task:usize) -> f32
-    {
-        if self.allowance[task]>0
-        {
-            let r=self.load/self.message_size as f32;
-            //println!("load={} r={} size={}",self.load,r,self.message_size);
-            if r>1.0
-            {
-                1.0
-            }
-            else
-            {
-                r
-            }
-        } else { 0f32 }
-    }
-    fn try_consume(&mut self, task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
-    {
-        let message_ptr=message.as_ref() as *const Message;
-        self.allowance[task]+=1;
-        self.generated_messages.remove(&message_ptr)
-    }
-    fn is_finished(&self) -> bool
-    {
-        false
-    }
-    fn task_state(&self, task:usize, _cycle:Time) -> Option<TaskTrafficState>
-    {
-        if self.allowance[task]>0 {
-            Some(Generating)
-        } else {
-            Some(WaitingData)
-        }
-    }
+	fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
+	{
+		if origin>=self.tasks
+		{
+			//panic!("origin {} does not belong to the traffic",origin);
+			return Err(TrafficError::OriginOutsideTraffic);
+		}
+		assert!(self.allowance[origin]>0,"Origin {} has no allowance to send more messages.",origin);
+		let destination=self.pattern.get_destination(origin,topology,rng);
+		if origin==destination
+		{
+			return Err(TrafficError::SelfMessage);
+		}
+		self.allowance[origin]-=1;
+		let id = self.next_id;
+		self.next_id += 1;
+		let message=Rc::new(Message{
+			origin,
+			destination,
+			size:self.message_size,
+			creation_cycle: cycle,
+			payload: id.to_le_bytes().into(),
+		});
+		self.generated_messages.insert(id);
+		Ok(message)
+	}
+	fn probability_per_cycle(&self, task:usize) -> f32
+	{
+		if self.allowance[task]>0
+		{
+			let r=self.load/self.message_size as f32;
+			//println!("load={} r={} size={}",self.load,r,self.message_size);
+			if r>1.0
+			{
+				1.0
+			}
+			else
+			{
+				r
+			}
+		} else { 0f32 }
+	}
+	fn try_consume(&mut self, task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+	{
+		//let message_ptr=message.as_ref() as *const Message;
+		self.allowance[task]+=1;
+		//self.generated_messages.remove(&message_ptr)
+		let id = u128::from_le_bytes(message.payload()[0..16].try_into().expect("bad payload"));
+		self.generated_messages.remove(&id)
+	}
+	fn is_finished(&self) -> bool
+	{
+		false
+	}
+	fn task_state(&self, task:usize, _cycle:Time) -> TaskTrafficState
+	{
+		if self.allowance[task]>0 {
+			TaskTrafficState::Generating
+		} else {
+			TaskTrafficState::WaitingData
+		}
+	}
 
-    fn number_tasks(&self) -> usize {
-        self.tasks
-    }
+	fn number_tasks(&self) -> usize {
+		self.tasks
+	}
 }
 
 impl BoundedDifference
 {
-    pub fn new(arg:TrafficBuilderArgument) -> BoundedDifference
-    {
-        let mut tasks=None;
-        let mut load=None;
-        let mut pattern=None;
-        let mut message_size=None;
-        let mut bound=None;
-        match_object_panic!(arg.cv,"BoundedDifference",value,
+	pub fn new(arg:TrafficBuilderArgument) -> BoundedDifference
+	{
+		let mut tasks=None;
+		let mut load=None;
+		let mut pattern=None;
+		let mut message_size=None;
+		let mut bound=None;
+		match_object_panic!(arg.cv,"BoundedDifference",value,
 			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 			"tasks" | "servers" => tasks=Some(value.as_f64().expect("bad value for tasks") as usize),
 			"load" => load=Some(value.as_f64().expect("bad value for load") as f32),
 			"message_size" => message_size=Some(value.as_f64().expect("bad value for message_size") as usize),
 			"bound" => bound=Some(value.as_f64().expect("bad value for bound") as usize),
 		);
-        let tasks=tasks.expect("There were no tasks");
-        let message_size=message_size.expect("There were no message_size");
-        let bound=bound.expect("There were no bound");
-        let load=load.expect("There were no load");
-        let mut pattern=pattern.expect("There were no pattern");
-        pattern.initialize(tasks, tasks, arg.topology, arg.rng);
-        BoundedDifference{
-            tasks,
-            pattern,
-            message_size,
-            load,
-            bound,
-            generated_messages: BTreeSet::new(),
-            allowance: vec![bound;tasks],
-        }
-    }
+		let tasks=tasks.expect("There were no tasks");
+		let message_size=message_size.expect("There were no message_size");
+		let bound=bound.expect("There were no bound");
+		let load=load.expect("There were no load");
+		let mut pattern=pattern.expect("There were no pattern");
+		pattern.initialize(tasks, tasks, arg.topology, arg.rng);
+		BoundedDifference{
+			tasks,
+			pattern,
+			message_size,
+			load,
+			bound,
+			generated_messages: BTreeSet::new(),
+			allowance: vec![bound;tasks],
+			next_id: 0,
+		}
+	}
 }
 
 /**

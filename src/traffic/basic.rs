@@ -23,110 +23,118 @@ HomogeneousTraffic{
 	message_size: 16,
 }
 ```
- **/
+**/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 pub struct Homogeneous
 {
-    ///Number of tasks applying this traffic.
-    tasks: usize,
-    ///The pattern of the communication.
-    pattern: Box<dyn Pattern>,
-    ///The size of each sent message.
-    message_size: usize,
-    ///The load offered to the network. Proportion of the cycles that should be injecting phits.
-    load: f32,
-    ///Set of generated messages.
-    generated_messages: BTreeSet<*const Message>,
+	///Number of tasks applying this traffic.
+	tasks: usize,
+	///The pattern of the communication.
+	pattern: Box<dyn Pattern>,
+	///The size of each sent message.
+	message_size: usize,
+	///The load offered to the network. Proportion of the cycles that should be injecting phits.
+	load: f32,
+	///Set of generated messages.
+	//generated_messages: BTreeSet<*const Message>,
+	generated_messages: BTreeSet<u128>,
+	next_id: u128,
 }
 
 impl Traffic for Homogeneous
 {
-    fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
-    {
-        if origin>=self.tasks
-        {
-            //panic!("origin {} does not belong to the traffic",origin);
-            return Err(TrafficError::OriginOutsideTraffic);
-        }
-        let destination=self.pattern.get_destination(origin,topology,rng);
-        if origin==destination
-        {
-            return Err(TrafficError::SelfMessage);
-        }
-        let message=Rc::new(Message{
-            origin,
-            destination,
-            size:self.message_size,
-            creation_cycle: cycle,
-            cycle_into_network: RefCell::new(None),
-        });
-        self.generated_messages.insert(message.as_ref() as *const Message);
-        Ok(message)
-    }
-    fn probability_per_cycle(&self, _task:usize) -> f32
-    {
-        let r=self.load/self.message_size as f32;
-        //println!("load={} r={} size={}",self.load,r,self.message_size);
-        if r>1.0
-        {
-            1.0
-        }
-        else
-        {
-            r
-        }
-    }
+	fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
+	{
+		if origin>=self.tasks
+		{
+			//panic!("origin {} does not belong to the traffic",origin);
+			return Err(TrafficError::OriginOutsideTraffic);
+		}
+		let destination=self.pattern.get_destination(origin,topology,rng);
+		if origin==destination
+		{
+			return Err(TrafficError::SelfMessage);
+		}
+		let id = self.next_id;
+		self.next_id += 1;
+		let message=Rc::new(Message{
+			origin,
+			destination,
+			size:self.message_size,
+			creation_cycle: cycle,
+			payload: id.to_le_bytes().into(),
+		});
+		//self.generated_messages.insert(message.as_ref() as *const Message);
+		self.generated_messages.insert(id);
+		Ok(message)
+	}
+	fn probability_per_cycle(&self, _task:usize) -> f32
+	{
+		let r=self.load/self.message_size as f32;
+		//println!("load={} r={} size={}",self.load,r,self.message_size);
+		if r>1.0
+		{
+			1.0
+		}
+		else
+		{
+			r
+		}
+	}
 
-    fn should_generate(&mut self, _task: usize, _cycle: Time, _rng: &mut StdRng) -> bool {
-        true
-    }
-    fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
-    {
-        let message_ptr=message.as_ref() as *const Message;
-        self.generated_messages.remove(&message_ptr)
-    }
-    fn is_finished(&self) -> bool
-    {
-        false
-    }
-    fn task_state(&self, _task:usize, _cycle:Time) -> Option<TaskTrafficState>
-    {
-        Some(Generating)
-    }
+	fn should_generate(&mut self, _task: usize, _cycle: Time, _rng: &mut StdRng) -> bool {
+		true
+	}
+	fn try_consume(&mut self, _task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+	{
+		//let message_ptr=message.as_ref() as *const Message;
+		//self.generated_messages.remove(&message_ptr)
+		let id = u128::from_le_bytes(message.payload()[0..16].try_into().expect("bad payload"));
+		self.generated_messages.remove(&id)
+	}
+	fn is_finished(&self) -> bool
+	{
+		false
+	}
+	fn task_state(&self, _task:usize, _cycle:Time) -> TaskTrafficState
+	{
+		TaskTrafficState::Generating
+	}
 
-    fn number_tasks(&self) -> usize {
-        self.tasks
-    }
+	fn number_tasks(&self) -> usize {
+		self.tasks
+	}
 }
 
 impl Homogeneous
 {
-    pub fn new(arg:TrafficBuilderArgument) -> Homogeneous
-    {
-        let mut tasks=None;
-        let mut load=None;
-        let mut pattern=None;
-        let mut message_size=None;
-        match_object_panic!(arg.cv,"HomogeneousTraffic",value,
+	pub fn new(arg:TrafficBuilderArgument) -> Homogeneous
+	{
+		let mut tasks=None;
+		let mut load=None;
+		let mut pattern=None;
+		let mut message_size=None;
+		match_object_panic!(arg.cv,"HomogeneousTraffic",value,
 			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
 			"tasks" | "servers" => tasks=Some(value.as_f64().expect("bad value for tasks") as usize),
 			"load" => load=Some(value.as_f64().expect("bad value for load") as f32),
 			"message_size" => message_size=Some(value.as_f64().expect("bad value for message_size") as usize),
 		);
-        let tasks=tasks.expect("There were no tasks");
-        let message_size=message_size.expect("There were no message_size");
-        let load=load.expect("There were no load");
-        let mut pattern=pattern.expect("There were no pattern");
-        pattern.initialize(tasks, tasks, arg.topology, arg.rng);
-        Homogeneous{
-            tasks,
-            pattern,
-            message_size,
-            load,
-            generated_messages: BTreeSet::new(),
-        }
-    }
+		let tasks=tasks.expect("There were no tasks");
+		let message_size=message_size.expect("There were no message_size");
+		let load=load.expect("There were no load");
+		let mut pattern=pattern.expect("There were no pattern");
+		pattern.initialize(tasks, tasks, arg.topology, arg.rng);
+		Homogeneous{
+			tasks,
+			pattern,
+			message_size,
+			load,
+			generated_messages: BTreeSet::new(),
+			next_id: 0,
+		}
+	}
 }
 
 /**
@@ -156,11 +164,12 @@ pub struct Burst
     ///The number of messages each task has pending to sent.
     pending_messages: Vec<usize>,
     ///Set of generated messages.
-    generated_messages: BTreeSet<*const Message>,
+    generated_messages: BTreeSet<u128>,
     ///Expected messages to consume per task
     expected_messages_to_consume: Option<usize>,
     ///Messages per task consumed
     total_consumed_per_task: Vec<usize>,
+    next_id: u128,
 }
 
 impl Traffic for Burst
@@ -178,14 +187,17 @@ impl Traffic for Burst
         {
             return Err(TrafficError::SelfMessage);
         }
+        let id = self.next_id;
+        self.next_id += 1;
         let message=Rc::new(Message{
             origin,
             destination,
             size:self.message_size,
             creation_cycle: cycle,
             cycle_into_network: RefCell::new(None),
+            payload: id.to_le_bytes().into(),
         });
-        self.generated_messages.insert(message.as_ref() as *const Message);
+        self.generated_messages.insert(id);
         Ok(message)
     }
     fn probability_per_cycle(&self, task:usize) -> f32
@@ -205,11 +217,12 @@ impl Traffic for Burst
         self.pending_messages[task]>0
     }
 
-    fn try_consume(&mut self, task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
     {
         let message_ptr=message.as_ref() as *const Message;
         self.total_consumed_per_task[task] += 1;
-        self.generated_messages.remove(&message_ptr)
+        let id = u128::from_le_bytes(message.payload()[0..16].try_into().expect("bad payload"));
+        self.generated_messages.remove(&id)
     }
     fn is_finished(&self) -> bool
     {
@@ -279,6 +292,7 @@ impl Burst
             generated_messages: BTreeSet::new(),
             expected_messages_to_consume,
             total_consumed_per_task: vec![0;tasks],
+            next_id: 0,
         }
     }
 }
@@ -344,7 +358,7 @@ impl Traffic for TrafficMessages
         }
     }
 
-    fn should_generate(self: &mut TrafficMessages, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+    fn should_generate(&mut self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
     {
         if let Some(task_messages) = self.messages_per_task.as_ref() {
             self.traffic.should_generate(task, cycle, rng) && task_messages[task] > 0
@@ -353,7 +367,7 @@ impl Traffic for TrafficMessages
         }
     }
 
-    fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
         self.total_consumed += 1;
         self.total_consumed_per_task[task] += 1;
@@ -487,7 +501,7 @@ impl Traffic for Sleep
     {
         0.0
     }
-    fn try_consume(&mut self, _task:usize, _message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+    fn try_consume(&mut self, _task:usize, _message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
     {
         false
     }
@@ -570,7 +584,8 @@ pub struct PeriodicBurst
     ///The number of messages each task has pending to sent.
     pending_messages: Vec<usize>,
     ///Set of generated messages.
-    generated_messages: BTreeSet<*const Message>,
+    generated_messages: BTreeSet<u128>,
+    next_id: u128,
 }
 
 impl Traffic for PeriodicBurst
@@ -588,14 +603,17 @@ impl Traffic for PeriodicBurst
         {
             return Err(TrafficError::SelfMessage);
         }
+        let id = self.next_id;
+        self.next_id += 1;
         let message=Rc::new(Message{
             origin,
             destination,
             size:self.message_size,
             creation_cycle: cycle,
             cycle_into_network: RefCell::new(None),
+            payload: id.to_le_bytes().into(),
         });
-        self.generated_messages.insert(message.as_ref() as *const Message);
+        self.generated_messages.insert(id);
         Ok(message)
     }
     fn probability_per_cycle(&self, task:usize) -> f32
@@ -609,10 +627,10 @@ impl Traffic for PeriodicBurst
             0.0
         }
     }
-    fn try_consume(&mut self, _task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+    fn try_consume(&mut self, _task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
     {
-        let message_ptr=message.as_ref() as *const Message;
-        self.generated_messages.remove(&message_ptr)
+        let id = u128::from_le_bytes(message.payload()[0..16].try_into().expect("bad payload"));
+        self.generated_messages.remove(&id)
     }
     fn is_finished(&self) -> bool
     {

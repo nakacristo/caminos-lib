@@ -53,7 +53,8 @@ pub struct TrafficCredit
 	///The number of messages each task has pending to sent.
 	pending_messages: Vec<usize>,
 	///Set of generated messages.
-	generated_messages: BTreeSet<*const Message>,
+	generated_messages: BTreeSet<u128>,
+	next_id: u128,
 }
 
 impl Traffic for TrafficCredit
@@ -75,6 +76,8 @@ impl Traffic for TrafficCredit
 		{
 			return Err(TrafficError::SelfMessage);
 		}
+		let id = self.next_id;
+		self.next_id += 1;
 		let message_size = self.message_size + if let Some(patron) = self.message_size_pattern.as_ref(){
 			patron.get_destination(origin,topology,rng)
 		}else{
@@ -86,8 +89,9 @@ impl Traffic for TrafficCredit
 			size: message_size,
 			creation_cycle: cycle,
 			cycle_into_network: RefCell::new(None),
+			payload: id.to_le_bytes().into(),
 		});
-		self.generated_messages.insert(message.as_ref() as *const Message);
+		self.generated_messages.insert(id);
 		Ok(message)
 	}
 	fn probability_per_cycle(&self, task:usize) -> f32
@@ -102,7 +106,7 @@ impl Traffic for TrafficCredit
 		}
 	}
 
-	fn should_generate(self: &mut TrafficCredit, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
+	fn should_generate &mut self, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
 	{
 		while self.credits[task] >= self.credits_to_activate
 		{
@@ -112,11 +116,13 @@ impl Traffic for TrafficCredit
 		self.pending_messages[task] > 0
 	}
 
-	fn try_consume(&mut self, task:usize, message: Rc<Message>, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+	fn try_consume(&mut self, task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
 	{
-		let message_ptr=message.as_ref() as *const Message;
+		//let message_ptr=message.as_ref() as *const Message;
 		self.credits[task] += self.credits_per_received_message;
-		self.generated_messages.remove(&message_ptr)
+		//self.generated_messages.remove(&message_ptr)
+		let id = u128::from_le_bytes(message.payload()[0..16].try_into().expect("bad payload"));
+		self.generated_messages.remove(&id)
 	}
 	fn is_finished(&self) -> bool
 	{
