@@ -2814,6 +2814,7 @@ Switch{
 		Identity,
 		Uniform,
 	],
+	seed: 1234, //root to define a sequence of seeds to use in the initialization of the patterns.
 }
 ```
 
@@ -2860,22 +2861,21 @@ Switch{
 },
 ```
 
-TODO: describe `expand` and `seed`.
-
-This example assigns 10 different RandomPermutations, depending on the `y` value, mentioned earlier.
+This example assigns 10 different RandomPermutations, and 2 uniforms depending on the `y` value, mentioned earlier.
 ```ignore
 Switch{
 	indexing: LinearTansform{
-		source_size: [2, 10],
-		target_size: [10],
+		source_size: [2, 12],
+		target_size: [12],
 		matrix: [
 			[0, 1],
 		],
 	},
 	patterns: [
 		RandomPermutation,
+	    Uniform
 	],
-	expand: [10,],
+	expand: [10,2], //put 10 RandomPermutations, followed by 2 Uniforms
 }
 ```
 **/
@@ -3620,14 +3620,7 @@ pub fn get_hotspot_destination(selected_destinations: Vec<usize>) -> Configurati
 
 
 /**
-A transparent meta-pattern to help debug other [Pattern].
-
-```ignore
-Debug{
-	pattern: ...,
-	check_permutation: true,
-}
-```
+FOR ALEX, NO MASTER
  **/
 //TODO: admissible, orders/cycle-finding, suprajective,
 #[derive(Debug,Quantifiable)]
