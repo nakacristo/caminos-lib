@@ -1096,7 +1096,7 @@ impl Routing for RegionRouting
 				let next = self.routings[i].next(selected_bri.borrow().deref(), self.region_logical_topology[i].as_ref(), current_logical, target_logical, None, num_virtual_channels, rng)?;
 				for CandidateEgress{port, virtual_channel, label, annotation, router_allows, estimated_remaining_hops} in next.candidates
 				{
-					let Location::RouterPort {router_index: next_router, router_port:_} = self.region_logical_topology[i].neighbour(current_router, port).0 else { panic!("There should be a port")};
+					let Location::RouterPort {router_index: next_router, router_port:port_logical} = self.region_logical_topology[i].neighbour(current_logical, port).0 else { panic!("There should be a port")};
 					let next_physical = self.logical_to_physical_vector[i][next_router];
 					let physical_port = topology.neighbour_router_iter(current_router).find(|item| item.neighbour_router == next_physical).expect("port not found").port_index;
 					candidates.push(CandidateEgress{port:physical_port, virtual_channel, label: label + self.extra_label_selection, annotation, router_allows, estimated_remaining_hops});

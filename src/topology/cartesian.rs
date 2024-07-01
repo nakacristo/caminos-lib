@@ -38,6 +38,10 @@ impl CartesianData
 	pub fn unpack(&self, mut router_index: usize) -> Vec<usize>
 	{
 		//let mut stride=self.size;
+		if router_index>=self.size
+		{
+			panic!("router_index={} is greater than the size of the CartesianData={}",router_index,self.size);
+		}
 		let mut r=Vec::with_capacity(self.sides.len());
 		for side in self.sides.iter()
 		{
@@ -51,6 +55,14 @@ impl CartesianData
 	}
 	pub fn pack(&self, coordinates:&[usize]) -> usize
 	{
+		//check that the coordinates are within the sides
+		for (c,s) in coordinates.iter().zip(self.sides.iter())
+		{
+			if *c>=*s
+			{
+				panic!("coordinate {} is greater than the side {}",c,s);
+			}
+		}
 		let mut r=0;
 		let mut stride=1;
 		for (i,side) in self.sides.iter().enumerate()
