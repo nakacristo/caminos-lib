@@ -54,9 +54,6 @@ pub trait Router: Eventful + Quantifiable
 	///Get the maximum number of credits towards the neighbour.
 	///To be used in policies such as VirtualChannelPolicy::LowestSinghWeight.
 	fn get_maximum_credits_towards(&self, port:usize, virtual_channel:usize) -> Option<usize>;
-	///Get the rate at what packets advance in a buffer of a port.
-	///To be used in policies
-	fn get_rate_output_buffer(&self, port:usize, virtual_channel:usize, cycle:Time) -> Option<f64>;
 	///Get the index of the router in the topology.
 	///To be used in policies such as VirtualChannelPolicy::LowestSinghWeight.
 	fn get_index(&self)->Option<usize>;

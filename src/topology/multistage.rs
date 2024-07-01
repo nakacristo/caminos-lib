@@ -321,7 +321,6 @@ FMStage{
 	layers: 4, // number of layers.
 	layer_size: 8, // number of routers per layer.
 }
-TODO: document options
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]

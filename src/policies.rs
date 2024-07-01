@@ -11,7 +11,7 @@ see [`new_virtual_channel_policy`](fn.new_virtual_channel_policy.html) for docum
 use crate::config_parser::ConfigurationValue;
 use crate::routing::CandidateEgress;
 use crate::router::Router;
-use crate::topology::{Topology, Location, NeighbourRouterIteratorItem, new_topology, TopologyBuilderArgument};
+use crate::topology::{Topology, Location, NeighbourRouterIteratorItem};
 use crate::{Plugs,Phit,match_object_panic};
 use crate::event::Time;
 
@@ -19,10 +19,7 @@ use std::fmt::Debug;
 use std::convert::TryInto;
 use std::rc::Rc;
 
-use rand::{Rng,rngs::StdRng,SeedableRng};
-// use ::rand::{Rng,rngs::StdRng};
-use crate::pattern::{new_pattern, Pattern, PatternBuilderArgument};
-use crate::topology::prelude::CartesianData;
+use rand::{Rng,rngs::StdRng};
 
 ///Extra information to be used by the policies of virtual channels.
 #[derive(Debug)]
@@ -314,7 +311,6 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"OccupancyFunction" => Box::new(OccupancyFunction::new(arg)),
 			"AverageOccupancyFunction" => Box::new(AverageOccupancyFunction::new(arg)),
 			"PortDiscardLabelThreshold" => Box::new(PortDiscardLabelThreshold::new(arg)),
-			"BufferAdvanceRate" => Box::new(BufferAdvanceRate::new(arg)),
 			"NegateLabel" => Box::new(NegateLabel::new(arg)),
 			"VecLabel" => Box::new(VecLabel::new(arg)),
 			"MapLabel" => Box::new(MapLabel::new(arg)),
@@ -330,7 +326,6 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"NextLinkLabel" => Box::new(NextLinkLabel::new(arg)),
 			"CurrentLinkLabel" => Box::new(CurrentLinkLabel::new(arg)),
 			"ChannelHop" => Box::new(ChannelHop::new(arg)),
-			"CartesianSpaceLabel" => Box::new(CartesianSpaceLabel::new(arg)),
 			_ => panic!("Unknown policy {}",cv_name),
 		}
 	}
@@ -1188,63 +1183,6 @@ impl Minimal
 		}
 	}
 }
-
-/**
-	Assigns the label the speed at which a buffer advances
- **/
-#[derive(Debug)]
-pub struct BufferAdvanceRate{
-	default_value: f64,
-}
-
-impl VirtualChannelPolicy for BufferAdvanceRate
-{
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
-	{
-		candidates.iter().map(
-			|candidate|{
-				let CandidateEgress{port, virtual_channel, estimated_remaining_hops, ..} = *candidate;
-				let new_label = if let Some(buffer_advance_rate) = router.get_rate_output_buffer(port, virtual_channel, info.current_cycle){
-					buffer_advance_rate
-				}else{
-					self.default_value
-				};
-				CandidateEgress{label: new_label as i32, port, virtual_channel, estimated_remaining_hops,..candidate.clone()}
-			}).collect::<Vec<_>>()
-	}
-
-	fn need_server_ports(&self)->bool
-	{
-		false
-	}
-
-	fn need_port_average_queue_length(&self)->bool
-	{
-		false
-	}
-
-	fn need_port_last_transmission(&self)->bool
-	{
-		false
-	}
-
-}
-
-impl BufferAdvanceRate
-{
-	pub fn new(arg:VCPolicyBuilderArgument) -> BufferAdvanceRate
-	{
-		let mut default_value = None;
-		match_object_panic!(arg.cv,"BufferAdvanceRate",value,
-			"default_value" => default_value = Some(value.as_f64().expect("bad value for default_value")),
-		);
-		let default_value = default_value.expect("There were no default_value");
-		BufferAdvanceRate {
-			default_value
-		}
-	}
-}
-
 
 
 
@@ -2650,123 +2588,3 @@ impl ChannelHop
 	}
 }
 
-/**
-	Convert the label of the packet into a Vec Space, with the fields indicated.
-
-**/
-#[derive(Debug)]
-pub struct CartesianSpaceLabel
-{
-	///Policies with the value to insert in the vector
-	policies: Vec<Box<dyn VirtualChannelPolicy>>,
-	///Size for the vector space
-	source_space:CartesianData,
-	// Size for the vector space after applyin the transformation (If any)
-	// target_space: CartesianData,
-	///Transformation to apply to the vector
-	pattern: Box<dyn Pattern>,
-}
-
-impl VirtualChannelPolicy for CartesianSpaceLabel
-{
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
-	{
-		// let mut patron = self.pattern.borrow_mut();
-		//patron.initialize(self.source_space.size, self.destination_space.size, topology, rng); //FIXME: This shouldn't be done like this
-
-		candidates.iter().map(|cand|{
-
-			let mut coord = vec![0usize; self.source_space.sides.len()];
-
-			for (index,p) in self.policies.iter().enumerate()
-			{
-				let cand2 = cand.clone();
-				let candidate = p.filter(vec![cand2], router,info, topology, rng);
-				coord[index] = candidate[0].label as usize;
-			}
-			let mut cand_def = cand.clone();
-			cand_def.label = self.pattern.get_destination( self.source_space.pack(&coord), topology, rng ) as i32;
-			cand_def
-		}
-
-		).collect::<Vec<CandidateEgress>>()
-		// for mut cand in candidates.into_iter()
-		// {
-		// 	cand.label  = info.phit.packet.cycle_into_network.take() as i32;
-		// }
-		//
-		// candidates
-
-	}
-
-	fn need_server_ports(&self)->bool
-	{
-		true
-	}
-
-	fn need_port_average_queue_length(&self)->bool
-	{
-		true
-	}
-
-	fn need_port_last_transmission(&self)->bool
-	{
-		true
-	}
-
-}
-
-impl CartesianSpaceLabel
-{
-	pub fn new(arg:VCPolicyBuilderArgument) -> CartesianSpaceLabel
-	{
-		let mut policies=None;
-		let mut source_size=None;
-		let mut target_size=None;
-		let mut pattern = None;
-		//new_pattern(PatternBuilderArgument{cv: &ConfigurationValue::Object("Identity".to_string(), vec![]),plugs:arg.plugs});
-		match_object_panic!(arg.cv,"CartesianSpaceLabel",value,
-			"values" => policies=Some(value.as_array().expect("bad value for policies").iter()
-				.map(|v|new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg})).collect::<Vec<Box<dyn VirtualChannelPolicy>>>()),
-			"source_size" => source_size=Some(value.as_array().expect("bad value for sizes").iter()
-				.map(|v|v.as_usize().expect("bad value in sizes")).collect::<Vec<usize>>()),
-			"target_size" => target_size=Some(value.as_array().expect("bad value for sizes").iter()
-				.map(|v|v.as_usize().expect("bad value in sizes")).collect::<Vec<usize>>()),
-			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv: value, plugs: arg.plugs})),
-		);
-		let policies=policies.expect("There were no policies");
-		let source_size=source_size.expect("There were no sizes");
-		// let target_size=target_size.expect("There were no sizes");
-		if policies.len() != source_size.len()
-		{
-			panic!("The number of policies must be the same as the number of dimensions");
-		}
-		let source_space = CartesianData::new(&source_size);
-		let target_space =if let Some(_) = pattern
-		{
-			 CartesianData::new(&(target_size.expect("There were no sizes")))
-		}else{
-			pattern = Some(new_pattern(PatternBuilderArgument{cv: &ConfigurationValue::Object("Identity".to_string(), vec![]),plugs:arg.plugs}));
-			CartesianData::new(&source_size)
-		};
-		//dummy hamming
-		let cv = ConfigurationValue::Object("Hamming".to_string(), vec![
-			("sides".to_string(),ConfigurationValue::Array(vec![ConfigurationValue::Number(1f64)])),
-			("servers_per_router".to_string(),ConfigurationValue::Number(1f64))
-		]);
-		let mut rng = StdRng::seed_from_u64(1);
-		let topo_builder = TopologyBuilderArgument{cv: &cv, plugs: arg.plugs, rng: &mut rng };
-		let mut pattern = pattern.expect("There were no pattern");
-		let binding = new_topology(topo_builder);
-  		let topology = binding.as_ref();
-
-
-		pattern.initialize(source_space.size, target_space.size, topology, &mut rng);//RefCell::new(pattern.unwrap());
-		CartesianSpaceLabel{
-			policies,
-			source_space,
-			// target_space,
-			pattern,
-		}
-	}
-}

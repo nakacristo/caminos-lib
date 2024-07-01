@@ -8,12 +8,10 @@ see [`new_traffic`](fn.new_traffic.html) for documentation on the configuration 
 */
 
 use std::boxed::Box;
-use std::cell::RefCell;
 use std::rc::Rc;
 use std::collections::{BTreeSet,BTreeMap,VecDeque};
 //use std::mem::{size_of};
 use std::fmt::Debug;
-// use std::thread::current;
 
 use ::rand::{Rng,rngs::StdRng};
 
@@ -25,7 +23,6 @@ use crate::topology::Topology;
 use crate::event::Time;
 use quantifiable_derive::Quantifiable;
 use crate::measures::TrafficStatistics;
-//the derive macro
 use crate::quantify::Quantifiable;
 
 ///Possible errors when trying to generate a message with a `Traffic`.
@@ -1060,7 +1057,7 @@ impl Traffic for TrafficMessages
 		}
 	}
 
-	fn should_generate(self: &mut TrafficMessages, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	fn should_generate(&mut self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
 	{
 		if let Some(task_messages) = self.messages_per_task.as_ref() {
 			self.traffic.should_generate(task, cycle, rng) && task_messages[task] > 0
@@ -1189,7 +1186,7 @@ impl Traffic for MessageBarrier
 		}
 	}
 
-	fn should_generate(self: &mut MessageBarrier, task:usize, cycle:Time, rng: &mut StdRng) -> bool
+	fn should_generate(&mut self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
 	{
 		self.total_sent_per_task[task] < self.messages_per_task_to_wait && self.traffic.should_generate(task, cycle, rng)
 	}
@@ -1325,7 +1322,7 @@ impl Traffic for TrafficCredit
 		}
 	}
 
-	fn should_generate(self: &mut TrafficCredit, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
+	fn should_generate(&mut self, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
 	{
 		while self.credits[task] >= self.credits_to_activate
 		{
