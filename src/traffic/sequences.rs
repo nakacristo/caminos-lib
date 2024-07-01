@@ -146,7 +146,15 @@ impl Sequence
 }
 
 /**
-A sequence of traffics. Each task sends/consumes a number of messages before moving to the next traffic.
+A sequence of traffics. Each task independently sends/consumes a number of messages before moving to the next traffic.
+```ignore
+MessageTaskSequence{
+    tasks: 1000,
+    traffics: [Burst{...}, Burst{...}],
+    messages_to_send_per_traffic: [100, 200],
+    messages_to_consume_per_traffic: [100, 200], //Optional
+}
+```
  **/
 
 #[derive(Quantifiable)]
