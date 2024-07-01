@@ -419,6 +419,7 @@ mod sum_routing_internal
 			}
 		}
 	}
+	#[allow(dead_code)]
 	pub enum SumRoutingCase
 	{
 		SingleChoice(i32),
