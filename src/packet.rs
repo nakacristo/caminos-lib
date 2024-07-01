@@ -111,6 +111,8 @@ pub struct Message
 	pub size: usize,
 	///Cycle when the message was created.
 	pub creation_cycle: Time,
+	///Data being trasmitted.
+	pub payload: Vec<u8>,
 }
 
 impl Phit
@@ -208,6 +210,98 @@ impl Deref for PacketRef {
 
 impl AsRef<Packet> for PacketRef {
 	fn as_ref(&self) -> &Packet { &*self }
+}
+
+
+pub trait AsMessage
+{
+	///Server that created the message.
+	fn origin(&self) -> usize;
+	///Server that is the destination of the message.
+	fn destination(&self) -> usize;
+	///Number of phits.
+	fn size(&self) -> usize;
+	///Cycle when the message was created.
+	fn creation_cycle(&self) -> Time;
+	///Data being trasmitted.
+	fn payload(&self) -> &[u8];
+}
+
+impl AsMessage for Message
+{
+	
+	fn origin(&self) -> usize
+	{
+		self.origin
+	}
+	fn destination(&self) -> usize
+	{
+		self.destination
+	}
+	fn size(&self) -> usize
+	{
+		self.size
+	}
+	fn creation_cycle(&self) -> Time
+	{
+		self.creation_cycle
+	}
+	fn payload(&self) -> &[u8]
+	{
+		&self.payload
+	}
+}
+
+pub struct ReferredPayload<'a>
+{
+	///Server that created the message.
+	pub origin: usize,
+	///Server that is the destination of the message.
+	pub destination: usize,
+	///Number of phits.
+	pub size: usize,
+	///Cycle when the message was created.
+	pub creation_cycle: Time,
+	///Data being trasmitted.
+	pub payload: &'a [u8],
+}
+
+impl<'a> AsMessage for ReferredPayload<'a>
+{
+	fn origin(&self) -> usize
+	{
+		self.origin
+	}
+	fn destination(&self) -> usize
+	{
+		self.destination
+	}
+	fn size(&self) -> usize
+	{
+		self.size
+	}
+	fn creation_cycle(&self) -> Time
+	{
+		self.creation_cycle
+	}
+	fn payload(&self) -> &[u8]
+	{
+		&self.payload
+	}
+}
+
+impl<'a> From<&'a dyn AsMessage> for ReferredPayload<'a>
+{
+	fn from(message: &dyn AsMessage) -> ReferredPayload
+	{
+		ReferredPayload{
+			origin: message.origin(),
+			destination: message.destination(),
+			size: message.size(),
+			creation_cycle: message.creation_cycle(),
+			payload: message.payload(),
+		}
+	}
 }
 
 

@@ -370,7 +370,7 @@ use config::flatten_configuration_value;
 use measures::{Statistics,ServerStatistics};
 use error::{Error,SourceLocation};
 use allocator::{Allocator,AllocatorBuilderArgument};
-pub use packet::{Phit,Packet,Message,PacketExtraInfo,PacketRef};
+pub use packet::{Phit,Packet,Message,PacketExtraInfo,PacketRef,AsMessage};
 pub use event::Time;
 
 ///The objects that create and consume traffic to/from the network.
@@ -420,7 +420,7 @@ impl Server
 			self.statistics.track_message_delay(cycle-message.creation_cycle,cycle);
 			statistics.track_message_delay(cycle-message.creation_cycle,cycle);
 			self.consumed_phits.remove(&message_ptr);
-			if !traffic.try_consume(self.index,message,cycle,topology,rng)
+			if !traffic.try_consume(self.index,&*message,cycle,topology,rng)
 			{
 				panic!("The traffic could not consume its own message.");
 			}
