@@ -390,7 +390,7 @@ All the subtraffics in `list` must give the same value for `number_tasks`, which
 TrafficSum{
 	list: [HomogeneousTraffic{...},... ],
 	statistics_temporal_step: 1000, //step to record temporal statistics for each subtraffic.
-	box_size: 1000, group results for the messages histogram.
+	box_size: 1000, //group results for the messages histogram.
 }
 ```
 
@@ -860,8 +860,6 @@ Burst{
 }
 ```
 
-
-TODO: document more arguments.
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -965,12 +963,8 @@ impl Burst
 		let mut messages_per_task=None;
 		let mut pattern=None;
 		let mut message_size=None;
-		let mut source_selection = None;
-		let mut source_space_size = None;
 		match_object_panic!(arg.cv,"Burst",value,
 			"pattern" => pattern=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
-			"source_selection" => source_selection=Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
-			"source_space_size" => source_space_size=Some(value.as_f64().expect("bad value for source_space_size") as usize),
 			"tasks" | "servers" => tasks=Some(value.as_f64().expect("bad value for tasks") as usize),
 			"messages_per_task" | "messages_per_server" => messages_per_task=Some(value.as_f64().expect("bad value for messages_per_task") as usize),
 			"message_size" => message_size=Some(value.as_f64().expect("bad value for message_size") as usize),
@@ -981,15 +975,7 @@ impl Burst
 		let mut pattern=pattern.expect("There were no pattern");
 		pattern.initialize(tasks, tasks, arg.topology, arg.rng);
 
-		let pending_messages = if let Some(mut source_selection) = source_selection {
-			let source_space_size = source_space_size.unwrap_or(tasks);
-			source_selection.initialize(tasks, source_space_size, arg.topology, arg.rng);
-			let mut messages = vec![0;tasks];
-			(0..tasks).for_each(|i| messages[source_selection.get_destination(i, arg.topology, arg.rng)] = messages_per_task);
-			messages
-		}else{
-			vec![messages_per_task;tasks]
-		};
+		let pending_messages = vec![messages_per_task;tasks];
 
 		Burst{
 			tasks,

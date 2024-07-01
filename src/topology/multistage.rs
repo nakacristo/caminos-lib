@@ -722,7 +722,7 @@ impl ExplicitStage
 A Stage with a explicitly given list of neighbours for each router. Ignores grouping.
 Apt to build random stages.
 
-TODO: document and example.
+TODO: document and example. I dont remember what this is, but i coded it.
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -1020,7 +1020,15 @@ impl WidenedStage
 /**
 OFT fault tolerance stage, with paralell links.
 
-TODO: document and example.
+´´´ignore
+FaultToleranceStage{
+	base: ProjectiveStage{
+		prime: 5,
+	}, //OFT stage
+	redundancy: 2, //OFTs in parallel, to have more than one link between leaf routers.
+}
+´´´
+TODO: Remember what this is and document it better.
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
