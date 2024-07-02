@@ -1,3 +1,4 @@
+use crate::AsMessage;
 use std::rc::Rc;
 use quantifiable_derive::Quantifiable;
 use rand::prelude::StdRng;

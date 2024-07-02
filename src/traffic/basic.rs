@@ -1,7 +1,9 @@
+use crate::AsMessage;
 use crate::new_traffic;
 use crate::pattern::{new_pattern, PatternBuilderArgument};
 use std::cell::RefCell;
 use std::collections::{BTreeSet, VecDeque};
+use std::convert::TryInto;
 use std::rc::Rc;
 use quantifiable_derive::Quantifiable;
 use rand::prelude::StdRng;
@@ -97,9 +99,9 @@ impl Traffic for Homogeneous
 	{
 		false
 	}
-	fn task_state(&self, _task:usize, _cycle:Time) -> TaskTrafficState
+	fn task_state(&self, _task:usize, _cycle:Time) -> Option<TaskTrafficState>
 	{
-		TaskTrafficState::Generating
+		Some(Generating)
 	}
 
 	fn number_tasks(&self) -> usize {
@@ -776,7 +778,7 @@ impl Traffic for SubRangeTraffic
     {
         self.traffic.probability_per_cycle(task)
     }
-    fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
         self.traffic.try_consume(task,message,cycle,topology,rng)
     }
@@ -853,7 +855,7 @@ impl Traffic for Reactive
         }
         return self.action_traffic.probability_per_cycle(task);
     }
-    fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
         if self.action_traffic.try_consume(task,message.clone(),cycle,topology,rng)
         {

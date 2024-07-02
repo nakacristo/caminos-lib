@@ -1,3 +1,5 @@
+use crate::packet::ReferredPayload;
+use crate::AsMessage;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -142,7 +144,7 @@ impl Traffic for TrafficMap
         }).unwrap_or(0.0) // if the task_app has no origin, it has no probability
     }
 
-    fn try_consume(&mut self, task: usize, message: Rc<Message>, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool
+    fn try_consume(&mut self, task: usize, message: &dyn AsMessage, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool
     {
         // TODO: Maybe we want to return a Result instead of a bool
 
@@ -547,7 +549,7 @@ impl Traffic for ProductTraffic
 	{
 		self.block_traffic.is_finished()
 	}
-	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, cycle:Time) -> Option<TaskTrafficState>
 	{
 		let local=task % self.block_size;
 		self.block_traffic.task_state(local,cycle)
@@ -670,12 +672,12 @@ impl Traffic for BoundedDifference
 	{
 		false
 	}
-	fn task_state(&self, task:usize, _cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, _cycle:Time) -> Option<TaskTrafficState>
 	{
 		if self.allowance[task]>0 {
-			TaskTrafficState::Generating
+			Some(Generating)
 		} else {
-			TaskTrafficState::WaitingData
+			Some(WaitingData)
 		}
 	}
 
@@ -770,7 +772,7 @@ impl Traffic for Shifted
     {
         self.traffic.probability_per_cycle(task-self.shift)
     }
-    fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
         let message_ptr=message.as_ref() as *const Message;
         let outer_message=match self.generated_messages.remove(&message_ptr)

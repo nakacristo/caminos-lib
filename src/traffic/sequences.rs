@@ -1,3 +1,4 @@
+use crate::AsMessage;
 use crate::pattern::{new_pattern, PatternBuilderArgument};
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -172,7 +173,8 @@ pub struct MessageTaskSequence
     ///The number of messages consumed by each task
     messages_consumed: Vec<Vec<usize>>,
     ///Generated messages per traffic
-    generated_messages: Vec<BTreeSet<*const Message>>,
+    generated_messages: Vec<BTreeSet<u128>>,
+    id: u128,
 }
 
 impl Traffic for MessageTaskSequence
@@ -184,7 +186,8 @@ impl Traffic for MessageTaskSequence
             if messages_sent[i] < messages_to_send_per_traffic[i] {
                 let message = self.traffics[i].generate_message(origin, cycle, topology, rng)?;
                 messages_sent[i] += 1;
-                self.generated_messages[i].insert(message.as_ref() as *const Message);
+                self.generated_messages[i].insert(self.id);
+                self.id += 1;
                 return Ok(message);
             }
         }
@@ -208,7 +211,7 @@ impl Traffic for MessageTaskSequence
         0.0
     }
 
-    fn try_consume(&mut self, task: usize, message: Rc<Message>, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool {
+    fn try_consume(&mut self, task: usize, message: &dyn AsMessage, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool {
         let messages_consumed = &mut self.messages_consumed[task];
         for i in 0..self.generated_messages.len() {
             if self.generated_messages[i].remove(&(message.as_ref() as *const Message)) {
@@ -453,7 +456,7 @@ impl Traffic for MultimodalBurst
 		}
 		true
 	}
-	fn task_state(&self, task:usize, _cycle:Time) -> TaskTrafficState
+	fn task_state(&self, task:usize, _cycle:Time) -> Option<TaskTrafficState>
 	{
 		if self.pending[task].iter().any(|(total_remaining,_step_remaining)| *total_remaining > 0 ) {
 			TaskTrafficState::Generating
@@ -563,7 +566,7 @@ impl Traffic for TimeSequenced
         //Can we do better here?
         1.0
     }
-    fn try_consume(&mut self, task:usize, message: Rc<Message>, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
         for traffic in self.traffics.iter_mut()
         {

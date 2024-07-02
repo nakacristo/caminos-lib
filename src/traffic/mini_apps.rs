@@ -1,3 +1,4 @@
+use crate::AsMessage;
 use crate::pattern::{new_pattern, PatternBuilderArgument};
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -106,7 +107,7 @@ impl Traffic for TrafficCredit
 		}
 	}
 
-	fn should_generate &mut self, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
+	fn should_generate( &mut self, task:usize, _cycle:Time, _rng: &mut StdRng) -> bool
 	{
 		while self.credits[task] >= self.credits_to_activate
 		{

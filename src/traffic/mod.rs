@@ -13,6 +13,7 @@ mod mini_apps;
 mod basic;
 mod operations;
 
+use crate::AsMessage;
 use crate::traffic::mini_apps::{MiniApp, TrafficCredit};
 use crate::traffic::collectives::MessageBarrier;
 use crate::traffic::collectives::MPICollective;
@@ -88,7 +89,7 @@ pub trait Traffic : Quantifiable + Debug
 		// r<p
 	}
 	///Indicates the state of the task within the traffic.
-	fn task_state(&self, task:usize, cycle:Time) -> TaskTrafficState;
+	fn task_state(&self, task:usize, cycle:Time) -> Option<TaskTrafficState>;
 
 	/// Indicates the number of tasks in the traffic.
 	/// A task is a process that generates traffic.
