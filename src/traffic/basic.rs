@@ -84,20 +84,20 @@ impl Traffic for Homogeneous
 		}
 	}
 
-	fn should_generate(&mut self, _task: usize, _cycle: Time, _rng: &mut StdRng) -> bool {
-		true
-	}
-	fn try_consume(&mut self, _task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
-	{
-		//let message_ptr=message.as_ref() as *const Message;
-		//self.generated_messages.remove(&message_ptr)
-		let id = u128::from_le_bytes(message.payload()[0..16].try_into().expect("bad payload"));
-		self.generated_messages.remove(&id)
-	}
-	fn is_finished(&self) -> bool
-	{
-		false
-	}
+    fn try_consume(&mut self, _task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+    {
+        //let message_ptr=message.as_ref() as *const Message;
+        //self.generated_messages.remove(&message_ptr)
+        let id = u128::from_le_bytes(message.payload()[0..16].try_into().expect("bad payload"));
+        self.generated_messages.remove(&id)
+    }
+    fn is_finished(&self) -> bool
+    {
+        false
+    }
+    fn should_generate(&mut self, _task: usize, _cycle: Time, _rng: &mut StdRng) -> bool {
+        true
+    }
 	fn task_state(&self, _task:usize, _cycle:Time) -> Option<TaskTrafficState>
 	{
 		Some(Generating)
