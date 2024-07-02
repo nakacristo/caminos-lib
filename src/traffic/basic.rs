@@ -1,7 +1,6 @@
 use crate::AsMessage;
 use crate::new_traffic;
 use crate::pattern::{new_pattern, PatternBuilderArgument};
-use std::cell::RefCell;
 use std::collections::{BTreeSet, VecDeque};
 use std::convert::TryInto;
 use std::rc::Rc;
@@ -196,7 +195,6 @@ impl Traffic for Burst
             destination,
             size:self.message_size,
             creation_cycle: cycle,
-            cycle_into_network: RefCell::new(None),
             payload: id.to_le_bytes().into(),
         });
         self.generated_messages.insert(id);
@@ -221,7 +219,6 @@ impl Traffic for Burst
 
     fn try_consume(&mut self, task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
     {
-        let message_ptr=message.as_ref() as *const Message;
         self.total_consumed_per_task[task] += 1;
         let id = u128::from_le_bytes(message.payload()[0..16].try_into().expect("bad payload"));
         self.generated_messages.remove(&id)
@@ -612,7 +609,6 @@ impl Traffic for PeriodicBurst
             destination,
             size:self.message_size,
             creation_cycle: cycle,
-            cycle_into_network: RefCell::new(None),
             payload: id.to_le_bytes().into(),
         });
         self.generated_messages.insert(id);
@@ -733,6 +729,7 @@ impl PeriodicBurst
             messages_per_task_per_period,
             pending_messages: vec![0;tasks],
             generated_messages: BTreeSet::new(),
+            next_id: 0,
         }
     }
 }
@@ -857,19 +854,19 @@ impl Traffic for Reactive
     }
     fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
-        if self.action_traffic.try_consume(task,message.clone(),cycle,topology,rng)
+        if self.action_traffic.try_consume(task,message,cycle,topology,rng)
         {
-            if self.reaction_traffic.should_generate(message.origin,cycle,rng)
+            if self.reaction_traffic.should_generate(message.origin(), cycle, rng)
             {
-                match self.reaction_traffic.generate_message(message.origin,cycle,topology,rng)
+                match self.reaction_traffic.generate_message(message.origin(), cycle, topology, rng)
                 {
                     Ok(response_message) =>
                         {
-                            if self.pending_messages.len()<message.origin+1
+                            if self.pending_messages.len()<message.origin() +1
                             {
-                                self.pending_messages.resize(message.origin+1,VecDeque::new());
+                                self.pending_messages.resize(message.origin() +1, VecDeque::new());
                             }
-                            self.pending_messages[message.origin].push_back(response_message);
+                            self.pending_messages[message.origin()].push_back(response_message);
                         },
                     //Err(TrafficError::OriginOutsideTraffic) => (),
                     Err(error) => panic!("An error happened when generating response traffic: {:?}",error),

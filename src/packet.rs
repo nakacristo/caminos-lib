@@ -113,8 +113,8 @@ pub struct Message
 	pub creation_cycle: Time,
 	///Data being trasmitted.
 	pub payload: Vec<u8>,
-	///Cycle when the first packet of the message was injected into the network.
-	pub cycle_into_network: RefCell<Option<Time>>,
+	// ///Cycle when the first packet of the message was injected into the network.
+	// pub cycle_into_network: RefCell<Option<Time>>,
 }
 
 impl Phit

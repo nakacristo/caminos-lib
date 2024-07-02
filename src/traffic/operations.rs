@@ -1,7 +1,7 @@
 use crate::packet::ReferredPayload;
 use crate::AsMessage;
-use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
+use std::convert::TryInto;
 use std::rc::Rc;
 use quantifiable_derive::Quantifiable;
 use rand::prelude::StdRng;
@@ -98,9 +98,6 @@ pub struct TrafficMap
 
     /// The map to be applied to the traffic.
     map: Box<dyn Pattern>,
-
-    ///Set of generated messages.
-    generated_messages: BTreeMap<*const Message,Rc<Message>>,
 }
 
 impl Traffic for TrafficMap
@@ -127,9 +124,8 @@ impl Traffic for TrafficMap
             destination: self.from_app_to_machine[app_destination], // get the destination of the message (the machine) from the base map
             size: app_message.size,
             creation_cycle: app_message.creation_cycle,
-            cycle_into_network: RefCell::new(None),
+            payload: vec![],
         });
-        self.generated_messages.insert(message.as_ref() as *const Message, app_message);
         Ok(message)
     }
 
@@ -146,22 +142,14 @@ impl Traffic for TrafficMap
 
     fn try_consume(&mut self, task: usize, message: &dyn AsMessage, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool
     {
-        // TODO: Maybe we want to return a Result instead of a bool
-
-        let cycle_into_network = *message.cycle_into_network.borrow();
-        let message_ptr = message.as_ref() as *const Message;
-        let app_message = match self.generated_messages.remove(&message_ptr)
-        {
-            Some(app_message) => app_message,
-            None => return false,
-        };
 
         let task_app = self.from_machine_to_app[task].expect("There was no origin for the message");
-
-        app_message.cycle_into_network.replace(cycle_into_network);
+        let mut app_message = ReferredPayload::from(message);
+        app_message.destination = self.from_machine_to_app[app_message.destination].expect("There was no destination for the message");
+        app_message.origin = task_app;
 
         // try to consume the message in the application
-        self.application.try_consume(task_app, app_message, cycle, topology, rng)
+        self.application.try_consume(task_app, &app_message, cycle, topology, rng)
     }
 
 
@@ -240,7 +228,6 @@ impl TrafficMap
             from_app_to_machine,
             number_tasks,
             map,
-            generated_messages: BTreeMap::new(),
         }
     }
 }
@@ -341,15 +328,9 @@ impl Traffic for Sum
     {
         for (index, traffic) in self.list.iter_mut().enumerate()
         {
-            if traffic.try_consume(task,message.clone(),cycle,topology,rng)
+            if traffic.try_consume(task,message,cycle,topology,rng)
             {
-                let injection_time = message.cycle_into_network.borrow().unwrap();
-                if injection_time < message.creation_cycle
-                {
-                    println!("The message was created at cycle {}, injected at cycle {}, and consumed at cycle {}",message.creation_cycle, injection_time, cycle);
-                    panic!("Message was injected before it was created")
-                }
-                self.statistics.track_consumed_message(cycle, cycle - message.creation_cycle, injection_time - message.creation_cycle, message.size, Some(index) );
+                self.statistics.track_consumed_message(cycle, cycle - message.creation_cycle(), message.size(), Some(index));
                 return true; //IF SELF MESSAGE ???
             }
         }
@@ -763,9 +744,9 @@ impl Traffic for Shifted
             destination:inner_message.destination+self.shift,
             size:inner_message.size,
             creation_cycle: cycle,
-            cycle_into_network: RefCell::new(None),
+            payload: inner_message.payload.clone(),
         });
-        self.generated_messages.insert(outer_message.as_ref() as *const Message,inner_message);
+        //self.generated_messages.insert(outer_message.as_ref() as *const Message,inner_message);
         Ok(outer_message)
     }
     fn probability_per_cycle(&self,task:usize) -> f32
@@ -774,13 +755,9 @@ impl Traffic for Shifted
     }
     fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
-        let message_ptr=message.as_ref() as *const Message;
-        let outer_message=match self.generated_messages.remove(&message_ptr)
-        {
-            None => return false,
-            Some(m) => m,
-        };
-        if !self.traffic.try_consume(task,outer_message,cycle,topology,rng)
+        let mut inner_message = ReferredPayload::from(message);
+        inner_message.destination -= self.shift;
+        if !self.traffic.try_consume(task,&inner_message,cycle,topology,rng)
         {
             panic!("Shifted traffic consumed a message but its child did not.");
         }

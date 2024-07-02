@@ -1,7 +1,7 @@
 use crate::AsMessage;
 use crate::pattern::{new_pattern, PatternBuilderArgument};
-use std::cell::RefCell;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet};
+use std::convert::TryInto;
 use std::rc::Rc;
 use quantifiable_derive::Quantifiable;
 use rand::prelude::StdRng;
@@ -89,7 +89,6 @@ impl Traffic for TrafficCredit
 			destination,
 			size: message_size,
 			creation_cycle: cycle,
-			cycle_into_network: RefCell::new(None),
 			payload: id.to_le_bytes().into(),
 		});
 		self.generated_messages.insert(id);
@@ -216,6 +215,7 @@ impl TrafficCredit
 			messages_per_transition,
 			pending_messages,
 			generated_messages: BTreeSet::new(),
+			next_id: 0,
 		}
 	}
 }

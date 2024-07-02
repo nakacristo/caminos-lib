@@ -177,8 +177,8 @@ pub struct TrafficStatistics
 	pub box_size: usize,
 	/// Messages histogram
 	pub histogram_messages_delay: HashMap<usize, usize>,
-	/// Messages histogram network delay
-	pub histogram_messages_network_delay: HashMap<usize, usize>,
+	// /// Messages histogram network delay
+	// pub histogram_messages_network_delay: HashMap<usize, usize>,
 	/// Generating Tasks
 	pub generating_tasks_histogram: HashMap<usize, Vec<usize>>,
 	/// Waiting Tasks
@@ -222,7 +222,7 @@ impl TrafficStatistics
 			sub_traffic_statistics,
 			box_size,
 			histogram_messages_delay: HashMap::new(),
-			histogram_messages_network_delay: HashMap::new(),
+			// histogram_messages_network_delay: HashMap::new(),
 			generating_tasks_histogram: HashMap::new(),
 			waiting_tasks_histogram: HashMap::new(),
 			finished_generating_tasks_histogram: HashMap::new(),
@@ -237,21 +237,22 @@ impl TrafficStatistics
 	// }
 
 	/// Called when a task recieves a message.
-	pub fn track_consumed_message(&mut self, cycle: Time, total_delay:Time, injection_delay:Time, size: usize, subtraffic: Option<usize>)
+	//	pub fn track_consumed_message(&mut self, cycle: Time, total_delay:Time, injection_delay:Time, size: usize, subtraffic: Option<usize>)
+	pub fn track_consumed_message(&mut self, cycle: Time, total_delay:Time, size: usize, subtraffic: Option<usize>)
 	{
 		// if delay < 0
 		// {
 		// 	panic!("negative delay");
 		// }
-		if total_delay < injection_delay
-		{
-			panic!("negative total delay");
-		}
-		let message_network_delay = total_delay - injection_delay;
+		// if total_delay < injection_delay
+		// {
+		// 	panic!("negative total delay");
+		// }
+		// let message_network_delay = total_delay - injection_delay;
 		self.cycle_last_consumed_message = cycle;
 		self.total_consumed_messages+=1;
 		self.total_message_delay+=total_delay;
-		self.total_message_network_delay+= message_network_delay;
+		// self.total_message_network_delay+= message_network_delay;
 		self.total_consumed_phits+=size;
 
 		if let Some(m) = self.current_temporal_measurement(cycle)
@@ -262,13 +263,13 @@ impl TrafficStatistics
 		}
 
 		self.histogram_messages_delay.entry(total_delay as usize/self.box_size).and_modify(|e| *e+=1).or_insert(1);
-		self.histogram_messages_network_delay.entry(message_network_delay as usize/self.box_size).and_modify(|e| *e+=1).or_insert(1);
+		// self.histogram_messages_network_delay.entry(message_network_delay as usize/self.box_size).and_modify(|e| *e+=1).or_insert(1);
 
 		if let Some(subtraffic) = subtraffic
 		{
 			if let Some(sub) = self.sub_traffic_statistics.as_mut()
 			{
-				sub[subtraffic].track_consumed_message(cycle,total_delay, injection_delay,size,None);
+				sub[subtraffic].track_consumed_message(cycle, total_delay, size, None);
 			}else {
 				panic!("Subtraffic statistics not initialized");
 			}
@@ -357,9 +358,9 @@ impl TrafficStatistics
 		let messages_latency_histogram = (0..max+1).map(|i|
 			ConfigurationValue::Number(self.histogram_messages_delay.get(&i).unwrap_or(&0).clone() as f64)
 		).collect();
-		let messages_network_latency_histogram = (0..max+1).map(|i|
-			ConfigurationValue::Number(self.histogram_messages_network_delay.get(&i).unwrap_or(&0).clone() as f64)
-		).collect();
+		// let messages_network_latency_histogram = (0..max+1).map(|i|
+		// 	ConfigurationValue::Number(self.histogram_messages_network_delay.get(&i).unwrap_or(&0).clone() as f64)
+		// ).collect();
 
 		//let max_tasks = cmp::max(cmp::max(self.generating_tasks_histogram.keys().max().unwrap_or(&0), self.waiting_tasks_histogram.keys().max().unwrap_or(&0)), self.finished_tasks_histogram.keys().max().unwrap_or(&0));
 		let max_tasks = self.cycle_last_consumed_message as usize / self.box_size +1;
@@ -385,7 +386,7 @@ impl TrafficStatistics
 			(String::from("cycle_last_created_message"),ConfigurationValue::Number(self.cycle_last_created_message as f64)),
 			(String::from("cycle_last_consumed_message"),ConfigurationValue::Number(self.cycle_last_consumed_message as f64)),
 			(String::from("message_latency_histogram"),ConfigurationValue::Array(messages_latency_histogram)),
-			(String::from("message_network_latency_histogram"),ConfigurationValue::Array(messages_network_latency_histogram)),
+			// (String::from("message_network_latency_histogram"),ConfigurationValue::Array(messages_network_latency_histogram)),
 			(String::from("generating_tasks_histogram"),ConfigurationValue::Array(generated_tasks_histogram)),
 			(String::from("waiting_tasks_histogram"),ConfigurationValue::Array(waiting_tasks_histogram)),
 			(String::from("finished_generating_tasks_histogram"),ConfigurationValue::Array(finished_generating_tasks_histogram)),
