@@ -7,6 +7,8 @@ see [`new_pattern`](fn.new_pattern.html) for documentation on the configuration 
 */
 
 use std::cell::{RefCell};
+use std::collections::VecDeque;
+use std::convert::TryInto;
 use ::rand::{Rng,rngs::StdRng,prelude::SliceRandom};
 use std::fs::File;
 use std::io::{BufRead,BufReader};
@@ -353,8 +355,12 @@ pub fn new_pattern(arg:PatternBuilderArgument) -> Box<dyn Pattern>
 			"CandidatesSelection" => Box::new(CandidatesSelection::new(arg)),
 			"Sum" => Box::new(Sum::new(arg)),
 			"RoundRobin" => Box::new(RoundRobin::new(arg)),
+			"Inverse" => Box::new(Inverse::new(arg)),
+			"SubApp" => Box::new(SubApp::new(arg)),
 			"RecursiveDistanceHalving" => Box::new(RecursiveDistanceHalving::new(arg)),
 			"BinomialTree" => Box::new(BinomialTree::new(arg)),
+			"InmediateSequencePattern" => Box::new(InmediateSequencePattern::new(arg)),
+			"Stencil" => EncapsulatedPattern::new(cv_name.clone(), arg),
 			_ => panic!("Unknown pattern {}",cv_name),
 		}
 	}
@@ -919,7 +925,6 @@ impl Pattern for CartesianTransform
 	}
 	fn get_destination(&self, origin:usize, topology:&dyn Topology, rng: &mut StdRng)->usize
 	{
-		use std::convert::TryInto;
 		let up_origin=self.cartesian_data.unpack(origin);
 		let up_multiplied=match self.multiplier
 		{
@@ -1642,6 +1647,8 @@ impl GroupShufflingDestinations
 For each server, it keeps a shuffled list of destinations to which send.
 Select each destination with a probability.
 
+TODO: describe `weights` parameter.
+
 ```ignore
 DestinationSets{
 	patterns: [RandomPermutation, RandomPermutation, RandomPermutation], //2 random destinations
@@ -1715,6 +1722,56 @@ impl DestinationSets
 			patterns,
 			weights,
 			destination_set:vec![vec![];size],//to be filled in initialization
+		}
+	}
+}
+
+
+/**
+For each server, it keeps a shuffled list of destinations to which send.
+Select each destination with a probability.
+
+```ignore
+InmediateSequencePattern{
+
+}
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct InmediateSequencePattern
+{
+	sequence: Vec<usize>,
+	///Sequence for each input
+	sequences_input: RefCell<Vec<VecDeque<usize>>>,
+}
+
+impl Pattern for InmediateSequencePattern
+{
+	fn initialize(&mut self, source_size:usize, _target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		self.sequences_input.replace(vec![VecDeque::from(self.sequence.clone()); source_size]);
+
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		self.sequences_input.borrow_mut()[origin].pop_front().unwrap_or(0)
+	}
+}
+
+impl InmediateSequencePattern
+{
+	fn new(arg:PatternBuilderArgument) -> InmediateSequencePattern
+	{
+		let mut sequence=None;
+		match_object_panic!(arg.cv,"InmediateSequencePattern",value,
+			"sequence" => sequence=Some(value.as_array().expect("bad value for patterns").iter()
+				.map(|v|v.as_usize().expect("List should be of usizes")).collect()),
+		);
+		let sequence = sequence.unwrap();
+		InmediateSequencePattern {
+			sequence,
+			sequences_input: RefCell::new(vec![VecDeque::new()]),
 		}
 	}
 }
@@ -2603,7 +2660,6 @@ LinearTransform{
 	],
 	target_size: [4,8,8],
 	legend_name: "Identity",
-	//check_admisible: false,
 }
 ```
  **/
@@ -2892,6 +2948,182 @@ impl Switch {
 }
 
 /**
+```
+	Uses the inverse of the pattern specified.
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct Inverse
+{
+	///Pattern to apply.
+	pattern: Box<dyn Pattern>,
+	///Destination
+	inverse_values: Vec<Option<usize>>,
+	///default destination
+	default_destination: Option<usize>,
+}
+
+impl Pattern for Inverse
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		// if source_size!= target_size
+		// {
+		// 	panic!("Inverse requires source and target sets to have same size.");
+		// }
+		self.pattern.initialize(source_size,target_size,_topology,_rng);
+		let mut source = vec![None; source_size];
+		for i in 0..source_size
+		{
+			let destination = self.pattern.get_destination(i,_topology,_rng);
+			if let Some(_) = source[destination]
+			{
+				panic!("Inverse: destination {} is already used by origin {}.",destination,source[destination].unwrap());
+			}
+			source[destination] = Some(i);
+		}
+		self.inverse_values = source;
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		if origin >= self.inverse_values.len()
+		{
+			panic!("Inverse: origin {} is beyond the source size {}",origin,self.inverse_values.len());
+		}
+		if let Some(destination) = self.inverse_values[origin]
+		{
+			destination
+		}
+		else
+		{
+			self.default_destination.expect(&*("Inverse: origin ".to_owned() + &*origin.to_string() + " has no destination and there is no default destination."))
+		}
+	}
+}
+
+impl Inverse
+{
+	fn new(arg:PatternBuilderArgument) -> Inverse
+	{
+		let mut pattern = None;
+		let mut default_destination = None;
+		match_object_panic!(arg.cv,"Inverse",value,
+			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv:value,..arg})),
+			"default_destination" => default_destination = Some(value.as_usize().expect("bad value for default_destination")),
+		);
+		let pattern = pattern.expect("There were no pattern in configuration of Inverse.");
+		Inverse{
+			pattern,
+			inverse_values: vec![],
+			default_destination,
+		}
+	}
+}
+
+/**
+
+Select a region of tasks to execute a pattern. The size of the application using the pattern is 64.
+```ignore
+	SubApp{
+		subtasks: 8,
+		selection_pattern: CartesianEmbedding{
+			source_sides: [1,8],
+			destination_sides: [8,8],
+		},
+		subapp_pattern: CartesianTransform{
+			sides: [8, 8],
+			shift: [0, 1],
+		},
+		others_pattern: RandomPermutation,
+	}
+```
+ **/
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct SubApp
+{
+	subtasks: usize,
+	selection_pattern: Box<dyn Pattern>,
+	subapp_pattern: Box<dyn Pattern>,
+	others_pattern: Box<dyn Pattern>,
+	selected_vec: Vec<usize>,
+}
+
+impl Pattern for SubApp
+{
+	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+
+		if self.subtasks > source_size
+		{
+			panic!("SubApp: subtasks {} is greater than source size {}.",self.subtasks,source_size);
+		}
+
+		self.selection_pattern.initialize( self.subtasks, target_size, _topology, _rng);
+		self.subapp_pattern.initialize(source_size,target_size,_topology,_rng);
+		self.others_pattern.initialize(source_size,target_size,_topology,_rng);
+
+		let mut source = vec![0; source_size];
+		(0..self.subtasks).for_each(|i| {
+			let destination = self.selection_pattern.get_destination(i,_topology,_rng);
+			source[destination] = 1;
+		});
+		self.selected_vec = source;
+
+	}
+	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
+	{
+		if self.selected_vec.len() <= origin
+		{
+			panic!("SubApp: origin {} is beyond the source size {}",origin,self.selected_vec.len());
+		}
+
+		if self.selected_vec[origin] == 1
+		{
+			self.subapp_pattern.get_destination(origin,_topology,_rng)
+		}
+		else
+		{
+			self.others_pattern.get_destination(origin,_topology,_rng)
+		}
+
+	}
+}
+
+impl SubApp
+{
+	fn new(arg:PatternBuilderArgument) -> SubApp
+	{
+		let mut subtasks = None;
+		let mut selection_pattern = None;
+		let mut subapp_pattern = None;
+		let mut others_pattern = None;
+		match_object_panic!(arg.cv,"SubApp",value,
+			"subtasks" => subtasks = Some(value.as_usize().expect("bad value for total_subsize")),
+			"selection_pattern" => selection_pattern = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})), //map of the application over the machine
+			"subapp_pattern" => subapp_pattern = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})), //traffic of the application
+			"others_pattern" => others_pattern = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})), //traffic of the machine
+		);
+
+		let subtasks = subtasks.expect("There were no tasks in configuration of SubApp.");
+		let subapp_pattern = subapp_pattern.expect("There were no subapp_pattern in configuration of SubApp.");
+		let selection_pattern = selection_pattern.expect("There were no selection_pattern in configuration of SubApp.");
+		let others_pattern = others_pattern.expect("There were no others_pattern in configuration of SubApp.");
+
+		SubApp{
+			subtasks,
+			subapp_pattern,
+			selection_pattern,
+			others_pattern,
+			selected_vec: vec![],
+		}
+
+	}
+}
+
+
+/**
 For each source, it keeps a state of the last destination used. When applying the pattern, it uses the last destination as the origin for the pattern, and
 the destination is saved for the next call to the pattern.
 ```ignore
@@ -2960,7 +3192,9 @@ pub struct RecursiveDistanceHalving
 	///Pending destinations.
 	origin_state: RefCell<Vec<usize>>,
 	///Map for the different states
-	cartesian_data: Vec<CartesianData>,
+	cartesian_data: CartesianData,
+	///Order of the neighbours
+	neighbours_order: Option<Vec<Vec<usize>>>,
 }
 
 impl Pattern for RecursiveDistanceHalving
@@ -2978,12 +3212,7 @@ impl Pattern for RecursiveDistanceHalving
 		}
 		let pow = source_size.ilog2();
 		self.origin_state = RefCell::new(vec![0;source_size]);
-		self.cartesian_data = (0..pow).map(|i| CartesianData::new(&[source_size/2_usize.pow(i), 2_usize.pow(i)]) ).collect();
-		//print the cartesian_data
-		// for i in 0..pow
-		// {
-		// 	println!("cartesian_data[{}]: {:?}",i, self.cartesian_data[i as usize].sides);
-		// }
+		self.cartesian_data = CartesianData::new(&(vec![2; pow as usize]))//(0..pow).map(|i| CartesianData::new(&[source_size/2_usize.pow(i), 2_usize.pow(i)]) ).collect();
 	}
 	fn get_destination(&self, origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
 	{
@@ -2992,28 +3221,65 @@ impl Pattern for RecursiveDistanceHalving
 			panic!("RecursiveDistanceHalving: origin {} is beyond the source size {}",origin,self.origin_state.borrow().len());
 		}
 		let index = self.origin_state.borrow()[origin];
-		if index >=self.cartesian_data.len()
+		if index >=self.cartesian_data.sides.len()
 		{
 			return origin; //No more to do...
-			//panic!("RecursiveDistanceHalving: index {} is beyond the cartesian_data size {}",index,self.cartesian_data.len());
 		}
-		//print origin_state
-		// println!("origin_state: {:?}",self.origin_state.borrow());
-		self.origin_state.borrow_mut()[origin]+=1;
-		let source_coord = self.cartesian_data[index].unpack(origin);
-		let partition_size = self.cartesian_data[index].sides[0];
-		self.cartesian_data[index].pack(&[ (source_coord[0] + partition_size/2) % partition_size, source_coord[1]])
+
+		let mut state = self.origin_state.borrow_mut();
+		let source_coord = self.cartesian_data.unpack(origin);
+		let to_send = if let Some(vectores) = self.neighbours_order.as_ref()
+		{
+			vectores[state[origin]].clone()
+		}else {
+			self.cartesian_data.unpack(2_i32.pow(state[origin].try_into().unwrap()) as usize)
+		};
+
+		let dest = source_coord.iter().zip(to_send.iter()).map(|(a,b)| a^b).collect::<Vec<usize>>();
+		state[origin]+=1;
+		self.cartesian_data.pack(&dest)
 
 	}
 }
 
 impl RecursiveDistanceHalving
 {
-	fn new(_arg:PatternBuilderArgument) -> RecursiveDistanceHalving
+	fn new(arg:PatternBuilderArgument) -> RecursiveDistanceHalving
 	{
+		let mut neighbours_order: Option<Vec<usize>> = None; //Array of vectors which represent the order of the neighbours
+		match_object_panic!(arg.cv,"RecursiveDistanceHalving",value,
+			"neighbours_order" => neighbours_order = Some(value.as_array().expect("bad value for neighbours_order").iter()
+				.map(|n|n.as_usize().unwrap()).collect() ),
+		);
+
+		//now each number in the array transform it into an array of binary numbers
+		let binary_order = if let Some(n) = neighbours_order
+		{
+			//get the biggest number
+			let max = n.iter().max().unwrap();
+			//calculate the number of bits
+			let bits = max.ilog2() as usize + 1usize;
+			//transform each number into a binary number with the same number of bits
+			let bin_n = n.iter().map(|&x| {
+				let mut v = vec![0; bits];
+				let mut x = x;
+				for i in 0..bits
+				{
+					v[i] = x%2;
+					x = x/2;
+				}
+				v
+			}).collect();
+			Some(bin_n)
+
+		}else{
+			None
+		};
+
 		RecursiveDistanceHalving{
 			origin_state: RefCell::new(vec![]),
-			cartesian_data: vec![],
+			cartesian_data: CartesianData::new(&vec![0;0]),
+			neighbours_order: binary_order,
 		}
 	}
 }
@@ -3143,12 +3409,12 @@ pub struct CandidatesSelection
 
 impl Pattern for CandidatesSelection
 {
-	fn initialize(&mut self, source_size:usize, target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
+	fn initialize(&mut self, source_size:usize, _target_size:usize, _topology:&dyn Topology, _rng: &mut StdRng)
 	{
-		if target_size != 2
-		{
-			panic!("CandidatesSelection requires target size to be 2.");
-		}
+		// if target_size != 2
+		// {
+		// 	panic!("CandidatesSelection requires target size to be 2.");
+		// }
 		self.pattern.initialize(source_size, self.pattern_destination_size, _topology, _rng);
 		let mut selection = vec![0;source_size];
 		for i in 0..source_size
@@ -3260,113 +3526,95 @@ impl DebugPattern{
 	}
 }
 
+#[derive(Quantifiable)]
+#[derive(Debug)]
+pub struct EncapsulatedPattern {}
 
-
-/**
-FOR ALEX, NO MASTER
- **/
-//TODO: admissible, orders/cycle-finding, suprajective,
-#[derive(Debug,Quantifiable)]
-struct MiDebugPattern {
-	/// The pattern being applied transparently.
-	pattern: Vec<Box<dyn Pattern>>,
-	/// Whether to consider an error not being a permutation.
-	check_permutation: bool,
-	/// Whether to consider an error not being an injection.
-	check_injective: bool,
-	/// Size of source cached at initialization.
-	source_size: Vec<usize>,
-	/// Size of target cached at initialization.
-	target_size: usize,
-}
-
-impl Pattern for MiDebugPattern {
-	fn initialize(&mut self, _source_size:usize, _target_size:usize, topology:&dyn Topology, rng: &mut StdRng)
-	{
-		// self.source_size = source_size;
-		// self.target_size = target_size;
-		for (index, pattern) in self.pattern.iter_mut().enumerate() {
-			pattern.initialize(self.source_size[index], self.target_size, topology,rng);
-		}
-
-		if self.check_injective{
-
-			if self.source_size.iter().sum::<usize>() > self.target_size{
-				panic!("cannot be injective if source size {} is more than target size {}",self.source_size.iter().sum::<usize>(),self.target_size);
-			}
-			let mut hits = vec![-1;self.target_size];
-			for (index, size) in self.source_size.iter().enumerate() {
-
-				for origin_local in 0..*size {
-					let dst = self.pattern[index].get_destination(origin_local,topology,rng);
-					if hits[dst] != -1 {
-						panic!("Destination {} hit by origin {}, now by {}, in pattern: {}",dst,hits[dst],origin_local, index);
-					}
-					hits[dst] = origin_local as isize;
-				}
-
-			}
-			println!("Check injective patterns passed.");
-			println!("There were the following number of sources: {:?} ({}), and the following number of destinations: {}",self.source_size,self.source_size.iter().sum::<usize>(),self.target_size);
-			println!("There are {} free destinations, and {} servers hits. The free destinations are: {:?}",hits.iter().filter(|x|**x==-1).count(),hits.iter().filter(|x|**x!=-1).count(),hits.iter().enumerate().filter(|(_,x)|**x==-1).map(|(i,_)|i).collect::<Vec<usize>>());
-
-		}
-		// if self.check_permutation {
-		// 	if self.source_size != self.target_size {
-		// 		panic!("cannot be a permutation is source size {} and target size {} do not agree.",self.source_size,self.target_size);
-		// 	}
-		// 	let mut hits = vec![false;self.target_size];
-		// 	for origin in 0..self.source_size {
-		// 		let dst = self.pattern.get_destination(origin,topology,rng);
-		// 		if hits[dst] {
-		// 			panic!("Destination {} hit at least twice.",dst);
-		// 		}
-		// 		hits[dst] = true;
-		// 	}
-		// }
-		panic!("This is just a check.")
-	}
-	fn get_destination(&self, _origin:usize, _topology:&dyn Topology, _rng: &mut StdRng)->usize
-	{
-		0
-		// if origin >= self.source_size {
-		// 	panic!("Received an origin {origin} beyond source size {size}",size=self.source_size);
-		// }
-		// let dst = self.pattern.get_destination(origin,topology,rng);
-		// if dst >= self.target_size {
-		// 	panic!("The destination {dst} is beyond the target size {size}",size=self.target_size);
-		// }
-		// dst
+impl EncapsulatedPattern {
+	fn new(pattern: String, arg:PatternBuilderArgument) -> Box<dyn Pattern> {
+		let pattern_cv = match pattern.as_str(){
+			"Stencil" =>{
+				let mut task_space = None;
+				match_object_panic!(arg.cv,"Stencil",value,
+					"task_space" => task_space = Some(value.as_array().expect("bad value for task_space").iter()
+						.map(|v|v.as_usize().expect("bad value in task_space")).collect()),
+				);
+				let task_space = task_space.expect("There were no task_space in configuration of Stencil.");
+				Some(get_stencil_pattern(task_space))
+			},
+			_ => panic!("Pattern {} not found.",pattern),
+		};
+		new_pattern(PatternBuilderArgument{cv:&pattern_cv.unwrap(),..arg})
 	}
 }
 
-impl MiDebugPattern {
-	fn new(arg:PatternBuilderArgument) -> MiDebugPattern {
-		let mut pattern = None;
-		let mut check_permutation = false;
-		let mut check_injective = false;
-		let mut source_size = None;
-		let mut target_size = None;
-		match_object_panic!(arg.cv,"MiDebugPattern",value,
-			"patterns" => pattern = Some(value.as_array().expect("bad value for pattern").iter()
-				.map(|pcv|new_pattern(PatternBuilderArgument{cv:pcv,..arg})).collect()),
-			"check_permutation" => check_permutation = value.as_bool().expect("bad value for check_permutation"),
-			"source_size" => source_size = Some(value.as_array().expect("bad value for source_size").iter()
-				.map(|v|v.as_usize().expect("bad value in source_size")).collect()),
-			"target_size" => target_size = Some(value.as_usize().expect("bad value for target_size")),
-			"check_injective" => check_injective = value.as_bool().expect("bad value for check_injective"),
+pub(crate) fn get_stencil_pattern(task_space: Vec<usize>) -> ConfigurationValue
+{
+	let space_cv = ConfigurationValue::Array(task_space.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect::<Vec<_>>());
+
+	let mut transforms = vec![];
+	for i in 0..task_space.len()
+	{
+		let mut transform_suc = vec![0;task_space.len()]; //next element in dimension
+		transform_suc[i] = 1;
+		let transform_suc_cv = ConfigurationValue::Array(transform_suc.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect::<Vec<_>>());
+
+		let mut transform_pred = vec![0;task_space.len()]; //previous element in dimension
+		transform_pred[i] = (task_space[i] -1).rem_euclid(task_space[i]);
+		let transform_pred_cv = ConfigurationValue::Array(transform_pred.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect::<Vec<_>>());
+
+		transforms.push(
+			ConfigurationValue::Object("CartesianTransform".to_string(), vec![
+				("sides".to_string(), space_cv.clone()),
+				("shift".to_string(), transform_suc_cv),
+			]),
 		);
-		let pattern = pattern.expect("Missing pattern in configuration of Debug.");
-		let source_size = source_size.expect("Missing source_size in configuration of Debug.");
-		let target_size = target_size.expect("Missing target_size in configuration of Debug.");
-		MiDebugPattern {
-			pattern,
-			check_permutation,
-			check_injective,
-			source_size,
-			target_size,
-		}
+
+		transforms.push(
+			ConfigurationValue::Object("CartesianTransform".to_string(), vec![
+				("sides".to_string(), space_cv.clone()),
+				("shift".to_string(), transform_pred_cv),
+			]),
+		);
 	}
+
+	ConfigurationValue::Object( "RoundRobin".to_string(), vec![
+		("patterns".to_string(), ConfigurationValue::Array(transforms)),
+	])
+}
+
+
+pub fn get_switch_pattern(index_pattern: ConfigurationValue, patterns: Vec<ConfigurationValue>) -> ConfigurationValue{
+	ConfigurationValue::Object("Switch".to_string(), vec![
+		("indexing".to_string(), index_pattern),
+		("patterns".to_string(), ConfigurationValue::Array(patterns)),
+	])
+}
+
+pub fn get_candidates_selection(pattern: ConfigurationValue, pattern_destination_size: usize) -> ConfigurationValue{
+	ConfigurationValue::Object("CandidatesSelection".to_string(), vec![
+		("pattern".to_string(), pattern),
+		("pattern_destination_size".to_string(), ConfigurationValue::Number(pattern_destination_size as f64)),
+	])
+}
+
+pub fn get_cartesian_transform(sides: Vec<usize>, shift: Option<Vec<usize>>, patterns: Option<Vec<ConfigurationValue>>) -> ConfigurationValue{
+	let mut config = vec![
+		("sides".to_string(), ConfigurationValue::Array(sides.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect::<Vec<_>>())),
+	];
+	if let Some(shift) = shift{
+		config.push(("shift".to_string(), ConfigurationValue::Array(shift.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect::<Vec<_>>())));
+	}
+	if let Some(patterns) = patterns{
+		config.push(("patterns".to_string(), ConfigurationValue::Array(patterns)));
+	}
+	ConfigurationValue::Object("CartesianTransform".to_string(), config)
+}
+
+pub fn get_hotspot_destination(selected_destinations: Vec<usize>) -> ConfigurationValue{
+	ConfigurationValue::Object("Hotspots".to_string(), vec![
+		("destinations".to_string(), ConfigurationValue::Array(selected_destinations.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect::<Vec<_>>()), )
+	])
 }
 
 #[cfg(test)]

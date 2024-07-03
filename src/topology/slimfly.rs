@@ -16,7 +16,7 @@ use crate::{
 //x-y
 //x*y
 //field.size()
-trait FlatRing : Debug + Quantifiable
+pub trait FlatRing : Debug + Quantifiable
 {
 	fn size(&self) -> usize;
 	// Given an `integer` find the element in the ring corresponding to `integer` times the multiplicative unit of the ring.
