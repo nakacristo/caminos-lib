@@ -323,6 +323,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"ArgumentVC" => Box::new(ArgumentVC::new(arg)),
 			"Either" => Box::new(Either::new(arg)),
 			"MapEntryVC" => Box::new(MapEntryVC::new(arg)),
+			"MapTrafficIndex" => Box::new(MapTrafficIndex::new(arg)),
 			"MapMessageSize" => Box::new(MapMessageSize::new(arg)),
 			"Chain" => Box::new(Chain::new(arg)),
 			"VOQ" => Box::new(VOQ::new(arg)),
@@ -2048,6 +2049,73 @@ impl MapLabel
 		MapLabel{
 			label_to_policy,
 			below_policy,
+			above_policy,
+		}
+	}
+}
+
+///Depending on the traffic index in the message, it applies a different policy.
+#[derive(Debug)]
+pub struct MapTrafficIndex
+{
+	traffic_to_policy: Vec<Box<dyn VirtualChannelPolicy>>,
+	above_policy: Box<dyn VirtualChannelPolicy>,
+}
+
+impl VirtualChannelPolicy for MapTrafficIndex
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy MapTrafficIndex");
+		if router.get_index().expect("we need routers with index") == info.target_router_index
+		{
+			//do nothing
+			candidates
+		}
+		else
+		{
+			if let Some(traffic_index) = info.phit.packet.message.id_traffic
+			{
+				let policy = if traffic_index>=self.traffic_to_policy.len() { &self.above_policy } else { &self.traffic_to_policy[traffic_index] };
+				policy.filter(candidates,router,info,topology,rng)
+			}
+			else
+			{
+				panic!("Traffic index `id_traffic` not found in the message");
+			}
+		}
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		false
+	}
+}
+
+impl MapTrafficIndex
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> MapTrafficIndex
+	{
+		let mut traffic_to_policy=None;
+		let mut above_policy : Box<dyn VirtualChannelPolicy> =Box::new(Identity{});
+		match_object_panic!(arg.cv,"MapTrafficIndex",value,
+			"traffic_to_policy" => traffic_to_policy=Some(value.as_array().expect("bad value for traffic_to_policy").iter()
+				.map(|v|new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg})).collect()),
+			"above_policy" => above_policy = new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg}),
+		);
+		let traffic_to_policy=traffic_to_policy.expect("There were no traffic_to_policy");
+		MapTrafficIndex{
+			traffic_to_policy,
 			above_policy,
 		}
 	}

@@ -125,6 +125,7 @@ impl Traffic for TrafficMap
                 size: app_message.size,
                 creation_cycle: app_message.creation_cycle,
                 payload: app_message.payload().into(),
+                id_traffic: app_message.id_traffic,
             }
         );
         Ok(message)
@@ -309,6 +310,7 @@ impl Traffic for Sum
                     size: message.size(),
                     creation_cycle: message.creation_cycle(),
                     payload,
+                    id_traffic: Some(index),
                 }
             ))
 
@@ -324,7 +326,6 @@ impl Traffic for Sum
     }
     fn consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
-        // let index = bytemuck::try_cast::<[u8;4], u32>(message.payload()[0..4].try_into().expect("The slice is correct")).expect("Bad index in message for TrafficSum.") as usize;
         let index=  *bytemuck::try_from_bytes::<u32>(&message.payload()[0..4]).expect("Bad index in message for TrafficSum.") as usize;
         let sub_payload = &message.payload()[4..];
 
@@ -501,7 +502,8 @@ impl Traffic for ProductTraffic
 			size:inner_message.size,
 			creation_cycle: cycle,
 			payload,
-		});
+            id_traffic: None,
+        });
 		//self.generated_messages.insert(outer_message.as_ref() as *const Message,inner_message);
 		Ok(outer_message)
 	}
@@ -625,7 +627,8 @@ impl Traffic for BoundedDifference
 			size:self.message_size,
 			creation_cycle: cycle,
 			payload: id.to_le_bytes().into(),
-		});
+            id_traffic: None,
+        });
 		self.generated_messages.insert(id);
 		Ok(message)
 	}
@@ -749,6 +752,7 @@ impl Traffic for Shifted
             size:inner_message.size,
             creation_cycle: cycle,
             payload: inner_message.payload.clone(),
+            id_traffic: None,
         });
         //self.generated_messages.insert(outer_message.as_ref() as *const Message,inner_message);
         Ok(outer_message)

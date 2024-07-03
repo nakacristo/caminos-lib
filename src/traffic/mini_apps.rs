@@ -90,6 +90,7 @@ impl Traffic for TrafficCredit
 			size: message_size,
 			creation_cycle: cycle,
 			payload: id.to_le_bytes().into(),
+			id_traffic: None,
 		});
 		self.generated_messages.insert(id);
 
