@@ -38,8 +38,8 @@ pub struct Homogeneous
 	///The load offered to the network. Proportion of the cycles that should be injecting phits.
 	load: f32,
 	///Set of generated messages.
-	//generated_messages: BTreeSet<*const Message>,
 	generated_messages: BTreeSet<u128>,
+    ///The id of the next message to generate.
 	next_id: u128,
 }
 
@@ -84,7 +84,7 @@ impl Traffic for Homogeneous
 		}
 	}
 
-    fn try_consume(&mut self, _task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+    fn consume(&mut self, _task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
     {
         //let message_ptr=message.as_ref() as *const Message;
         //self.generated_messages.remove(&message_ptr)
@@ -170,6 +170,7 @@ pub struct Burst
     expected_messages_to_consume: Option<usize>,
     ///Messages per task consumed
     total_consumed_per_task: Vec<usize>,
+    ///The id of the next message to generate.
     next_id: u128,
 }
 
@@ -217,7 +218,7 @@ impl Traffic for Burst
         self.pending_messages[task]>0
     }
 
-    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+    fn consume(&mut self, task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
     {
         self.total_consumed_per_task[task] += 1;
         let id = u128::from_le_bytes(message.payload()[0..16].try_into().expect("bad payload"));
@@ -296,6 +297,29 @@ impl Burst
     }
 }
 
+pub struct BuildBurstCVArgs{
+    pub tasks: usize,
+    pub pattern: ConfigurationValue,
+    pub messages_per_task: usize,
+    pub message_size: usize,
+    pub expected_messages_to_consume_per_task: Option<usize>,
+}
+
+pub fn build_burst_cv(args: BuildBurstCVArgs) -> ConfigurationValue {
+    let mut cv_list = vec![
+        ("tasks".to_string(), ConfigurationValue::Number(args.tasks as f64)),
+        ("pattern".to_string(), args.pattern),
+        ("messages_per_task".to_string(), ConfigurationValue::Number(args.messages_per_task as f64)),
+        ("message_size".to_string(), ConfigurationValue::Number(args.message_size as f64)),
+        //("expected_messages_to_consume_per_task".to_string(), ConfigurationValue::Number(args.expected_messages_to_consume_per_task as f64)),
+    ];
+    if let Some(expected_messages_to_consume_per_task) = args.expected_messages_to_consume_per_task {
+        cv_list.push(("expected_messages_to_consume_per_task".to_string(), ConfigurationValue::Number(expected_messages_to_consume_per_task as f64)));
+    }
+    ConfigurationValue::Object("Burst".to_string(), cv_list)
+}
+
+
 /**
 Traffic which allows to generate a specific number of messages in total following a specific traffic.
 It finishes when all the messages have been generated and consumed.
@@ -366,11 +390,11 @@ impl Traffic for TrafficMessages
         }
     }
 
-    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+    fn consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
         self.total_consumed += 1;
         self.total_consumed_per_task[task] += 1;
-        self.traffic.try_consume(task, message, cycle, topology, rng)
+        self.traffic.consume(task, message, cycle, topology, rng)
     }
     fn is_finished(&self) -> bool
     {
@@ -423,6 +447,7 @@ impl TrafficMessages
         let messages_per_task = if messages_per_task.is_some() {
             let mpt = messages_per_task.unwrap();
             if mpt * tasks != num_messages {
+                println!("Tasks: {} Messages per task: {} Total messages: {}", tasks, mpt, num_messages);
                 panic!("Messages per task and total messages are different.");
             }
             Some(vec![mpt;tasks])
@@ -500,7 +525,7 @@ impl Traffic for Sleep
     {
         0.0
     }
-    fn try_consume(&mut self, _task:usize, _message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+    fn consume(&mut self, _task:usize, _message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
     {
         false
     }
@@ -584,6 +609,7 @@ pub struct PeriodicBurst
     pending_messages: Vec<usize>,
     ///Set of generated messages.
     generated_messages: BTreeSet<u128>,
+    ///The id of the next message to generate.
     next_id: u128,
 }
 
@@ -625,7 +651,7 @@ impl Traffic for PeriodicBurst
             0.0
         }
     }
-    fn try_consume(&mut self, _task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+    fn consume(&mut self, _task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
     {
         let id = u128::from_le_bytes(message.payload()[0..16].try_into().expect("bad payload"));
         self.generated_messages.remove(&id)
@@ -775,9 +801,9 @@ impl Traffic for SubRangeTraffic
     {
         self.traffic.probability_per_cycle(task)
     }
-    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+    fn consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
-        self.traffic.try_consume(task,message,cycle,topology,rng)
+        self.traffic.consume(task, message, cycle, topology, rng)
     }
     fn is_finished(&self) -> bool
     {
@@ -852,9 +878,9 @@ impl Traffic for Reactive
         }
         return self.action_traffic.probability_per_cycle(task);
     }
-    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+    fn consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
-        if self.action_traffic.try_consume(task,message,cycle,topology,rng)
+        if self.action_traffic.consume(task, message, cycle, topology, rng)
         {
             if self.reaction_traffic.should_generate(message.origin(), cycle, rng)
             {
@@ -874,7 +900,7 @@ impl Traffic for Reactive
             }
             return true;
         }
-        self.reaction_traffic.try_consume(task,message,cycle,topology,rng)
+        self.reaction_traffic.consume(task, message, cycle, topology, rng)
     }
     fn is_finished(&self) -> bool
     {

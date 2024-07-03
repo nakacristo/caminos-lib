@@ -3541,7 +3541,7 @@ impl EncapsulatedPattern {
 						.map(|v|v.as_usize().expect("bad value in task_space")).collect()),
 				);
 				let task_space = task_space.expect("There were no task_space in configuration of Stencil.");
-				Some(get_stencil(task_space))
+				Some(get_stencil_pattern(task_space))
 			},
 			_ => panic!("Pattern {} not found.",pattern),
 		};
@@ -3549,7 +3549,7 @@ impl EncapsulatedPattern {
 	}
 }
 
-fn get_stencil(task_space: Vec<usize>) -> ConfigurationValue
+pub(crate) fn get_stencil_pattern(task_space: Vec<usize>) -> ConfigurationValue
 {
 	let space_cv = ConfigurationValue::Array(task_space.iter().map(|&v| ConfigurationValue::Number(v as f64)).collect::<Vec<_>>());
 

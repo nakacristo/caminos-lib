@@ -75,7 +75,7 @@ impl Traffic for MessageBarrier
         self.total_sent_per_task[task] < self.messages_per_task_to_wait && self.traffic.should_generate(task, cycle, rng)
     }
 
-    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+    fn consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
         self.total_consumed += 1;
         self.total_consumed_per_task[task] += 1;
@@ -85,11 +85,11 @@ impl Traffic for MessageBarrier
             self.total_sent_per_task = vec![0; self.tasks];
             self.total_consumed_per_task = vec![0; self.tasks];
         }
-        self.traffic.try_consume(task, message, cycle, topology, rng)
+        self.traffic.consume(task, message, cycle, topology, rng)
     }
     fn is_finished(&self) -> bool
     {
-        false
+        self.traffic.is_finished()
     }
     fn task_state(&self, task:usize, cycle:Time) -> Option<TaskTrafficState>
     {
@@ -146,6 +146,29 @@ impl MessageBarrier
         }
     }
 }
+
+pub struct BuildMessageBarrierCVArgs {
+    pub traffic: ConfigurationValue,
+    pub tasks: usize,
+    pub messages_per_task_to_wait: usize,
+    pub expected_messages_to_consume_to_wait: Option<usize>,
+}
+
+pub fn build_message_barrier_cv(args: BuildMessageBarrierCVArgs) -> ConfigurationValue
+{
+    let mut cv = vec![
+        ("traffic".to_string(), args.traffic),
+        ("tasks".to_string(), ConfigurationValue::Number(args.tasks as f64)),
+        ("messages_per_task_to_wait".to_string(), ConfigurationValue::Number(args.messages_per_task_to_wait as f64)),
+    ];
+
+    if let Some(expected_messages_to_consume_to_wait) = args.expected_messages_to_consume_to_wait {
+        cv.push(("expected_messages_to_consume_to_wait".to_string(), ConfigurationValue::Number(expected_messages_to_consume_to_wait as f64)));
+    }
+
+    ConfigurationValue::Object("MessageBarrier".to_string(), cv)
+}
+
 
 /**
 MPI collectives implementations based on TrafficCredit
@@ -286,7 +309,7 @@ fn ring_iteration(tasks: usize, data_size: usize) -> ConfigurationValue {
     let traffic_message_cv_builder = BuildMessageCVArgs{
         traffic: traffic_credit,
         tasks,
-        messages_per_task: Some(tasks),
+        messages_per_task: Some(tasks -1),
         num_messages: tasks * (tasks - 1),
         expected_messages_to_consume_per_task: Some(tasks),
     };

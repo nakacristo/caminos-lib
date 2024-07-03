@@ -5,7 +5,6 @@ use std::convert::TryInto;
 use std::rc::Rc;
 use quantifiable_derive::Quantifiable;
 use rand::prelude::StdRng;
-use rand::Rng;
 use crate::{match_object_panic, Message, Time};
 use crate::measures::TrafficStatistics;
 use crate::pattern::{new_pattern, Pattern, PatternBuilderArgument};
@@ -119,13 +118,15 @@ impl Traffic for TrafficMap
         let app_destination = app_message.destination;
 
         // build the message
-        let message = Rc::new(Message{
-            origin,
-            destination: self.from_app_to_machine[app_destination], // get the destination of the message (the machine) from the base map
-            size: app_message.size,
-            creation_cycle: app_message.creation_cycle,
-            payload: vec![],
-        });
+        let message = Rc::new(
+            Message{
+                origin,
+                destination: self.from_app_to_machine[app_destination], // get the destination of the message (the machine) from the base map
+                size: app_message.size,
+                creation_cycle: app_message.creation_cycle,
+                payload: app_message.payload().into(),
+            }
+        );
         Ok(message)
     }
 
@@ -140,7 +141,7 @@ impl Traffic for TrafficMap
         }).unwrap_or(0.0) // if the task_app has no origin, it has no probability
     }
 
-    fn try_consume(&mut self, task: usize, message: &dyn AsMessage, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool
+    fn consume(&mut self, task: usize, message: &dyn AsMessage, cycle: Time, topology: &dyn Topology, rng: &mut StdRng) -> bool
     {
 
         let task_app = self.from_machine_to_app[task].expect("There was no origin for the message");
@@ -149,7 +150,7 @@ impl Traffic for TrafficMap
         app_message.origin = task_app;
 
         // try to consume the message in the application
-        self.application.try_consume(task_app, &app_message, cycle, topology, rng)
+        self.application.consume(task_app, &app_message, cycle, topology, rng)
     }
 
 
@@ -244,11 +245,9 @@ TrafficSum{
 	list: [HomogeneousTraffic{...},... ],
 	statistics_temporal_step: 1000, //step to record temporal statistics for each subtraffic.
 	box_size: 1000, //group results for the messages histogram.
-	finish_when: [0, 1] //finish when the first and second subtraffics are finished.
+	finish_when: [0, 1] // (Optional) finish when the first and second subtraffics are finished. It waits for all by default
 }
 ```
-
-TODO: document new arguments.
  **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
@@ -288,53 +287,52 @@ impl Traffic for Sum
             panic!("Warning: Multiple traffics are generating messages in the same task.");
         }
 
-        let r=rng.gen_range(0..self.index_to_generate[origin].len());//rand-0.8
+        let r= 0;//rng.gen_range(0..self.index_to_generate[origin].len());//rand-0.8
         let index = self.index_to_generate[origin][r];
         let message = self.list[index].generate_message(origin,cycle,topology,rng);
 
-        if !message.is_err(){
-            let size_msg = message.as_ref().unwrap().size;
-            self.statistics.track_created_message(cycle, size_msg, Some( index ));
-        }
-        message
+        if let Ok(ref message) = message{
 
-        // for i in 0..traffics.len()
-        // {
-        // 	if r<probs[i]
-        // 	{
-        // 		let message = traffics[i].generate_message(origin,cycle,topology,rng);
-        // 		if !message.is_err(){
-        // 			self.statistics[i].borrow_mut().track_created_message(cycle);
-        // 		}
-        // 		return message;
-        // 	}
-        // 	else
-        // 	{
-        // 		r-=probs[i];
-        // 	}
-        // }
-        // panic!("failed probability");
+            let size_msg = message.size;
+            self.statistics.track_created_message(cycle, size_msg, Some( index ));
+
+            let mut payload = Vec::with_capacity(message.payload().len() + 4);
+            let index_convert = index as u32;
+            let i_bytes = bytemuck::bytes_of(&index_convert);
+            payload.extend_from_slice(&i_bytes);
+            payload.extend_from_slice(message.payload());
+
+            Ok(Rc::from(
+                Message {
+                    origin: message.origin(),
+                    destination: message.destination(),
+                    size: message.size(),
+                    creation_cycle: message.creation_cycle(),
+                    payload,
+                }
+            ))
+
+        } else {
+            message
+        }
+
     }
-    //fn should_generate(&self, rng: &mut StdRng) -> bool
-    //{
-    //	let r=rng.gen_range(0f32,1f32);
-    //	r<=self.list.iter().map(|t|t.probability_per_cycle()).sum()
-    //}
+
     fn probability_per_cycle(&self,task:usize) -> f32
     {
         self.list.iter().map(|t|t.probability_per_cycle(task)).sum()
     }
-    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+    fn consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
-        for (index, traffic) in self.list.iter_mut().enumerate()
-        {
-            if traffic.try_consume(task,message,cycle,topology,rng)
-            {
-                self.statistics.track_consumed_message(cycle, cycle - message.creation_cycle(), message.size(), Some(index));
-                return true; //IF SELF MESSAGE ???
-            }
-        }
-        return false;
+        // let index = bytemuck::try_cast::<[u8;4], u32>(message.payload()[0..4].try_into().expect("The slice is correct")).expect("Bad index in message for TrafficSum.") as usize;
+        let index=  *bytemuck::try_from_bytes::<u32>(&message.payload()[0..4]).expect("Bad index in message for TrafficSum.") as usize;
+        let sub_payload = &message.payload()[4..];
+
+        self.statistics.track_consumed_message(cycle, cycle - message.creation_cycle(), message.size(), Some(index));
+
+        let mut sub_message = ReferredPayload::from(message);
+        sub_message.payload = sub_payload;
+        self.list[index].consume(task, &sub_message, cycle, topology, rng)
     }
     fn is_finished(&self) -> bool
     {
@@ -490,8 +488,12 @@ impl Traffic for ProductTraffic
 		let inner_message=self.block_traffic.generate_message(local,cycle,topology,rng)?;
 		let mut payload = Vec::with_capacity(inner_message.payload().len() + 8);
 		let destination = global_dest*self.block_size+inner_message.destination;
-		payload.extend_from_slice( &(local as u32).to_le_bytes() );
-		payload.extend_from_slice( &(destination as u32).to_le_bytes() );
+
+        let vec = [local as u32, destination as u32];
+        let bytes = bytemuck::bytes_of(&vec);
+		// payload.extend_from_slice( &(local as u32).to_le_bytes() );
+		// payload.extend_from_slice( &(destination as u32).to_le_bytes() );
+        payload.extend_from_slice(bytes);
 		payload.extend_from_slice(inner_message.payload());
 		let outer_message=Rc::new(Message{
 			origin,
@@ -508,7 +510,7 @@ impl Traffic for ProductTraffic
 		let local=task % self.block_size;
 		self.block_traffic.probability_per_cycle(local)
 	}
-	fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+	fn consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
 	{
 		//let message_ptr=message.as_ref() as *const Message;
 		//let inner_message=match self.generated_messages.remove(&message_ptr)
@@ -517,10 +519,12 @@ impl Traffic for ProductTraffic
 		//	Some(m) => m,
 		//};
 		let mut inner_message = ReferredPayload::from(message);
-		inner_message.origin = u32::from_le_bytes( inner_message.payload[0..4].try_into().unwrap() ) as usize;
-		inner_message.destination = u32::from_le_bytes( inner_message.payload[4..8].try_into().unwrap() ) as usize;
+        let [origin, destination] = bytemuck::try_cast::<[u8;32],[u32;2]>(message.payload()[0..8].try_into().expect("This should be here!")).expect("MessageTaskSequence: bad payload in consume");
+
+        inner_message.origin = origin as usize;
+        inner_message.destination = destination as usize;
 		inner_message.payload = &inner_message.payload[8..];
-		if !self.block_traffic.try_consume(task,&inner_message,cycle,topology,rng)
+		if !self.block_traffic.consume(task, &inner_message, cycle, topology, rng)
 		{
 			panic!("ProductTraffic traffic consumed a message but its child did not.");
 		}
@@ -565,7 +569,6 @@ impl ProductTraffic
 			block_traffic,
 			global_pattern,
 			global_size,
-			//generated_messages: BTreeMap::new(),
 		}
 	}
 }
@@ -591,6 +594,7 @@ pub struct BoundedDifference
 	bound: usize,
 	///Set of generated messages.
 	generated_messages: BTreeSet<u128>,
+    ///The id of the next message to generate.
 	next_id: u128,
 	///The number of messages each task is currently allowed to generate until they consume more.
 	///It is initialized to `bound`.
@@ -641,7 +645,7 @@ impl Traffic for BoundedDifference
 			}
 		} else { 0f32 }
 	}
-	fn try_consume(&mut self, task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
+	fn consume(&mut self, task:usize, message: &dyn AsMessage, _cycle:Time, _topology:&dyn Topology, _rng: &mut StdRng) -> bool
 	{
 		//let message_ptr=message.as_ref() as *const Message;
 		self.allowance[task]+=1;
@@ -753,11 +757,11 @@ impl Traffic for Shifted
     {
         self.traffic.probability_per_cycle(task-self.shift)
     }
-    fn try_consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
+    fn consume(&mut self, task:usize, message: &dyn AsMessage, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> bool
     {
         let mut inner_message = ReferredPayload::from(message);
         inner_message.destination -= self.shift;
-        if !self.traffic.try_consume(task,&inner_message,cycle,topology,rng)
+        if !self.traffic.consume(task, &inner_message, cycle, topology, rng)
         {
             panic!("Shifted traffic consumed a message but its child did not.");
         }
