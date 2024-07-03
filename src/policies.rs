@@ -2123,79 +2123,79 @@ impl MapTrafficIndex
 }
 
 
-///Select the VC to use by a function utilizing the selected vc and traffic ID
-#[derive(Debug)]
-pub struct VCFunction
-{
-	multiply_current_vc: i32,
-	multiply_traffic_id: i32,
-	multiply_current_hops: i32,
-	add: i32,
-}
-
-impl VirtualChannelPolicy for VCFunction
-{
-	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
-	{
-		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy VCFunction");
-		if router.get_index().expect("we need routers with index") == info.target_router_index
-		{
-			//do nothing
-			candidates
-		}
-		else
-		{
-			candidates.into_iter().map(
-				//|CandidateEgress{port,virtual_channel,label,estimated_remaining_hops}|
-				|candidate|{
-				let CandidateEgress{port: _,virtual_channel,..} = candidate;
-				let new_vc = self.multiply_current_vc*virtual_channel as i32 + self.multiply_traffic_id*info.phit.packet.message.id_traffic.unwrap() as i32 + self.multiply_current_hops* info.performed_hops as i32 + self.add;
-				CandidateEgress{virtual_channel:new_vc as usize,..candidate}
-			}).collect::<Vec<_>>()
-		}
-	}
-
-	fn need_server_ports(&self)->bool
-	{
-		false
-	}
-
-	fn need_port_average_queue_length(&self)->bool
-	{
-		false
-	}
-
-	fn need_port_last_transmission(&self)->bool
-	{
-		false
-	}
-
-}
-
-impl VCFunction
-{
-	pub fn new(arg:VCPolicyBuilderArgument) -> VCFunction
-	{
-		let mut multiply_current_vc=0;
-		let mut multiply_traffic_id=0;
-		let mut multiply_current_hops=0;
-		let mut add=0;
-
-		match_object_panic!( arg.cv,"VCFunction",value,
-			"multiply_current_vc" => multiply_current_vc=value.as_f64().expect("bad value for multiply_current_vc") as i32,
-			"multiply_traffic_id" => multiply_traffic_id=value.as_f64().expect("bad value for multiply_traffic_id") as i32,
-			"multiply_current_hops" => multiply_current_hops=value.as_f64().expect("bad value for multiply_current_hops") as i32,
-			"add" => add=value.as_f64().expect("bad value for add") as i32,
-		);
-
-		VCFunction{
-			multiply_current_vc,
-			multiply_traffic_id,
-			multiply_current_hops,
-			add,
-		}
-	}
-}
+// ///Select the VC to use by a function utilizing the selected vc and traffic ID
+// #[derive(Debug)]
+// pub struct VCFunction
+// {
+// 	multiply_current_vc: i32,
+// 	multiply_traffic_id: i32,
+// 	multiply_current_hops: i32,
+// 	add: i32,
+// }
+//
+// impl VirtualChannelPolicy for VCFunction
+// {
+// 	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+// 	{
+// 		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy VCFunction");
+// 		if router.get_index().expect("we need routers with index") == info.target_router_index
+// 		{
+// 			//do nothing
+// 			candidates
+// 		}
+// 		else
+// 		{
+// 			candidates.into_iter().map(
+// 				//|CandidateEgress{port,virtual_channel,label,estimated_remaining_hops}|
+// 				|candidate|{
+// 				let CandidateEgress{port: _,virtual_channel,..} = candidate;
+// 				let new_vc = self.multiply_current_vc*virtual_channel as i32 + self.multiply_traffic_id*info.phit.packet.message.id_traffic.unwrap() as i32 + self.multiply_current_hops* info.performed_hops as i32 + self.add;
+// 				CandidateEgress{virtual_channel:new_vc as usize,..candidate}
+// 			}).collect::<Vec<_>>()
+// 		}
+// 	}
+//
+// 	fn need_server_ports(&self)->bool
+// 	{
+// 		false
+// 	}
+//
+// 	fn need_port_average_queue_length(&self)->bool
+// 	{
+// 		false
+// 	}
+//
+// 	fn need_port_last_transmission(&self)->bool
+// 	{
+// 		false
+// 	}
+//
+// }
+//
+// impl VCFunction
+// {
+// 	pub fn new(arg:VCPolicyBuilderArgument) -> VCFunction
+// 	{
+// 		let mut multiply_current_vc=0;
+// 		let mut multiply_traffic_id=0;
+// 		let mut multiply_current_hops=0;
+// 		let mut add=0;
+//
+// 		match_object_panic!( arg.cv,"VCFunction",value,
+// 			"multiply_current_vc" => multiply_current_vc=value.as_f64().expect("bad value for multiply_current_vc") as i32,
+// 			"multiply_traffic_id" => multiply_traffic_id=value.as_f64().expect("bad value for multiply_traffic_id") as i32,
+// 			"multiply_current_hops" => multiply_current_hops=value.as_f64().expect("bad value for multiply_current_hops") as i32,
+// 			"add" => add=value.as_f64().expect("bad value for add") as i32,
+// 		);
+//
+// 		VCFunction{
+// 			multiply_current_vc,
+// 			multiply_traffic_id,
+// 			multiply_current_hops,
+// 			add,
+// 		}
+// 	}
+// }
 
 
 ///Only allows those candidates whose vc equals their entry vc plus some `s` in `shifts`.
