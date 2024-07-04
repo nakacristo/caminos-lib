@@ -12,10 +12,12 @@ Implementations of operations on routings that modify the virtual channel to use
 use std::cell::RefCell;
 
 use ::rand::{rngs::StdRng};
+use rand::SeedableRng;
 
-use crate::match_object_panic;
+use crate::{match_object_panic, Plugs};
 use crate::config_parser::ConfigurationValue;
-use crate::topology::Topology;
+use crate::pattern::{new_pattern, PatternBuilderArgument};
+use crate::topology::{new_topology, Topology, TopologyBuilderArgument};
 use crate::routing::prelude::*;
 
 ///Set the virtual channels to use in each hop.
@@ -346,6 +348,8 @@ impl Routing for ChannelMap
 	}
 	fn initialize(&mut self, topology:&dyn Topology, rng: &mut StdRng)
 	{
+
+
 		self.routing.initialize(topology,rng);
 	}
 	fn performed_request(&self, requested:&CandidateEgress, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, target_router:usize, target_server:Option<usize>, _num_virtual_channels:usize, rng:&mut StdRng)
@@ -368,6 +372,9 @@ impl ChannelMap
 	{
 		let mut routing =None;
 		let mut map =None;
+		let mut physical_to_logical =None; //pattern
+		let mut logical_size = None; //the size of the logical channels
+		let mut physical_size = None; //the size of the physical channels
 		match_object_panic!(arg.cv,"ChannelMap",value,
 			"routing" => routing=Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
 			"map" => match value
@@ -380,15 +387,46 @@ impl ChannelMap
 					_ => panic!("bad value in map"),
 				}).collect()),
 				_ => panic!("bad value for map"),
-			}
+			},
+			"physical_to_logical" => physical_to_logical = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})),
+			"logical_size" => logical_size = Some(value.as_f64().expect("bad value for logical_size") as usize),
+			"physical_size" => physical_size = Some(value.as_f64().expect("bad value for physical_size") as usize),
 		);
+
+		let map = if map.is_none(){
+			let plugs = Plugs::default();
+			let mut rng=StdRng::seed_from_u64(10u64);
+			let topo_cv = ConfigurationValue::Object("Hamming".to_string(),vec![("sides".to_string(),ConfigurationValue::Array(vec![])), ("servers_per_router".to_string(),ConfigurationValue::Number(1.0))]);
+
+			let dummy_topology = new_topology(TopologyBuilderArgument{cv:&topo_cv,plugs:&plugs,rng:&mut rng});
+
+			let physical_to_logical = physical_to_logical.expect("There were no physical_to_logical");
+			let logical_size = logical_size.expect("There were no logical_size");
+			let physical_size = physical_size.expect("There were no physical_size");
+			let mut map = vec![ vec![];logical_size ];
+			for i in 0..logical_size{
+				for j in 0..physical_size{
+					if physical_to_logical.get_destination(j, &*dummy_topology,&mut rng ) == i
+					{
+						map[i].push(j);
+					}
+				}
+			}
+			map
+
+		}else {
+			map.unwrap()
+		};
+
 		let routing=routing.expect("There were no routing");
-		let map=map.expect("There were no map");
 		ChannelMap{
 			routing,
 			map,
 		}
 	}
 }
+
+
+
 
 

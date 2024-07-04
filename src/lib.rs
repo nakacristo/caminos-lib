@@ -1089,6 +1089,10 @@ impl<'a> Simulation<'a>
 								&Location::ServerPort(_server_index) => if phit.is_begin()
 								{
 									*phit.packet.cycle_into_network.borrow_mut() = self.shared.cycle;
+									// if phit.packet.index == 0
+									// {
+									// 	*phit.packet.message.cycle_into_network.borrow_mut() = Some(self.shared.cycle);
+									// }
 									self.shared.routing.initialize_routing_info(&phit.packet.routing_info, self.shared.network.topology.as_ref(), router, target_router, Some(target_server), &mut self.mutable.rng);
 								},
 								&Location::RouterPort{../*router_index,router_port*/} =>

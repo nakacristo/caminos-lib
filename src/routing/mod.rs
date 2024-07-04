@@ -17,6 +17,7 @@ pub mod channel_operations;
 pub mod updown;
 pub mod polarized;
 
+use crate::topology::dragonfly::DragonflyDirect;
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::convert::TryFrom;
@@ -31,6 +32,8 @@ pub use crate::event::Time;
 use quantifiable_derive::Quantifiable;//the derive macro
 use crate::{Plugs};
 pub use crate::error::Error;
+use crate::topology::megafly::MegaflyAD;
+use crate::topology::multistage::UpDownDerouting;
 
 pub use self::basic::*;
 pub use self::extra::*;
@@ -439,7 +442,12 @@ pub fn new_routing(arg: RoutingBuilderArgument) -> Box<dyn Routing>
 			"AscendantChannelsWithLinkClass" => Box::new(AscendantChannelsWithLinkClass::new(arg)),
 			"ChannelMap" => Box::new(ChannelMap::new(arg)),
 			"Dragonfly2Colors" => Box::new(crate::topology::dragonfly::Dragonfly2ColorsRouting::new(arg)),
+			"UpDownDerouting" => Box::new(UpDownDerouting::new(arg)),
+			"MegaflyAD" => Box::new(MegaflyAD::new(arg)),
 			"AdaptiveStart" => Box::new(AdaptiveStart::new(arg)),
+			"DragonflyDirect" => Box::new(DragonflyDirect::new(arg)),
+			"SubTopologyRouting" => Box::new(SubTopologyRouting::new(arg)),
+			"RegionRouting" => Box::new(RegionRouting::new(arg)),
 			_ => panic!("Unknown Routing {}",cv_name),
 		}
 	}

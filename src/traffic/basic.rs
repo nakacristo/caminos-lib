@@ -1,4 +1,4 @@
-use crate::packet::AsMessage;
+use crate::AsMessage;
 use crate::new_traffic;
 use crate::pattern::{new_pattern, PatternBuilderArgument};
 use std::collections::{BTreeSet, VecDeque};
@@ -65,7 +65,8 @@ impl Traffic for Homogeneous
 			size:self.message_size,
 			creation_cycle: cycle,
 			payload: id.to_le_bytes().into(),
-		});
+            id_traffic: None,
+        });
 		//self.generated_messages.insert(message.as_ref() as *const Message);
 		self.generated_messages.insert(id);
 		Ok(message)
@@ -197,6 +198,7 @@ impl Traffic for Burst
             size:self.message_size,
             creation_cycle: cycle,
             payload: id.to_le_bytes().into(),
+            id_traffic: None,
         });
         self.generated_messages.insert(id);
         Ok(message)
@@ -636,6 +638,7 @@ impl Traffic for PeriodicBurst
             size:self.message_size,
             creation_cycle: cycle,
             payload: id.to_le_bytes().into(),
+            id_traffic: None,
         });
         self.generated_messages.insert(id);
         Ok(message)

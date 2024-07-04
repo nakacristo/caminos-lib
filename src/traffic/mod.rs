@@ -13,7 +13,7 @@ mod mini_apps;
 mod basic;
 mod operations;
 
-use crate::packet::AsMessage;
+use crate::AsMessage;
 use crate::traffic::mini_apps::{MiniApp, TrafficCredit};
 use crate::traffic::collectives::MessageBarrier;
 use crate::traffic::collectives::MPICollective;

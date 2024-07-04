@@ -1,18 +1,22 @@
-use crate::packet::AsMessage;
-use crate::pattern::{new_pattern, PatternBuilderArgument};
-use std::collections::{BTreeSet};
+use crate::pattern::extra::{get_hotspot_destination, get_stencil_pattern, get_switch_pattern};
+use std::collections::BTreeSet;
 use std::convert::TryInto;
 use std::rc::Rc;
 use quantifiable_derive::Quantifiable;
+
 use rand::prelude::StdRng;
-use crate::config_parser::ConfigurationValue;
 use crate::{match_object_panic, Message, Time};
-use crate::pattern::{get_candidates_selection, get_cartesian_transform, get_hotspot_destination, get_switch_pattern, Pattern, get_stencil_pattern};
+
+use crate::Pattern;
+use crate::AsMessage;
+use crate::config_parser::ConfigurationValue;
+use crate::pattern::{new_pattern, PatternBuilderArgument};
 use crate::topology::Topology;
 use crate::traffic::{new_traffic, TaskTrafficState, Traffic, TrafficBuilderArgument, TrafficError};
 use crate::traffic::basic::{build_burst_cv, build_message_cv, BuildBurstCVArgs, BuildMessageCVArgs};
 use crate::traffic::collectives::{build_message_barrier_cv, BuildMessageBarrierCVArgs};
 use crate::traffic::TaskTrafficState::{Generating, UnspecifiedWait};
+use crate::pattern::extra::{get_candidates_selection,get_cartesian_transform};
 
 
 /**
@@ -90,6 +94,7 @@ impl Traffic for TrafficCredit
 			size: message_size,
 			creation_cycle: cycle,
 			payload: id.to_le_bytes().into(),
+			id_traffic: None,
 		});
 		self.generated_messages.insert(id);
 

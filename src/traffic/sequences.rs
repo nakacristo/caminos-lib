@@ -1,4 +1,4 @@
-use crate::packet::AsMessage;
+use crate::AsMessage;
 use crate::pattern::{new_pattern, PatternBuilderArgument};
 use std::collections::{BTreeSet};
 use std::convert::TryInto;
@@ -202,6 +202,7 @@ impl Traffic for MessageTaskSequence
                     size: message.size(),
                     creation_cycle: message.creation_cycle(),
                     payload,
+                    id_traffic: None,
                 });
 
                 messages_sent[i] += 1;
@@ -449,6 +450,7 @@ impl Traffic for MultimodalBurst
 			size:message_size,
 			creation_cycle: cycle,
 			payload: id.to_le_bytes().into(),
+            id_traffic: None,
         });
 		self.generated_messages.insert(id);
 		Ok(message)

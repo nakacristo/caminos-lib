@@ -1,3 +1,4 @@
+use crate::pattern::probabilistic::UniformPattern;
 use ::rand::{rngs::StdRng};
 use super::prelude::*;
 use super::cartesian::CartesianData;
@@ -7,7 +8,7 @@ use crate::matrix::Matrix;
 use crate::quantify::Quantifiable;
 use crate::match_object_panic;
 use crate::pattern::prelude::*;
-use crate::pattern::UniformPattern;
+use crate::pattern::Pattern;
 
 /**
 Builds a dragonfly topology, this is, a hierarchical topology where each group is fully-connected (a complete graph) and each pair of groups is connected at least with a global link.
@@ -1278,6 +1279,169 @@ impl PAR
 }
 
 
+/**
+* Experimental routing for Dragonfly which allow direct routes instead of only Minimal
+* Direct routes use the same resources as minimal routes, but they are not minimal paths over the graph
+* Used in Dragonflies with trunking
+* ```ignore
+* DragonflyDirect{
+* }
+* TODO: Add doc and refactor the code
+**/
+#[derive(Debug)]
+pub struct DragonflyDirect
+{
+	///The weights used for each link class. Only relevant links between routers.
+	class_weight:Vec<usize>,
+	///The distance matrix computed, including weights.
+	distance_matrix: Matrix<usize>,
+	///The distance matrix computed, including weights.
+	local_matrix: Matrix<usize>,
+	///Group matrix
+	group_matrix: Matrix<usize>,
+	///Max weight distance
+	total_max_weight_distance:usize,
+	///Max weight distance
+	max_hops_per_class:Vec<usize>,
+}
+
+impl Routing for DragonflyDirect
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
+	{
+		let distance=*self.distance_matrix.get(current_router, target_router);
+		if distance==0
+		{
+			let target_server = target_server.expect("target server was not given.");
+			for i in 0..topology.ports(current_router)
+			{
+				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router,i)
+				{
+					if server==target_server
+					{
+						//return (0..num_virtual_channels).map(|vc|(i,vc)).collect();
+						//return (0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect();
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true});
+					}
+				}
+			}
+			unreachable!();
+		}
+		let num_ports=topology.ports(current_router);
+		let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
+		let selections = routing_info.selections.as_ref().unwrap();
+		let current_weight = selections.iter().zip(self.class_weight.iter()).map(|(&s,&w)|s as usize * w).sum::<usize>();
+		for i in 0..num_ports
+		{
+			//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+			if let (Location::RouterPort{router_index,router_port:_},link_class)=topology.neighbour(current_router,i)
+			{
+				if link_class == 0 && selections[0] != 0 && selections[1] == 0
+				{
+					continue
+				}
+				let link_weight = self.class_weight[link_class];
+				//if distance>*self.distance_matrix.get(router_index,target_router)
+				let new_distance = *self.distance_matrix.get(router_index, target_router);
+				if new_distance + link_weight == distance
+					|| (current_weight + link_weight + new_distance <= self.total_max_weight_distance
+						&& selections[link_class] +1 <= self.max_hops_per_class[link_class] as i32
+						&& distance > self.class_weight[1] && selections[0] == 0
+						&& *self.group_matrix.get(router_index, target_router) == 100usize
+				) //This is adapted to DF
+				{
+					r.extend((0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)));
+				}
+			}
+		}
+		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
+	}
+	fn initialize(&mut self, topology:&dyn Topology, _rng: &mut StdRng)
+	{
+		let distance_matrix=topology.compute_distance_matrix(Some(&self.class_weight));
+		self.distance_matrix = topology.compute_distance_matrix(Some(&self.class_weight));
+		self.local_matrix = Matrix::constant(0, distance_matrix.get_rows(), distance_matrix.get_columns());
+		self.group_matrix = Matrix::constant(0,distance_matrix.get_rows(),distance_matrix.get_columns());
+		for i in 0..distance_matrix.get_rows()
+		{
+			for j in 0..distance_matrix.get_columns()
+			{
+				let d = *distance_matrix.get(i,j);
+				if d == self.class_weight[0]
+				{
+					*self.local_matrix.get_mut(i,j) = d;
+
+				}
+			}
+		}
+		for i in 0..distance_matrix.get_rows()
+		{
+			for j in 0..distance_matrix.get_columns()
+			{
+				let d = *distance_matrix.get(i,j);
+				if d == self.class_weight[1]
+				{
+					*self.group_matrix.get_mut(i, j) = d;
+					for j_2 in 0..self.distance_matrix.get_columns()
+					{
+						let d_2 = *distance_matrix.get(j,j_2);
+						if d_2 == self.class_weight[0]
+						{
+							*self.group_matrix.get_mut(i,j_2) = d;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	fn initialize_routing_info(&self, routing_info: &RefCell<RoutingInfo>, _topology: &dyn Topology, _current_router: usize, _target_touter: usize, _target_server: Option<usize>, _rng: &mut StdRng) {
+		let mut bri = routing_info.borrow_mut();
+		bri.selections = Some(vec![0;self.class_weight.len()]);
+	}
+
+	fn update_routing_info(&self, routing_info: &RefCell<RoutingInfo>, topology: &dyn Topology, current_router: usize, current_port: usize, _target_router: usize, _target_server: Option<usize>, _rng: &mut StdRng) {
+		let (router_location,link_class) = topology.neighbour(current_router, current_port);
+		let _router_index = match router_location
+		{
+			Location::RouterPort{router_index,router_port:_} => router_index,
+			_ => panic!("The server is not attached to a router"),
+		};
+		let mut bri = routing_info.borrow_mut();
+		let mut sel = bri.selections.as_ref().unwrap().clone();
+		sel[link_class] += 1;
+		bri.selections = Some(sel);
+	}
+}
+
+impl DragonflyDirect
+{
+	pub fn new(_arg: RoutingBuilderArgument) -> DragonflyDirect
+	{
+		let class_weight=vec![1, 100];
+		let total_max_weight_distance= 120;
+		let max_hops_per_class =vec![2, 1];
+		// match_object_panic!(arg.cv,"DragonflyDirect",value,
+		// 	"class_weight" => class_weight = Some(value.as_array()
+		// 		.expect("bad value for class_weight").iter()
+		// 		.map(|v|v.as_f64().expect("bad value in class_weight") as usize).collect()),
+		// 	"total_max_weight_distance" => total_max_weight_distance = value.as_f64().expect("bad value for total_max_weight_distance") as usize,
+		// 	"max_hops_per_class" => max_hops_per_class = value.as_array()
+		// 		.expect("bad value for local_max_weight_distance").iter()
+		// 		.map(|v|v.as_f64().expect("bad value in local_max_weight_distance") as usize).collect(),
+		// );
+		// let class_weight=class_weight.expect("There were no class_weight");
+		DragonflyDirect {
+			class_weight,
+			distance_matrix:Matrix::constant(0, 0, 0),
+			local_matrix:Matrix::constant(0, 0, 0),
+			group_matrix:Matrix::constant(0,0,0),
+			total_max_weight_distance,
+			max_hops_per_class,
+		}
+	}
+}
 
 
 #[cfg(test)]
