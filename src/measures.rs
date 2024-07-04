@@ -28,11 +28,14 @@ the message was created until the cycle in its consumption was completed. Note t
 */
 
 
+use std::cmp;
+use std::collections::HashMap;
 use std::path::Path;
 use std::convert::TryInto;
 
 use crate::{Quantifiable,Packet,Phit,Network,Topology,ConfigurationValue,Expr,Time};
 use crate::config;
+use crate::traffic::TaskTrafficState;
 
 #[derive(Clone,Quantifiable)]
 pub struct ServerStatistics
@@ -144,6 +147,8 @@ impl ServerStatistics
 #[derive(Clone,Quantifiable, Debug)]
 pub struct TrafficStatistics
 {
+	///The number of tasks in the traffic
+	pub tasks: usize,
 	///The last cycle in which this server created a phit and sent it to a router. Or 0
 	pub cycle_last_created_message: Time,
 	///The last cycle in that the last phit of a message has been consumed by this server. Or 0.
@@ -164,8 +169,26 @@ pub struct TrafficStatistics
 	pub total_consumed_phits: usize,
 	/// The total delay of all messages.
 	pub total_message_delay: Time,
+	/// The total network delay of all packets.
+	pub total_message_network_delay: Time,
 	/// The statistics of other subtraffic.
 	pub sub_traffic_statistics: Option<Vec<TrafficStatistics>>,
+	/// Box size histogram
+	pub box_size: usize,
+	/// Messages histogram
+	pub histogram_messages_delay: HashMap<usize, usize>,
+	// /// Messages histogram network delay
+	// pub histogram_messages_network_delay: HashMap<usize, usize>,
+	/// Generating Tasks
+	pub generating_tasks_histogram: HashMap<usize, Vec<usize>>,
+	/// Waiting Tasks
+	pub waiting_tasks_histogram: HashMap<usize, Vec<usize>>,
+	/// FinishedGenerating Tasks
+	pub finished_generating_tasks_histogram: HashMap<usize, Vec<usize>>,
+	///Finished Tasks
+	pub finished_tasks_histogram: HashMap<usize, Vec<usize>>,
+	///WaitingData Tasks
+	pub waiting_data_histogram: HashMap<usize, Vec<usize>>,
 }
 
 #[derive(Clone,Default,Quantifiable,Debug)]
@@ -181,9 +204,10 @@ pub struct TrafficMeasurement
 
 impl TrafficStatistics
 {
-	pub fn new(temporal_step:Time, sub_traffic_statistics: Option<Vec<TrafficStatistics>>)-> TrafficStatistics
+	pub fn new(tasks: usize, temporal_step:Time, box_size: usize, sub_traffic_statistics: Option<Vec<TrafficStatistics>>)-> TrafficStatistics
 	{
 		TrafficStatistics {
+			tasks,
 			current_measurement: TrafficMeasurement::default(),
 			cycle_last_created_message: 0,
 			cycle_last_consumed_message: 0,
@@ -194,7 +218,16 @@ impl TrafficStatistics
 			total_consumed_messages: 0,
 			total_consumed_phits: 0,
 			total_message_delay: 0,
+			total_message_network_delay: 0,
 			sub_traffic_statistics,
+			box_size,
+			histogram_messages_delay: HashMap::new(),
+			// histogram_messages_network_delay: HashMap::new(),
+			generating_tasks_histogram: HashMap::new(),
+			waiting_tasks_histogram: HashMap::new(),
+			finished_generating_tasks_histogram: HashMap::new(),
+			finished_tasks_histogram: HashMap::new(),
+			waiting_data_histogram: HashMap::new(),
 		}
 	}
 	// fn reset(&mut self, next_cycle: Time)
@@ -204,30 +237,39 @@ impl TrafficStatistics
 	// }
 
 	/// Called when a task recieves a message.
-	pub fn track_consumed_message(&mut self, cycle: Time, delay:Time, size: usize, subtraffic: Option<usize>)
+	//	pub fn track_consumed_message(&mut self, cycle: Time, total_delay:Time, injection_delay:Time, size: usize, subtraffic: Option<usize>)
+	pub fn track_consumed_message(&mut self, cycle: Time, total_delay:Time, size: usize, subtraffic: Option<usize>)
 	{
 		// if delay < 0
 		// {
 		// 	panic!("negative delay");
 		// }
-
+		// if total_delay < injection_delay
+		// {
+		// 	panic!("negative total delay");
+		// }
+		// let message_network_delay = total_delay - injection_delay;
 		self.cycle_last_consumed_message = cycle;
 		self.total_consumed_messages+=1;
-		self.total_message_delay+=delay;
+		self.total_message_delay+=total_delay;
+		// self.total_message_network_delay+= message_network_delay;
 		self.total_consumed_phits+=size;
 
 		if let Some(m) = self.current_temporal_measurement(cycle)
 		{
 			m.consumed_messages+=1;
 			m.consumed_phits+=size;
-			m.total_message_delay+=delay;
+			m.total_message_delay+=total_delay;
 		}
+
+		self.histogram_messages_delay.entry(total_delay as usize/self.box_size).and_modify(|e| *e+=1).or_insert(1);
+		// self.histogram_messages_network_delay.entry(message_network_delay as usize/self.box_size).and_modify(|e| *e+=1).or_insert(1);
 
 		if let Some(subtraffic) = subtraffic
 		{
 			if let Some(sub) = self.sub_traffic_statistics.as_mut()
 			{
-				sub[subtraffic].track_consumed_message(cycle,delay,size,None);
+				sub[subtraffic].track_consumed_message(cycle, total_delay, size, None);
 			}else {
 				panic!("Subtraffic statistics not initialized");
 			}
@@ -270,16 +312,85 @@ impl TrafficStatistics
 		} else { None }
 	}
 
+	pub fn track_task_state(&mut self, task: usize, state: TaskTrafficState, cycle: Time, subtraffic: Option<usize>)
+	{
+		match state
+		{
+			TaskTrafficState::Generating => self.generating_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(|e|{  e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
+			TaskTrafficState::UnspecifiedWait => self.waiting_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(| e|{ e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a } ),
+			TaskTrafficState::FinishedGenerating => self.finished_generating_tasks_histogram.entry(cycle as usize/self.box_size).and_modify(| e|{ e[task] = 1 }).or_insert({ let mut a= vec![0; self.tasks]; a[task]= 1; a }),
+			TaskTrafficState::Finished  => {
+				self.finished_tasks_histogram.entry(cycle as usize / self.box_size).and_modify(|e| { e[task] = 1 }).or_insert({
+					let mut a = vec![0; self.tasks];
+					a[task] = 1;
+					a
+				});
+				self.finished_generating_tasks_histogram.entry(cycle as usize / self.box_size).and_modify(|e| { e[task] = 1 }).or_insert({
+					let mut a = vec![0; self.tasks];
+					a[task] = 1;
+					a
+				})
+			},
+			TaskTrafficState::WaitingData => {
+				self.waiting_data_histogram.entry(cycle as usize / self.box_size).and_modify(|e| { e[task] = 1 }).or_insert({
+					let mut a = vec![0; self.tasks];
+					a[task] = 1;
+					a
+				})
+			},
+			_ => panic!("Invalid task state to take metrics"), //| TaskTrafficState::WaitingData
+
+		};
+		if let Some(subtraffic) = subtraffic
+		{
+			if let Some(sub) = self.sub_traffic_statistics.as_mut()
+			{
+				sub[subtraffic].track_task_state(task, state, cycle, None);
+			}else {
+				panic!("Subtraffic statistics not initialized");
+			}
+		}
+	}
+
 	pub fn parse_statistics(&self) -> ConfigurationValue
 	{
+		let max = self.histogram_messages_delay.clone().into_keys().max().unwrap();
+		let messages_latency_histogram = (0..max+1).map(|i|
+			ConfigurationValue::Number(self.histogram_messages_delay.get(&i).unwrap_or(&0).clone() as f64)
+		).collect();
+		// let messages_network_latency_histogram = (0..max+1).map(|i|
+		// 	ConfigurationValue::Number(self.histogram_messages_network_delay.get(&i).unwrap_or(&0).clone() as f64)
+		// ).collect();
+
+		//let max_tasks = cmp::max(cmp::max(self.generating_tasks_histogram.keys().max().unwrap_or(&0), self.waiting_tasks_histogram.keys().max().unwrap_or(&0)), self.finished_tasks_histogram.keys().max().unwrap_or(&0));
+		let max_tasks = self.cycle_last_consumed_message as usize / self.box_size +1;
+		let generated_tasks_histogram = (0..max_tasks+1).map(|i|
+			ConfigurationValue::Number( self.generating_tasks_histogram.get(&i).unwrap_or(&vec![]).iter().map(|x|*x as f64).sum()
+		)).collect();
+		let waiting_tasks_histogram = (0..max_tasks+1).map(|i|
+			ConfigurationValue::Number( self.waiting_tasks_histogram.get(&i).unwrap_or(&vec![]).iter().map(|x|*x as f64).sum()
+		)).collect();
+		let finished_generating_tasks_histogram = (0..max_tasks+1).map(|i|
+			ConfigurationValue::Number( self.finished_generating_tasks_histogram.get(&i).unwrap_or(&vec![]).iter().map(|x|*x as f64).sum()
+		)).collect();
+		let finished_tasks_histogram = (0..max_tasks+1).map(|i|
+			ConfigurationValue::Number( self.finished_tasks_histogram.get(&i).unwrap_or(&vec![]).iter().map(|x|*x as f64).sum()
+		)).collect();
+
 		let mut traffic_content = vec![
 			(String::from("total_consumed_messages"),ConfigurationValue::Number(self.total_consumed_messages as f64)),
 			(String::from("total_consumed_phits"),ConfigurationValue::Number(self.total_consumed_phits as f64)),
 			(String::from("total_created_messages"),ConfigurationValue::Number(self.total_created_messages as f64)),
 			(String::from("total_created_phits"),ConfigurationValue::Number(self.total_created_phits as f64)),
-			(String::from("total_message_delay"),ConfigurationValue::Number((self.total_message_delay/self.total_consumed_messages as u64)as f64)),
+			(String::from("total_message_delay"),ConfigurationValue::Number((self.total_message_delay/cmp::max(self.total_consumed_messages as u64, 1u64))as f64)),
 			(String::from("cycle_last_created_message"),ConfigurationValue::Number(self.cycle_last_created_message as f64)),
 			(String::from("cycle_last_consumed_message"),ConfigurationValue::Number(self.cycle_last_consumed_message as f64)),
+			(String::from("message_latency_histogram"),ConfigurationValue::Array(messages_latency_histogram)),
+			// (String::from("message_network_latency_histogram"),ConfigurationValue::Array(messages_network_latency_histogram)),
+			(String::from("generating_tasks_histogram"),ConfigurationValue::Array(generated_tasks_histogram)),
+			(String::from("waiting_tasks_histogram"),ConfigurationValue::Array(waiting_tasks_histogram)),
+			(String::from("finished_generating_tasks_histogram"),ConfigurationValue::Array(finished_generating_tasks_histogram)),
+			(String::from("finished_tasks_histogram"),ConfigurationValue::Array(finished_tasks_histogram)),
 		];
 		if self.temporal_step > 0
 		{
@@ -349,7 +460,7 @@ pub struct StatisticMeasurement
 	pub consumed_packets: usize,
 	///Number of messages for which all their phits have beeen consumed.
 	pub consumed_messages: usize,
-	///Accumulated delay of al messages. From message creation (in traffic.rs) to server consumption.
+	///Accumulated delay of al messages. From message creation (in the traffic module) to server consumption.
 	pub total_message_delay: Time,
 	///Accumulated network delay for all packets. From the leading phit being inserted into a router to the consumption of the tail phit.
 	pub total_packet_network_delay: Time,

@@ -212,7 +212,7 @@ fn sum_traffic_test()
     };
 
 
-    let cycles = 1007; //+3 is because of the switch-Nic + switch-switch + Nic-switch links which take one cycle each
+    let cycles = 207; //+3 is because of the switch-Nic + switch-switch + Nic-switch links which take one cycle each
     let maximum_packet_size=16;
 
     let topology = create_hamming_topology(hamming_builder);
@@ -244,12 +244,14 @@ fn sum_traffic_test()
     println!("{:#?}", results);
 
     let estimated_injected_load = ((finish - offset) as f64/period as f64 +1.0) * message_size as f64/cycles as f64; // Aprox... Maybe not the best value now but it is a start
+    let estimated_injected_load_2 = ((finish_2 - offset_2) as f64/period_2 as f64 +1.0) * message_size as f64/cycles as f64; // Aprox... Maybe not the best value now but it is a start
+    let total_injected_load = estimated_injected_load + estimated_injected_load_2;
     let packet_hops = 1.0;
 
     match_object_panic!( &results, "Result", value,
         "cycle" => assert_eq!(value.as_f64().expect("Cycle data"), cycles as f64, "Cycle"),
-        "injected_load" => assert_eq!(value.as_f64().expect("Injected load data"), estimated_injected_load, "Injected load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
-        "accepted_load" => assert_eq!(value.as_f64().expect("Accepted load load data"), estimated_injected_load, "Accepted load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
+        "injected_load" => assert_eq!(value.as_f64().expect("Injected load data"), total_injected_load, "Injected load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
+        "accepted_load" => assert_eq!(value.as_f64().expect("Accepted load load data"), total_injected_load, "Accepted load"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
         "average_packet_hops" => assert_eq!(value.as_f64().expect("Packet hops data"), packet_hops, "Total hops"), //assert!( value.as_f64().expect("Injected load data") as f64 == estimated_injected_load),
         _ => (),
     );

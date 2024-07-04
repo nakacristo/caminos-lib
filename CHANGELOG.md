@@ -2,6 +2,8 @@
 
 ## next, [0.6.4]
 
+Many things, including breaking changes...
+
 ### 2024-02-26
 BUGFIX: Make the comparison `config_relaxed_cmp` used with the `--source` flag to verify arrays and alike to have the same length.
 

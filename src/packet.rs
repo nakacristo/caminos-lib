@@ -113,6 +113,10 @@ pub struct Message
 	pub creation_cycle: Time,
 	///Data being trasmitted.
 	pub payload: Vec<u8>,
+	///Id traffic owner
+	pub id_traffic: Option<usize>,
+	// ///Cycle when the first packet of the message was injected into the network.
+	// pub cycle_into_network: RefCell<Option<Time>>,
 }
 
 impl Phit
@@ -225,11 +229,13 @@ pub trait AsMessage
 	fn creation_cycle(&self) -> Time;
 	///Data being trasmitted.
 	fn payload(&self) -> &[u8];
+	///Id traffic owner
+	fn id_traffic(&self) -> Option<usize>;
 }
 
 impl AsMessage for Message
 {
-	
+
 	fn origin(&self) -> usize
 	{
 		self.origin
@@ -250,6 +256,7 @@ impl AsMessage for Message
 	{
 		&self.payload
 	}
+	fn id_traffic(&self) -> Option<usize> {self.id_traffic}
 }
 
 pub struct ReferredPayload<'a>
@@ -264,6 +271,8 @@ pub struct ReferredPayload<'a>
 	pub creation_cycle: Time,
 	///Data being trasmitted.
 	pub payload: &'a [u8],
+	///Id traffic owner
+	pub id_traffic: Option<usize>,
 }
 
 impl<'a> AsMessage for ReferredPayload<'a>
@@ -288,6 +297,7 @@ impl<'a> AsMessage for ReferredPayload<'a>
 	{
 		&self.payload
 	}
+	fn id_traffic(&self) -> Option<usize> {self.id_traffic}
 }
 
 impl<'a> From<&'a dyn AsMessage> for ReferredPayload<'a>
@@ -300,6 +310,7 @@ impl<'a> From<&'a dyn AsMessage> for ReferredPayload<'a>
 			size: message.size(),
 			creation_cycle: message.creation_cycle(),
 			payload: message.payload(),
+			id_traffic: message.id_traffic(),
 		}
 	}
 }

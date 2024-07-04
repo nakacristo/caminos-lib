@@ -420,7 +420,7 @@ impl Server
 			self.statistics.track_message_delay(cycle-message.creation_cycle,cycle);
 			statistics.track_message_delay(cycle-message.creation_cycle,cycle);
 			self.consumed_phits.remove(&message_ptr);
-			if !traffic.try_consume(self.index,&*message,cycle,topology,rng)
+			if !traffic.consume(self.index, &*message, cycle, topology, rng)
 			{
 				panic!("The traffic could not consume its own message.");
 			}
@@ -1229,6 +1229,7 @@ impl<'a> Simulation<'a>
 				{
 					let message=server.stored_messages.pop_front().expect("There are not messages in queue");
 					let mut size=message.size;
+					let mut index_packet=0;
 					while size>0
 					{
 						let ps=if size>self.shared.maximum_packet_size
@@ -1245,11 +1246,11 @@ impl<'a> Simulation<'a>
 							size:ps,
 							routing_info: RefCell::new(routing_info),
 							message:message.clone(),
-							index:0,
+							index:index_packet,
 							cycle_into_network:RefCell::new(0),
 							extra: RefCell::new(None),
 						}.into_ref());
-
+						index_packet+=1;
 						size-=ps;
 					}
 				}

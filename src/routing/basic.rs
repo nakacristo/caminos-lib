@@ -13,7 +13,7 @@ Implementation of basic routing algorithms.
 use std::cell::RefCell;
 use ::rand::{rngs::StdRng,Rng};
 
-use crate::match_object_panic;
+use crate::{match_object_panic};
 use crate::config_parser::ConfigurationValue;
 use crate::routing::prelude::*;
 use crate::topology::{Topology, Location};

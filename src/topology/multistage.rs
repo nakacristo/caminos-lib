@@ -5,11 +5,13 @@ use ::rand::{Rng,rngs::StdRng};
 use quantifiable_derive::Quantifiable;//the derive macro
 use std::fs::File;
 use std::io::{BufRead,BufReader};
+use std::cell::RefCell;
+use crate::Time;
 
 use super::{Topology,Location,TopologyBuilderArgument,
 	cartesian::CartesianData,
 	projective::FlatGeometryCache,
-};
+	NeighbourRouterIteratorItem};
 
 use crate::{
 	Plugs,error,source_location,
@@ -17,6 +19,8 @@ use crate::{
 	error::{Error,SourceLocation},
 	};
 use crate::quantify::Quantifiable;
+
+use crate::routing::{RoutingInfo,Routing,CandidateEgress,RoutingBuilderArgument,RoutingNextCandidates};
 
 ///Requirements on each level. They are combined by the multiple stages of a MultiStage topology aiming to get values compatible with all of them.
 #[derive(Debug,Clone,Copy)]
@@ -320,16 +324,17 @@ impl ProjectiveStage
 /**
 MLFM stage from Fujitsu.
  More details in: https://www.fujitsu.com/global/about/resources/news/press-releases/2014/0715-02.html
-
-TODO: document options: k, pods.
-
+FMStage{
+	layers: 4, // number of layers.
+	layer_size: 8, // number of routers per layer.
+}
 **/
 #[derive(Quantifiable)]
 #[derive(Debug)]
 struct FMStage
 {
-	k: usize,
-	pods : usize,
+	layers: usize,
+	layer_size: usize,
 }
 
 impl Stage for FMStage
@@ -337,21 +342,21 @@ impl Stage for FMStage
 	fn compose_requirements_upward(&self,_requirements:LevelRequirements,_bottom_level:usize,_height:usize) -> LevelRequirements
 	{
 		LevelRequirements{
-			group_size: self.pods * (self.pods -1) /2,
-			current_level_minimum_size: self.pods * (self.pods -1) /2,
+			group_size: self.layer_size * (self.layer_size -1) /2,
+			current_level_minimum_size: self.layer_size * (self.layer_size -1) /2,
 		}
 	}
 	fn downward_size(&self,top_size:usize,_bottom_group_size:usize,_bottom_level:usize,_height:usize) -> Result<usize,Error>
 	{
-		let mut index = 0;
+		let mut layer_size = 0;
 
-		while index*(index-1)/2 < top_size {
-			index+=1;
+		while layer_size *(layer_size -1)/2 < top_size {
+			layer_size +=1;
 		}
 
-		if index*(index-1)/2 == top_size
+		if layer_size *(layer_size -1)/2 == top_size
 		{
-			Ok(index * self.k)
+			Ok(layer_size * self.layers)
 
 		}else{
 			Err(error!(undetermined))
@@ -360,23 +365,23 @@ impl Stage for FMStage
 	}
 	fn amount_to_above(&self,_below_router:usize, _group_size: usize, _bottom_size:usize) -> usize
 	{
-		self.pods -1
+		self.layer_size -1
 	}
 	fn amount_to_below(&self,_above_router:usize, _group_size: usize, _bottom_size:usize) -> usize
 	{
-		2*self.k
+		2*self.layers
 	}
 	fn to_above(&self, below_router:usize, index:usize, _group_size:usize, _bottom_size:usize) -> (usize,usize)
 	{
-		let pod = below_router / self.k;
-		if index >= pod
+		let layer = below_router / self.layers;
+		if index >= layer
 		{
-			( pod * self.pods - ((pod+1) * pod)/2 + (index - pod), below_router % self.k )
+			(layer * self.layer_size - ((layer +1) * layer)/2 + (index - layer), below_router % self.layers)
 
 		}else{
-			let pod_2 = pod -1;
+			let layer_2 = layer -1;
 
-			(index * self.pods - ((index+1) * (index))/2 + (pod_2- index), (below_router % self.k) + self.k)
+			(index * self.layer_size - ((index+1) * (index))/2 + (layer_2 - index), (below_router % self.layers) + self.layers)
 		}
 	}
 	fn to_below(&self, above_router:usize, index:usize, _group_size:usize, _bottom_size:usize) -> (usize,usize)
@@ -385,26 +390,24 @@ impl Stage for FMStage
 		let mut a_index = 0;
 		let mut count = 0;
 
-		while (count + self.pods - (a_index + 1) )-1 < above_router {
+		while (count + self.layer_size - (a_index + 1) )-1 < above_router {
 			a_index += 1;
-			count += self.pods - a_index;
+			count += self.layer_size - a_index;
 
 			//print!("index {}", a_index)
 		}
 		//a_index -= 1;
 
-		if index < self.k
+		if index < self.layers
 		{
-			(a_index * self.k + index, a_index + above_router - count)	//
+			(a_index * self.layers + index, a_index + above_router - count)	//
 		}
 		else{
 
 			//print!("to_below")
 
-			((a_index +  above_router - count+1) * self.k + index%self.k,  a_index )
+			((a_index +  above_router - count+1) * self.layers + index%self.layers, a_index )
 		}
-
-
 	}
 }
 
@@ -413,8 +416,8 @@ impl FMStage
 {
 	pub fn new(arg:StageBuilderArgument) -> FMStage
 	{
-		let mut k=None;
-		let mut pods=None;
+		let mut layers =None;
+		let mut layer_size =None;
 
 		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
 		{
@@ -426,14 +429,14 @@ impl FMStage
 			{
 				match name.as_ref()
 				{
-					"k" => match value
+					"layers" => match value
 					{
-						&ConfigurationValue::Number(f) => k=Some(f as usize),
+						&ConfigurationValue::Number(f) => layers =Some(f as usize),
 						_ => panic!("bad value for k"),
 					},
-					"pods" => match value
+					"layer_size" => match value
 					{
-						&ConfigurationValue::Number(f) => pods=Some(f as usize),
+						&ConfigurationValue::Number(f) => layer_size =Some(f as usize),
 						_ => panic!("bad value for pods"),
 					},
 					"legend_name" => (),
@@ -445,11 +448,11 @@ impl FMStage
 		{
 			panic!("Trying to create a FMStage from a non-Object");
 		}
-		let k=k.expect("There were no k");
-		let pods=pods.expect("There were no pods");
+		let layers= layers.expect("There were no k");
+		let layer_size= layer_size.expect("There were no pods");
 		FMStage{
-			k,
-			pods,
+			layers,
+			layer_size,
 			//lane: FlatGeometryCache::new_prime(prime).unwrap_or_else(|_|panic!("{} is not prime, which is required for the ProjectiveStage",prime)),
 		}
 	}
@@ -1651,8 +1654,8 @@ impl MultiStage
 					//let servers_per_leaf=servers_per_leaf.expect("Not working");
 
 					let stage = FMStage{
-						k,
-						pods,
+						layers: k,
+						layer_size: pods,
 					};
 					stages = vec![Box::new(stage) as Box<dyn Stage>];
 					//stages=
@@ -1853,5 +1856,206 @@ pub fn new_stage(arg:StageBuilderArgument) -> Box<dyn Stage>
 }
 
 
+/**
+
+Routing for indirect networks which follows up-down routes adaptively.
+It asumes there's an up-down path to destination from any leaf.
+
+```ignore
+	UpDownDerouting{
+		allowed_updowns: 2 // 1 Non-min + 1 Min
+		virtual_channels: [[0, 1], [2, 3]], // 2 phases, 2 VC per phases.
+		stages: 1. // 1 stage in the multistage
+	}
+```
+**/
+#[derive(Debug)]
+pub struct UpDownDerouting
+{
+	///Number of up-down stages allowed.
+	allowed_updowns: usize,
+	/// (Optional): VC to take in each UpDown stage. By default one different VC per UpDown path.
+	virtual_channels: Vec<Vec<usize>>,
+	/// Stages in the multistage, by the default 1.
+	stages: usize,
+}
+
+impl Routing for UpDownDerouting
+{
+	fn next(&self, routing_info:&RoutingInfo, topology:&dyn Topology, current_router:usize, target_router: usize, target_server:Option<usize>, num_virtual_channels:usize, _rng: &mut StdRng) -> Result<RoutingNextCandidates,Error>
+	{
+		let distance=topology.distance(current_router,target_router);
+		if distance==0
+		{
+			for i in 0..topology.ports(current_router)
+			{
+				//println!("{} -> {:?}",i,topology.neighbour(current_router,i));
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router,i)
+				{
+					if server==target_server.expect("Expect a server")
+					{
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
+					}
+				}
+			}
+			unreachable!();
+		}
+
+		let avaliable_updown_deroutes = routing_info.selections.as_ref().unwrap()[0] as usize; //Avaliable up-down phases. If its 1, we are in the last updown phase.
+
+		let num_ports=topology.ports(current_router);
+		let mut r=Vec::with_capacity(num_ports*num_virtual_channels);
+		let vc_index= self.allowed_updowns - avaliable_updown_deroutes; // To know the updown phase we are in.
+
+		for NeighbourRouterIteratorItem{link_class: _next_link_class,port_index,neighbour_router:neighbour_router_index,..} in topology.neighbour_router_iter(current_router)
+		{
+			if distance-1 == topology.distance(neighbour_router_index,target_router) //Minimal route always welcomed
+			{
+				r.extend(self.virtual_channels[vc_index].iter().map(|&vc|CandidateEgress::new(port_index,vc)));
+
+			}else if avaliable_updown_deroutes > 1{ // a non-minimal route shouldnt be allowed if we only have 1 updown deroute left. We asume that there's an updown path to destination.
+
+				r.extend(self.virtual_channels[vc_index].iter().map(|&vc|CandidateEgress{port:port_index,virtual_channel:vc,label:1,..Default::default()}));
+
+			}
+		}
+		Ok(RoutingNextCandidates{candidates:r,idempotent:true})
+	}
+
+	fn initialize_routing_info(&self, routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, current_router:usize, _target_touter:usize, _target_server:Option<usize>, _rng: &mut StdRng)
+	{
+		routing_info.borrow_mut().selections=Some(vec![self.allowed_updowns as i32]);
+		routing_info.borrow_mut().visited_routers=Some(vec![current_router]);
+		routing_info.borrow_mut().auxiliar= RefCell::new(Some(Box::new(vec![0usize;self.stages])));
+
+	}
+	fn update_routing_info(&self, routing_info:&RefCell<RoutingInfo>, topology:&dyn Topology, current_router:usize, current_port:usize, target_router:usize, _target_server:Option<usize>,_rng: &mut StdRng)
+	{
+
+		if let (Location::RouterPort{router_index: _previous_router,router_port:_},link_class)=topology.neighbour(current_router,current_port)
+		{
+			//let multistage_data = topology.cartesian_data().expect("To run UpDownDerouting you need a multistage topology!");
+			//let max_height = multistage_data.height();
+			//let current_height= multistage_data.unpack(current_router)[0];
+
+			let mut bri=routing_info.borrow_mut();
+			let aux = bri.auxiliar.borrow_mut().take().unwrap();
+			let mut saltos =  aux.downcast_ref::<Vec<usize>>().unwrap().clone();
+			if saltos[link_class] != 0
+			{
+				saltos[link_class] = 0usize;
+				if link_class == 0  && current_router != target_router// now we are in last stage
+				{
+					match bri.selections
+					{
+						Some(ref mut v) =>
+							{
+								let available_updown_deroutes=v[0];
+								if available_updown_deroutes==0
+								{
+									panic!("Bad deroute :(");
+								}
+								v[0]= available_updown_deroutes-1;
+							}
+						None => panic!("selections not initialized"),
+					};
+				}
+			}else{
+				saltos[link_class] = 1usize;
+			}
+
+			bri.auxiliar.replace(Some(Box::new(saltos)));
+
+			match bri.visited_routers
+			{
+				Some(ref mut v) =>
+				{
+					v.push(current_router);
+				}
+				None => panic!("visited_routers not initialized"),
+			};
+
+		}
+	}
+	fn initialize(&mut self, _topology:&dyn Topology, _rng: &mut StdRng)
+	{
+	}
+	fn performed_request(&self, _requested:&CandidateEgress, _routing_info:&RefCell<RoutingInfo>, _topology:&dyn Topology, _current_router:usize, _target_router:usize, _target_server:Option<usize>, _num_virtual_channels:usize, _rng:&mut StdRng)
+	{
+	}
+	fn statistics(&self, _cycle:Time) -> Option<ConfigurationValue>
+	{
+		return None;
+	}
+	fn reset_statistics(&mut self, _next_cycle:Time)
+	{
+	}
+}
+
+impl UpDownDerouting
+{
+	pub fn new(arg:RoutingBuilderArgument) -> UpDownDerouting
+	{
+		let mut allowed_updowns=None;
+		let mut stages = 1usize;
+		let mut virtual_channels = None;
+
+		//let mut include_labels=None;
+		if let &ConfigurationValue::Object(ref cv_name, ref cv_pairs)=arg.cv
+		{
+			if cv_name!="UpDownDerouting"
+			{
+				panic!("A UpDownDerouting must be created from a `UpDownDerouting` object not `{}`",cv_name);
+			}
+			for &(ref name,ref value) in cv_pairs
+			{
+				//match name.as_ref()
+				match AsRef::<str>::as_ref(&name)
+				{
+					"allowed_updowns" => match value
+					{
+						&ConfigurationValue::Number(f) => allowed_updowns =Some(f as usize),
+						_ => panic!("bad value for allowed_deroutes"),
+					}
+					"stages" => match value {
+						&ConfigurationValue::Number(f) => stages = f as usize,
+						_ => (),
+					}
+					"virtual_channels" => match value {
+						ConfigurationValue::Array(f) => virtual_channels = Some(f.into_iter().map(| a | a.as_array().unwrap().into_iter().map(|b| b.as_usize().unwrap()).collect() ).collect()),
+						_ => (),
+					}
+					/*"include_labels" => match value
+					{
+						&ConfigurationValue::True => include_labels=Some(true),
+						&ConfigurationValue::False => include_labels=Some(false),
+						_ => panic!("bad value for include_labels"),
+					}*/
+					"legend_name" => (),
+					_ => panic!("Nothing to do with field {} in UpDownDerouting",name),
+				}
+			}
+		}
+		else
+		{
+			panic!("Trying to create a UpDownDerouting from a non-Object");
+		}
+		let allowed_updowns= allowed_updowns.expect("There were no allowed_deroutes");
+
+		let virtual_channels = match virtual_channels {
+			Some( v) => v,
+			None => {
+				let a= vec![0;allowed_updowns];
+				a.iter().enumerate().map(|(i,_vc)|vec![i]).collect::<Vec<Vec<usize>>>()
+			}
+		};
 
 
+		//let include_labels=include_labels.expect("There were no include_labels");
+		UpDownDerouting {
+			allowed_updowns,
+			virtual_channels,
+			stages
+		}
+	}
+}

@@ -607,7 +607,10 @@ pub trait Topology : Quantifiable + std::fmt::Debug
 									panic!("Non-matching port ({},{}) to ({},{}) non-returns to ({},{}).",router_index,port_index,neighbour_router,neighbour_port,rev_router,rev_port);
 								}
 							},
-							_ => panic!("It does not even return to a router"),
+							_ =>{
+								println!("WARNING: port {} at router {} connects to another router and it is not returned.",port_index,router_index);
+								panic!("It does not even return to a router");
+							},
 						};
 						if link_class!=rev_link_class
 						{

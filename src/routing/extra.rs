@@ -9,12 +9,17 @@ Extra implementations of routing operations
 */
 
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::convert::TryFrom;
+use std::ops::Deref;
 
 use ::rand::{rngs::StdRng,Rng};
+use rand::SeedableRng;
 
 use crate::match_object_panic;
 use crate::config_parser::ConfigurationValue;
+use crate::matrix::Matrix;
+use crate::pattern::{new_pattern, Pattern, PatternBuilderArgument};
 use crate::routing::*;
 use crate::topology::prelude::*;
 //use crate::topology::{Topology,Location};
@@ -766,7 +771,499 @@ impl AdaptiveStart
 	}
 }
 
+/**
+Routing that embeds a logical topology and a logical routing over the physical topology.
+Each router is mapped to a router in the logical topology.
+All logical connections are mapped to physical connections, and the remaining physical connections are used to opportunistically route.
+An opportunistic hop can be made if the hop nears the logical target router in the logical topology.
+# Example
+```ignore
+SubTopologyRouting{
+	logical_topology: Hamming{ //Hypercube
+		servers_per_router: 2, //useless
+		sides:[2,2],
+	},
+	map:Identity,
+	logical_routing: DOR{order:[0,1]},
+	opportunistic_hops:true,
+	opportunistic_set_label:0,
+	legend_name: "Hypercube-DOR opportunistic"
+}
+```
+**/
+
+#[derive(Debug)]
+pub struct SubTopologyRouting
+{
+	logical_topology: Box<dyn Topology>,
+	map: Box<dyn Pattern>,
+	physical_to_logical: Vec<usize>,
+	logical_to_physical: Vec<usize>,
+	logical_topology_connections: Matrix<usize>,
+	logical_routing: Box<dyn Routing>,
+	opportunistic_hops: bool,
+}
+
+impl Routing for SubTopologyRouting
+{
+	fn next(&self, routing_info: &RoutingInfo, topology: &dyn Topology, current_router: usize, target_router: usize, target_server: Option<usize>, num_virtual_channels: usize, rng: &mut StdRng) -> Result<RoutingNextCandidates, Error> {
+		if target_router == current_router
+		{
+			let target_server = target_server.expect("target server was not given.");
+			for i in 0..topology.ports(current_router)
+			{
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router, i)
+				{
+					if server==target_server
+					{
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
+					}
+				}
+			}
+			unreachable!();
+		}
+
+		let logical_current = self.physical_to_logical[current_router];
+		let logical_target  = self.physical_to_logical[ target_router];
+		let logical_candidates = self.logical_routing.next(&routing_info.meta.as_ref().unwrap()[0].borrow(), self.logical_topology.as_ref(), logical_current, logical_target, None, num_virtual_channels, rng)?;
+		let mut candidates =vec![];
+		for CandidateEgress{port,virtual_channel,label: _,annotation,..} in logical_candidates.candidates
+		{
+			let Location::RouterPort{router_index: next_physical_router, .. } = self.logical_topology.neighbour(logical_current, port).0 else { panic!("There should be a port") };
+			let physical_port = topology.neighbour_router_iter(current_router).find(|item| item.neighbour_router == next_physical_router).expect("port not found").port_index;
+			//let physical_label = label;
+
+			let label = if topology.distance(next_physical_router, target_router) < topology.distance(current_router, target_router)
+			{
+				0
+
+			} else if topology.distance(next_physical_router, target_router) == topology.distance(current_router, target_router)
+			{
+				1
+
+			}else {
+
+				2
+
+			};
+			candidates.push(CandidateEgress{port:physical_port,virtual_channel,label, estimated_remaining_hops: None, router_allows: None, annotation});
+		}
+
+		if self.opportunistic_hops
+		{
+			for neighbour in topology.neighbour_router_iter(current_router).into_iter()
+			{
+				let physical_neighbour = neighbour.neighbour_router;
+				let logical_neighbour = self.physical_to_logical[physical_neighbour];
+				if self.logical_topology.distance(logical_neighbour, logical_target) < self.logical_topology.distance(logical_current, logical_target)
+					&& *self.logical_topology_connections.get(current_router, physical_neighbour) == 0
+				{
+					let physical_port = neighbour.port_index;
+					let label = if topology.distance(physical_neighbour, target_router) < topology.distance(current_router, target_router)
+					{
+						0
+
+					} else if topology.distance(physical_neighbour, target_router) == topology.distance(current_router, target_router)
+					{
+						1
+
+					}else {
+
+						2
+
+					};
+					candidates.extend((0..num_virtual_channels).map(|vc|CandidateEgress{port:physical_port,virtual_channel:vc,label, estimated_remaining_hops: None, router_allows: None, annotation: None}));
+				}
+
+			}
+		}
+		Ok(RoutingNextCandidates{candidates, idempotent: logical_candidates.idempotent})
+	}
+
+	fn initialize_routing_info(&self, routing_info: &RefCell<RoutingInfo>, _topology: &dyn Topology, current_router: usize, target_router: usize, _target_server: Option<usize>, rng: &mut StdRng) {
+		let logical_current = self.physical_to_logical[current_router];
+		let logical_target = self.physical_to_logical[target_router];
+
+		let mut bri = routing_info.borrow_mut();
+		bri.meta = Some(vec![ RefCell::new(RoutingInfo::new()) ]);
+		let bri_sub = &bri.meta.as_ref().unwrap()[0];
+		self.logical_routing.initialize_routing_info(bri_sub, self.logical_topology.as_ref(), logical_current, logical_target, None, rng);
+	}
+
+	fn update_routing_info(&self, routing_info: &RefCell<RoutingInfo>, topology: &dyn Topology, current_router: usize, current_port: usize, target_router: usize, _target_server: Option<usize>, rng: &mut StdRng) {
+		let logical_current = self.physical_to_logical[current_router];
+		let logical_target = self.physical_to_logical[target_router];
+		let (previous_physical_router_loc, _link_class) = topology.neighbour(current_router, current_port);
+
+		// println!("current_router={}, current_port={}, previous_physical_router_loc={:?}", current_router, current_port, previous_physical_router_loc);
+		//TODO: Reduce the complexity of this operation. It can be O(1) instead of O(degree) but a new method is needed in the trait.
+		let mut routing_info = routing_info.borrow_mut();
+		if let Location::RouterPort{router_index: previous_physical_router,..} = previous_physical_router_loc {
+			let prev_logical_router = self.physical_to_logical[previous_physical_router];
+			if let Some(a) = self.logical_topology.neighbour_router_iter(logical_current)
+				.find(|item| item.neighbour_router == prev_logical_router)
+			{
+				let logical_port  = a.port_index;
+				self.logical_routing.update_routing_info(&(routing_info.meta.as_ref().unwrap()[0]), self.logical_topology.as_ref(), logical_current, logical_port, logical_target, None, rng);
+			}else{
+				let routing_info_sub = RefCell::new(RoutingInfo::new());
+				routing_info.meta = Some(vec![routing_info_sub]);
+
+				self.logical_routing.initialize_routing_info(&routing_info.meta.as_ref().unwrap()[0], self.logical_topology.as_ref(), logical_current, logical_target, None, rng);
+			}
+		}else {
+			panic!("!!")
+		}
+	}
+
+	fn initialize(&mut self, topology: &dyn Topology, rng: &mut StdRng) {
+
+		self.map.initialize(self.logical_topology.num_routers(), self.logical_topology.num_routers(), self.logical_topology.as_ref(), rng);
+		for i in 0..self.logical_topology.num_routers() {
+			let physical = self.map.get_destination(i, topology, rng);
+			self.logical_to_physical[i] = physical;
+			self.physical_to_logical[physical] = i;
+		}
+
+		//Check that neighbours in the logical topology are neighbours in the physical topology
+		self.logical_topology_connections = Matrix::constant(0,topology.num_routers(), topology.num_routers()); //physical matrix but logical connections
+		//TODO: Reduce the complexity of this operation.
+		for i in 0..self.logical_topology.num_routers() {
+			let physical_i = self.logical_to_physical[i];
+			for NeighbourRouterIteratorItem{neighbour_router,..} in self.logical_topology.neighbour_router_iter(i) {
+				let physical_neighbour = self.logical_to_physical[neighbour_router];
+				let neighbour = topology.neighbour_router_iter(physical_i).find(|item| item.neighbour_router == physical_neighbour).is_some();
+				assert!(neighbour);
+				*self.logical_topology_connections.get_mut(physical_i, physical_neighbour) = 1;
+
+			}
+		}
+		// println!("logical_topology_connections={:?}",self.logical_topology_connections);
+
+		self.logical_routing.initialize(self.logical_topology.as_ref(), rng);
+	}
+
+	fn statistics(&self, _cycle: Time) -> Option<ConfigurationValue> {
+		None
+	}
+}
+
+impl SubTopologyRouting
+{
+	pub fn new(arg: RoutingBuilderArgument) -> SubTopologyRouting
+	{
+		let mut logical_topology = None;
+		let mut map = None;
+		let mut logical_routing = None;
+		let mut opportunistic_hops = false;
+		//new rng for the subtopology
+		let rng =  &mut StdRng::from_entropy();
+		match_object_panic!(arg.cv,"SubTopologyRouting",value,
+			"logical_topology" => logical_topology = Some(new_topology(TopologyBuilderArgument{cv:value, rng, plugs: arg.plugs})),
+			"map" => map = Some(new_pattern(PatternBuilderArgument{cv:value,plugs:arg.plugs})), //map of the application over the machine
+			"logical_routing" => logical_routing = Some(new_routing(RoutingBuilderArgument{cv:value,..arg})),
+			"opportunistic_hops" => opportunistic_hops = value.as_bool().expect("bad value for opportunistic_hops"),
+		);
+		let logical_topology = logical_topology.expect("missing topology");
+		let map = map.expect("missing physical_to_logical");
+		let logical_routing = logical_routing.expect("missing routing");
+
+		let physical_to_logical = vec![0; logical_topology.num_routers()];
+		let logical_to_physical = vec![0; logical_topology.num_routers()];
 
 
+		SubTopologyRouting {
+			logical_topology,
+			map,
+			physical_to_logical,
+			logical_to_physical,
+			logical_topology_connections: Matrix::constant(0,0,0),
+			logical_routing,
+			opportunistic_hops,
+		}
+	}
+}
+
+/**
+Routing that selects a routing based on the current and next candiate routers.
+If the pair of routers belongs to the same region, the routing is selected from the region routing. If not, the default routing is selected.
+Main use is to mark faulty regions and use a different routing for them.
+# Example
+```ignore
+RegionRouting{
+	physical_to_logical:[
+		LinearTransform{
+			source_size:[4,4],
+			matrix:[[1,0]],
+			target_size:[4],
+		},
+	],
+	selected_region_size:[4],
+	logical_to_physical:[
+		LinearTransform{
+			source_size:[4],
+			matrix:[[1], [0]],
+			target_size:[4,4],
+		},
+
+	],
+	region_logical_topology:[
+		Hamming{
+			sides:[4],
+			servers_per_router:4,
+		},
+	],
+	routings:[
+		SubTopologyRouting{
+			logical_topology: Hamming //Hypercube
+			{
+				servers_per_router: 2, //useless
+				sides:[2,2],
+			},
+			map:Identity,
+			logical_routing: DOR{order:[0,1]},
+			opportunistic_hops:true,
+			opportunistic_set_label:0,
+			legend_name: "Hypercube-DOR opportunistic"
+		},
+
+	],
+	extra_label_selection: 4,
+	default_routing: Polarized{include_labels:true,strong:false, panic_on_empty:false},
+	legend_name: "Fault tolerant routing",
+},
+
+**/
+#[derive(Debug)]
+pub struct RegionRouting
+{
+	physical_to_logical: Vec<Box<dyn Pattern>>,
+	logical_to_physical: Vec<Box<dyn Pattern>>,
+	selected_region_size: Vec<usize>,
+	physical_to_logical_vector: Vec<Vec<usize>>,
+	logical_to_physical_vector: Vec<Vec<usize>>,
+	region_logical_topology: Vec<Box<dyn Topology>>,
+	routings: Vec<Box<dyn Routing>>,
+	extra_label_selection: i32,
+	default_routing: Box<dyn Routing>,
+}
+
+impl Routing for RegionRouting
+{
+	fn next(&self, routing_info: &RoutingInfo, topology: &dyn Topology, current_router: usize, target_router: usize, target_server: Option<usize>, num_virtual_channels: usize, rng: &mut StdRng) -> Result<RoutingNextCandidates, Error> {
+
+		if current_router == target_router
+		{
+			let target_server = target_server.expect("target server was not given.");
+			for i in 0..topology.ports(current_router)
+			{
+				if let (Location::ServerPort(server),_link_class)=topology.neighbour(current_router, i)
+				{
+					if server==target_server
+					{
+						return Ok(RoutingNextCandidates{candidates:(0..num_virtual_channels).map(|vc|CandidateEgress::new(i,vc)).collect(),idempotent:true})
+					}
+				}
+			}
+			unreachable!();
+		}
+
+		let default_bri = routing_info.meta.as_ref().unwrap()[0].borrow();
+		let next = self.default_routing.next(default_bri.deref(), topology, current_router, target_router, target_server, num_virtual_channels, rng)?;
+		let mut candidates = vec![];
+		let mut selections = HashSet::new();
+		'outer: for CandidateEgress{port, virtual_channel, label, annotation, router_allows, estimated_remaining_hops} in next.candidates
+		{
+			let Location::RouterPort {router_index: next_router, router_port:_} = topology.neighbour(current_router, port).0 else { panic!("There should be a port")};
+			for (i, (ptlv, ltpv)) in self.physical_to_logical_vector.iter().zip(self.logical_to_physical_vector.iter()).enumerate()
+			{
+				if ltpv[ptlv[current_router]] == current_router && ltpv[ptlv[next_router]] == next_router
+				{
+					selections.insert(i);
+					continue 'outer;
+				}
+			}
+
+			candidates.push(CandidateEgress{port, virtual_channel, label, annotation, router_allows, estimated_remaining_hops});
+
+		}
+		for i in selections
+		{
+			let selected_bri = &routing_info.meta.as_ref().unwrap()[i +1];
+			let current_logical = self.physical_to_logical_vector[i][current_router];
+			let target_logical = self.physical_to_logical_vector[i][target_router];
+			if current_logical != target_logical
+			{
+				let next = self.routings[i].next(selected_bri.borrow().deref(), self.region_logical_topology[i].as_ref(), current_logical, target_logical, None, num_virtual_channels, rng)?;
+				for CandidateEgress{port, virtual_channel, label, annotation, router_allows, estimated_remaining_hops} in next.candidates
+				{
+					let Location::RouterPort {router_index: next_router, router_port:_port_logical} = self.region_logical_topology[i].neighbour(current_logical, port).0 else { panic!("There should be a port")};
+					let next_physical = self.logical_to_physical_vector[i][next_router];
+					let physical_port = topology.neighbour_router_iter(current_router).find(|item| item.neighbour_router == next_physical).expect("port not found").port_index;
+					candidates.push(CandidateEgress{port:physical_port, virtual_channel, label: label + self.extra_label_selection, annotation, router_allows, estimated_remaining_hops});
+				}
+			}
+		}
+
+		Ok(RoutingNextCandidates{candidates, idempotent: false})
+	}
+
+	fn initialize_routing_info(&self, routing_info: &RefCell<RoutingInfo>, topology: &dyn Topology, current_router: usize, target_router: usize, target_server: Option<usize>, rng: &mut StdRng) {
+		let routing_info_default = RefCell::new(RoutingInfo::new());
+		let mut all_routing_info = vec![routing_info_default];
+		self.default_routing.initialize_routing_info(&all_routing_info[0], topology, current_router, target_router, target_server, rng);
+		//initialize the routing info for each routing
+
+		for (i,routing) in self.routings.iter().enumerate() {
+			let routing_info = RefCell::new(RoutingInfo::new());
+			let current_logical = self.physical_to_logical_vector[i][current_router];
+			let target_logical = self.physical_to_logical_vector[i][target_router];
+			routing.initialize_routing_info(&routing_info, self.region_logical_topology[i].as_ref(), current_logical, target_logical, target_server, rng);
+			all_routing_info.push(routing_info);
+		}
+		routing_info.borrow_mut().meta = Some(all_routing_info);
+	}
+
+	fn update_routing_info(&self, routing_info: &RefCell<RoutingInfo>, topology: &dyn Topology, current_router: usize, current_port: usize, target_router: usize, target_server: Option<usize>, rng: &mut StdRng) {
+		let Location::RouterPort {router_index: previous_router, router_port:_} = topology.neighbour(current_router, current_port).0 else { panic!("There should be a port")};
+		let mut pattern = None;
+
+		for (i, (ptlv, ltpv)) in self.physical_to_logical_vector.iter().zip(self.logical_to_physical_vector.iter()).enumerate()
+		{
+			if ltpv[ptlv[current_router]] == current_router && ltpv[ptlv[previous_router]] == previous_router
+			{
+				pattern = Some(i);
+				break;
+			}
+		}
+
+		let bri = routing_info.borrow();
+
+		for i in 0..self.routings.len() //IMPORTANT TO UPDATE ALL ROUTINGS not used
+		{
+			if !pattern.is_some() || pattern.unwrap() != i
+			{
+				bri.meta.as_ref().unwrap()[i +1].replace(RoutingInfo::new());
+				let routing_bri = &(bri.meta.as_ref().unwrap()[i + 1]);
+				let current_logical = self.physical_to_logical_vector[i][current_router];
+				let target_logical = self.physical_to_logical_vector[i][target_router];
+				self.routings[i].initialize_routing_info(routing_bri, self.region_logical_topology[i].as_ref(), current_logical, target_logical, target_server, rng);
+			}
+		}
+
+		if let Some(pattern) = pattern
+		{
+			let current_logical = self.physical_to_logical_vector[pattern][current_router];
+			let target_logical = self.physical_to_logical_vector[pattern][target_router];
+			//get previous physical router with the port
+			let Location::RouterPort {router_index: previous_physical_router, router_port:_} = topology.neighbour(current_router, current_port).0 else { panic!("There should be a port")};
+			let previous_logical_router = self.physical_to_logical_vector[pattern][previous_physical_router];
+			//now get the logical port iterating the logical neighbours
+			let logical_port = self.region_logical_topology[pattern].neighbour_router_iter(current_logical).find(|item| item.neighbour_router == previous_logical_router).expect("port not found").port_index;
+
+			let routing_bri = &(bri.meta.as_ref().unwrap()[pattern + 1]);
+			self.routings[pattern].update_routing_info(routing_bri, self.region_logical_topology[pattern].as_ref(), current_logical, logical_port, target_logical, target_server, rng);
+			// if  current_router != target_router {
+			// 	//if the next in the default routing is not giving more candidates for this pattern in the current router, update the default routing
+			// 	let bri_default = bri.meta.as_ref().unwrap()[0].borrow();
+			// 	let next = self.default_routing.next(bri_default.deref(), topology, current_router, target_router, target_server, 1, rng).unwrap();
+			// 	for CandidateEgress { port, .. } in next.candidates
+			// 	{
+			// 		let Location::RouterPort { router_index: next_router, router_port: _ } = topology.neighbour(current_router, port).0 else { panic!("There should be a port") };
+			// 		if self.selection_patterns[pattern].get_destination(current_router, topology, rng) == self.selection_patterns[pattern].get_destination(next_router, topology, rng)
+			// 		{
+			// 			return;
+			// 		}
+			// 		let cloned_bri= &bri.meta.as_ref().unwrap()[0];
+			// 		self.default_routing.update_routing_info(cloned_bri, topology, current_router, current_port, target_router, target_server, rng);
+			// 	}
+			//
+			// }
+
+		}
+		else
+		{
+			let routing_bri= &(bri.meta.as_ref().unwrap()[0]);
+			self.default_routing.update_routing_info(routing_bri, topology, current_router, current_port, target_router, target_server, rng);
+		}
+
+	}
+
+	fn initialize(&mut self, topology: &dyn Topology, rng: &mut StdRng) {
+		for (i, pat) in self.physical_to_logical.iter_mut().enumerate() {
+			pat.initialize(topology.num_routers(), self.selected_region_size[i], topology, rng);
+			let mut physical_to_logical = vec![0; topology.num_routers()];
+			for router in 0..topology.num_routers()
+			{
+				physical_to_logical[router] = pat.get_destination(router, topology, rng);
+			}
+			self.physical_to_logical_vector[i] = physical_to_logical;
+		}
+
+		for (i, pat) in self.logical_to_physical.iter_mut().enumerate() {
+			pat.initialize(self.selected_region_size[i], topology.num_routers(), topology, rng);
+			let mut logical_to_physical = vec![0; self.selected_region_size[i]];
+			for logical_router in 0..self.selected_region_size[i]
+			{
+				logical_to_physical[logical_router] = pat.get_destination(logical_router, topology, rng);
+			}
+			self.logical_to_physical_vector[i] = logical_to_physical;
+		}
 
 
+		self.default_routing.initialize(topology, rng);
+		for routing in self.routings.iter_mut() {
+			routing.initialize(topology, rng);
+		}
+	}
+}
+
+impl RegionRouting
+{
+	pub fn new(arg: RoutingBuilderArgument) -> RegionRouting
+	{
+		let mut physical_to_logical = vec![];
+		let mut logical_to_physical = vec![];
+		let mut selected_region_size = vec![];
+		let mut region_logical_topology = vec![];
+		let mut routings = vec![];
+		let mut default_routing = None;
+		let mut extra_label_selection = 0;
+		match_object_panic!(arg.cv,"RegionRouting",value,
+			"physical_to_logical" => physical_to_logical = value.as_array().expect("bad value for selection_patterns").iter().map(|v|new_pattern(PatternBuilderArgument{cv:v,plugs:arg.plugs})).collect(),
+			"logical_to_physical" => logical_to_physical = value.as_array().expect("bad value for map_region").iter().map(|v|new_pattern(PatternBuilderArgument{cv:v,plugs:arg.plugs})).collect(),
+			"selected_region_size" => selected_region_size = value.as_array().expect("bad value for selected_size").iter().map(|v|v.as_usize().expect("bad value in selected_size")).collect(),
+			"region_logical_topology" => region_logical_topology = value.as_array().expect("bad value for region_logical_topology").iter().map(|v|new_topology(TopologyBuilderArgument{cv:v,plugs:arg.plugs,rng: &mut StdRng::from_entropy()})).collect(),
+			"routings" => routings = value.as_array().expect("bad value for routings").iter().map(|v|new_routing(RoutingBuilderArgument{cv:v,plugs:arg.plugs})).collect(),
+			"extra_label_selection" => extra_label_selection = value.as_i32().expect("bad value for extra_label_selection"),
+			"default_routing" => default_routing = Some(new_routing(RoutingBuilderArgument{cv:value,plugs:arg.plugs})),
+		);
+		let default_routing = default_routing.expect("missing default_routing");
+		//Check that the sizes are correct
+		if physical_to_logical.len() != selected_region_size.len() {
+			panic!("The number of selection_patterns and selected_size must be the same.");
+		}
+		if physical_to_logical.len() != routings.len() {
+			panic!("The number of selection_patterns and routings must be the same.");
+		}
+		if logical_to_physical.len() != physical_to_logical.len() {
+			panic!("The number of map_region and selection_patterns must be the same.");
+		}
+		if region_logical_topology.len() != logical_to_physical.len() {
+			panic!("The number of region_logical_topology and map_region must be the same.");
+		}
+
+		let len = physical_to_logical.len();
+		RegionRouting {
+			physical_to_logical,
+			logical_to_physical,
+			selected_region_size,
+			logical_to_physical_vector: vec![vec![]; len],
+			physical_to_logical_vector: vec![vec![]; len],
+			region_logical_topology,
+			routings,
+			extra_label_selection,
+			default_routing,
+		}
+	}
+}

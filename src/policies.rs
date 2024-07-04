@@ -11,7 +11,7 @@ see [`new_virtual_channel_policy`](fn.new_virtual_channel_policy.html) for docum
 use crate::config_parser::ConfigurationValue;
 use crate::routing::CandidateEgress;
 use crate::router::Router;
-use crate::topology::{Topology, Location, NeighbourRouterIteratorItem};
+use crate::topology::{Topology, Location, NeighbourRouterIteratorItem, new_topology, TopologyBuilderArgument};
 use crate::{Plugs,Phit,match_object_panic};
 use crate::event::Time;
 
@@ -19,7 +19,10 @@ use std::fmt::Debug;
 use std::convert::TryInto;
 use std::rc::Rc;
 
-use rand::{Rng,rngs::StdRng};
+use rand::{Rng,rngs::StdRng,SeedableRng};
+// use ::rand::{Rng,rngs::StdRng};
+use crate::pattern::{new_pattern, Pattern, PatternBuilderArgument};
+use crate::topology::prelude::CartesianData;
 
 ///Extra information to be used by the policies of virtual channels.
 #[derive(Debug)]
@@ -319,6 +322,8 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"ArgumentVC" => Box::new(ArgumentVC::new(arg)),
 			"Either" => Box::new(Either::new(arg)),
 			"MapEntryVC" => Box::new(MapEntryVC::new(arg)),
+			"MapTrafficIndex" => Box::new(MapTrafficIndex::new(arg)),
+			// "VCFunction" => Box::new(VCFunction::new(arg)),
 			"MapMessageSize" => Box::new(MapMessageSize::new(arg)),
 			"Chain" => Box::new(Chain::new(arg)),
 			"VOQ" => Box::new(VOQ::new(arg)),
@@ -326,6 +331,10 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"NextLinkLabel" => Box::new(NextLinkLabel::new(arg)),
 			"CurrentLinkLabel" => Box::new(CurrentLinkLabel::new(arg)),
 			"ChannelHop" => Box::new(ChannelHop::new(arg)),
+			"ValiantIntermediate" => Box::new(ValiantIntermediate::new(arg)),
+			"ValiantLastRouterPalmTree" => Box::new(ValiantLastRouterPalmTree::new(arg)),
+			"CartesianSpaceLabel" => Box::new(CartesianSpaceLabel::new(arg)),
+			"RRRate" => Box::new(RRRate::new(arg)),
 			_ => panic!("Unknown policy {}",cv_name),
 		}
 	}
@@ -1078,10 +1087,92 @@ impl PortDiscardLabelThreshold
 	}
 }
 
+/**
+```ignore
+GetOccupiedVC{
+
+}
+ ```
+ **/
+#[derive(Debug)]
+pub struct RRRate
+{
+	threshold_local_occupancy: usize,
+}
+
+impl VirtualChannelPolicy for RRRate
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		if candidates.len()==0
+		{
+			return vec![];
+		}
+
+		let output_port_occ = info.virtual_channel_occupied_output_space.expect("virtual_channel_occupied_output_space have not been computed for AverageOccupancyFunction");
+		//change the label to the rate of the port
+		candidates.into_iter().map(
+			|candidate|{
+				let CandidateEgress{port, virtual_channel, estimated_remaining_hops, ..} = candidate;
+				let status=router.get_status_at_emisor(port).expect("This router does not have transmission status");
+				let virtual_channel_occupied_credits=router.get_maximum_credits_towards(port,virtual_channel).expect("we need routers with maximum credits") as i32
+					- status.known_available_space_for_virtual_channel(virtual_channel).expect("remote available space is not known.") as i32;
+				let virtual_channel_occupied_output_space= output_port_occ[port][virtual_channel];
+				let mut occupied_output_space = 1usize;
+				for i in 0..status.num_virtual_channels()
+				{
+					if i == virtual_channel
+					{
+						continue;
+					}
+					if output_port_occ[port][i] > self.threshold_local_occupancy
+					{
+						occupied_output_space += 1usize;
+					}
+				}
+				CandidateEgress{label: (virtual_channel_occupied_output_space * occupied_output_space) as i32 + virtual_channel_occupied_credits, port, virtual_channel, estimated_remaining_hops, ..candidate}
+
+			}
+		).collect::<Vec<_>>()
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		false
+	}
+
+}
+
+impl RRRate
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> RRRate
+	{
+		let mut threshold_local_occupancy=None;
+		match_object_panic!(arg.cv,"RRRate",value,
+			"threshold_local_occupancy" => threshold_local_occupancy = Some(value.as_f64().expect("bad value for threshold_local_occupancy") as usize),
+		);
+		let threshold_local_occupancy=threshold_local_occupancy.expect("There were no threshold_local_occupancy");
+		RRRate{
+			threshold_local_occupancy,
+		}
+	}
+}
+
+
 
 /**
 Applies a `policy` to those candidates that would move to a router closer to the destination.
-**/
+ **/
 #[derive(Debug)]
 pub struct Minimal
 {
@@ -1184,6 +1275,7 @@ impl Minimal
 		}
 	}
 }
+
 
 
 
@@ -1799,6 +1891,88 @@ impl MapLabel
 	}
 }
 
+/**
+Depending on the traffic index in the message, it applies a different policy.
+```ignore
+	MapTrafficIndex{
+		traffic_to_policy:[
+			ArgumentVC{allowed:[0,1,2,3]},// policy for traffic index 0
+			ArgumentVC{allowed:[4,5,6,7]},// policy for traffic index 1
+			ArgumentVC{allowed:[8,9,10,11]},// policy for traffic index 2
+			ArgumentVC{allowed:[12,13,14,15]},// policy for traffic index 3
+			ArgumentVC{allowed:[16,17,18,19]},// policy for traffic index 4
+			ArgumentVC{allowed:[20,21,22,23]},// policy for traffic index 5
+			ArgumentVC{allowed:[24,25,26,27]},// policy for traffic index 6
+		],
+},```
+ **/
+#[derive(Debug)]
+pub struct MapTrafficIndex
+{
+	traffic_to_policy: Vec<Box<dyn VirtualChannelPolicy>>,
+	above_policy: Box<dyn VirtualChannelPolicy>,
+}
+
+impl VirtualChannelPolicy for MapTrafficIndex
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		//let port_average_neighbour_queue_length=port_average_neighbour_queue_length.as_ref().expect("port_average_neighbour_queue_length have not been computed for policy MapTrafficIndex");
+		if router.get_index().expect("we need routers with index") == info.target_router_index
+		{
+			//do nothing
+			candidates
+		}
+		else
+		{
+			if let Some(traffic_index) = info.phit.packet.message.id_traffic
+			{
+				let policy = if traffic_index>=self.traffic_to_policy.len() { &self.above_policy } else { &self.traffic_to_policy[traffic_index] };
+				policy.filter(candidates,router,info,topology,rng)
+			}
+			else
+			{
+				panic!("Traffic index `id_traffic` not found in the message");
+			}
+		}
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		false
+	}
+}
+
+impl MapTrafficIndex
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> MapTrafficIndex
+	{
+		let mut traffic_to_policy=None;
+		let mut above_policy : Box<dyn VirtualChannelPolicy> =Box::new(Identity{});
+		match_object_panic!(arg.cv,"MapTrafficIndex",value,
+			"traffic_to_policy" => traffic_to_policy=Some(value.as_array().expect("bad value for traffic_to_policy").iter()
+				.map(|v|new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg})).collect()),
+			"above_policy" => above_policy = new_virtual_channel_policy(VCPolicyBuilderArgument{cv:value,..arg}),
+		);
+		let traffic_to_policy=traffic_to_policy.expect("There were no traffic_to_policy");
+		MapTrafficIndex{
+			traffic_to_policy,
+			above_policy,
+		}
+	}
+}
+
+
 
 ///Only allows those candidates whose vc equals their entry vc plus some `s` in `shifts`.
 #[derive(Debug)]
@@ -2343,9 +2517,6 @@ impl VOQ
 }
 
 
-
-
-
 /**
 	Set the label with the cycle the packet entered the network
  **/
@@ -2589,3 +2760,337 @@ impl ChannelHop
 	}
 }
 
+
+/**
+	Valiant intermediate Switch in the label
+**/
+#[derive(Debug)]
+pub struct ValiantIntermediate
+{
+
+}
+
+impl VirtualChannelPolicy for ValiantIntermediate
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, info: &RequestInfo, _topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		let intermediate = if let Some(selections) = info.phit.packet.routing_info.borrow().selections.as_ref()
+		{
+			selections[0] as usize
+
+		}else {
+			info.target_router_index
+		};
+
+		candidates.into_iter().map(|f|{
+
+			let CandidateEgress{
+				port,
+				virtual_channel,//: virtual_channel,
+				estimated_remaining_hops,//: estimated_remaining_hops,
+				label: _l,//: _label,
+				router_allows,//: router_allows,
+				annotation,//: annotation
+			} = f;
+
+			CandidateEgress {
+				port: port,
+				virtual_channel:virtual_channel,
+				label: intermediate as i32,
+				estimated_remaining_hops: estimated_remaining_hops,
+				router_allows: router_allows,
+				annotation: annotation
+			}
+		}).collect::<Vec<_>>()
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl ValiantIntermediate
+{
+	pub fn new(_arg:VCPolicyBuilderArgument) -> ValiantIntermediate
+	{
+		ValiantIntermediate {
+		}
+	}
+}
+
+
+
+/**
+	Put the index of the last-last router of a Valiant route in the label.
+ **/
+#[derive(Debug)]
+pub struct ValiantLastRouterPalmTree
+{
+	pub global_connections_per_switch: Option<i32>,
+}
+
+pub fn get_index_router_connection_palmtree(global_connections_per_switch: i32, num_groups: i32, source_group: i32, destination_group: i32) -> i32
+{
+	if source_group == destination_group
+	{
+		panic!("The source and destination are in the same group");
+	}
+	let difference = (source_group - destination_group).rem_euclid(num_groups);
+	(difference-1)/global_connections_per_switch
+}
+
+impl VirtualChannelPolicy for ValiantLastRouterPalmTree
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, _router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, _rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		let intermediate = if let Some(selections) = info.phit.packet.routing_info.borrow().selections.as_ref()
+		{
+			selections[0] as usize
+
+		}else {
+			info.target_router_index
+		};
+
+		let target_router = info.target_router_index;
+
+		// let source_router = if let Location::RouterPort { router_port: _, router_index} = topology.server_neighbour(info.phit.packet.message.origin).0
+		// {
+		// 	router_index
+		//
+		// }else {
+		// 	panic!("The source router is not a router");
+		// };
+
+		let cartesian_data = topology.cartesian_data().expect("The topology doesnt have cartesian data");
+		let num_groups = cartesian_data.sides[1] as i32;
+		let switches_per_group = cartesian_data.sides[0] as i32;
+
+		let intermediate_group = cartesian_data.unpack(intermediate)[1] as i32;
+		let target_group = cartesian_data.unpack(target_router)[1] as i32;
+		let global_connections_per_switch = if let Some(global_connections_per_switch) = self.global_connections_per_switch
+		{
+			global_connections_per_switch
+		}else {
+			switches_per_group/2
+		};
+		// let source_group = cartesian_data.unpack(source_router)[1] as i32;
+
+		let intermediate_exit = if intermediate_group == target_group
+		{
+			intermediate as i32 //this is the intermediate switch...
+		}else{
+			get_index_router_connection_palmtree(global_connections_per_switch,num_groups,intermediate_group,target_group)
+		};
+		let destination_entry = (-intermediate_exit - 1).rem_euclid(switches_per_group);
+
+
+		candidates.into_iter().map(|f|{
+
+			let CandidateEgress{
+				port,
+				virtual_channel,//: virtual_channel,
+				estimated_remaining_hops,//: estimated_remaining_hops,
+				label: _l,//: _label,
+				router_allows,//: router_allows,
+				annotation,//: annotation
+			} = f;
+
+			CandidateEgress {
+				port: port,
+				virtual_channel:virtual_channel,
+				label: destination_entry,
+				estimated_remaining_hops: estimated_remaining_hops,
+				router_allows: router_allows,
+				annotation: annotation
+			}
+		}).collect::<Vec<_>>()
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		false
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl ValiantLastRouterPalmTree
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> ValiantLastRouterPalmTree
+	{
+		let mut global_connections_per_switch = None;
+		match_object_panic!(arg.cv,"ValiantLastRouterPalmTree",value,
+			"global_connections_per_switch" => global_connections_per_switch = Some(value.as_i32().expect("bad value for global_connections_per_switch")),
+		);
+		ValiantLastRouterPalmTree {
+			global_connections_per_switch,
+		}
+	}
+}
+
+/**
+	Convert the label of the packet into a Vec Space, with the fields indicated.
+
+**/
+#[derive(Debug)]
+pub struct CartesianSpaceLabel
+{
+	///Policies with the value to insert in the vector
+	policies: Vec<Box<dyn VirtualChannelPolicy>>,
+	///Size for the vector space
+	source_space:CartesianData,
+	// Size for the vector space after applyin the transformation (If any)
+	// target_space: CartesianData,
+	///Transformation to apply to the vector
+	pattern: Box<dyn Pattern>,
+}
+
+impl VirtualChannelPolicy for CartesianSpaceLabel
+{
+	fn filter(&self, candidates:Vec<CandidateEgress>, router:&dyn Router, info: &RequestInfo, topology:&dyn Topology, rng: &mut StdRng) -> Vec<CandidateEgress>
+	{
+		// let mut patron = self.pattern.borrow_mut();
+		//patron.initialize(self.source_space.size, self.destination_space.size, topology, rng); //FIXME: This shouldn't be done like this
+
+		candidates.iter().map(|cand|{
+
+			let mut coord = vec![0usize; self.source_space.sides.len()];
+
+			for (index,p) in self.policies.iter().enumerate()
+			{
+				let cand2 = cand.clone();
+				let candidate = p.filter(vec![cand2], router,info, topology, rng);
+				coord[index] = candidate[0].label as usize;
+			}
+			let mut cand_def = cand.clone();
+			cand_def.label = self.pattern.get_destination( self.source_space.pack(&coord), topology, rng ) as i32;
+			cand_def
+		}
+
+		).collect::<Vec<CandidateEgress>>()
+		// for mut cand in candidates.into_iter()
+		// {
+		// 	cand.label  = info.phit.packet.cycle_into_network.take() as i32;
+		// }
+		//
+		// candidates
+
+	}
+
+	fn need_server_ports(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_average_queue_length(&self)->bool
+	{
+		true
+	}
+
+	fn need_port_last_transmission(&self)->bool
+	{
+		true
+	}
+
+}
+
+impl CartesianSpaceLabel
+{
+	pub fn new(arg:VCPolicyBuilderArgument) -> CartesianSpaceLabel
+	{
+		let mut policies=None;
+		let mut source_size=None;
+		let mut target_size=None;
+		let mut pattern = None;
+		//new_pattern(PatternBuilderArgument{cv: &ConfigurationValue::Object("Identity".to_string(), vec![]),plugs:arg.plugs});
+		match_object_panic!(arg.cv,"CartesianSpaceLabel",value,
+			"values" => policies=Some(value.as_array().expect("bad value for policies").iter()
+				.map(|v|new_virtual_channel_policy(VCPolicyBuilderArgument{cv:v,..arg})).collect::<Vec<Box<dyn VirtualChannelPolicy>>>()),
+			"source_size" => source_size=Some(value.as_array().expect("bad value for sizes").iter()
+				.map(|v|v.as_usize().expect("bad value in sizes")).collect::<Vec<usize>>()),
+			"target_size" => target_size=Some(value.as_array().expect("bad value for sizes").iter()
+				.map(|v|v.as_usize().expect("bad value in sizes")).collect::<Vec<usize>>()),
+			"pattern" => pattern = Some(new_pattern(PatternBuilderArgument{cv: value, plugs: arg.plugs})),
+		);
+		let policies=policies.expect("There were no policies");
+		let source_size=source_size.expect("There were no sizes");
+		// let target_size=target_size.expect("There were no sizes");
+		if policies.len() != source_size.len()
+		{
+			panic!("The number of policies must be the same as the number of dimensions");
+		}
+		let source_space = CartesianData::new(&source_size);
+		let target_space =if let Some(_) = pattern
+		{
+			 CartesianData::new(&(target_size.expect("There were no sizes")))
+		}else{
+			pattern = Some(new_pattern(PatternBuilderArgument{cv: &ConfigurationValue::Object("Identity".to_string(), vec![]),plugs:arg.plugs}));
+			CartesianData::new(&source_size)
+		};
+		//dummy hamming
+		let cv = ConfigurationValue::Object("Hamming".to_string(), vec![
+			("sides".to_string(),ConfigurationValue::Array(vec![ConfigurationValue::Number(1f64)])),
+			("servers_per_router".to_string(),ConfigurationValue::Number(1f64))
+		]);
+		let mut rng = StdRng::seed_from_u64(1);
+		let topo_builder = TopologyBuilderArgument{cv: &cv, plugs: arg.plugs, rng: &mut rng };
+		let mut pattern = pattern.expect("There were no pattern");
+		let binding = new_topology(topo_builder);
+  		let topology = binding.as_ref();
+
+
+		pattern.initialize(source_space.size, target_space.size, topology, &mut rng);//RefCell::new(pattern.unwrap());
+		CartesianSpaceLabel{
+			policies,
+			source_space,
+			// target_space,
+			pattern,
+		}
+	}
+}
+
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use std::cell::RefCell;
+	use std::rc::Rc;
+	use crate::router::basic::Basic;
+	use crate::topology::cartesian::Mesh;
+
+	#[test]
+	fn test_valiant_dragonfly_last_router() {
+		//DF
+		assert_eq!(get_index_router_connection_palmtree(4,33,0,4), 7);
+		assert_eq!(get_index_router_connection_palmtree(4,33,0,5), 6);
+		assert_eq!(get_index_router_connection_palmtree(4,33,0,28), 1);
+		assert_eq!(get_index_router_connection_palmtree(4,33,0,32), 0);
+		assert_eq!(get_index_router_connection_palmtree(4,33,1,0), 0);
+		assert_eq!(get_index_router_connection_palmtree(4,33,1,32), 0);
+
+		//DF+
+		assert_eq!(get_index_router_connection_palmtree(4,17,0,4), 3);
+		assert_eq!(get_index_router_connection_palmtree(4,17,1,0), 0);
+	}
+}
