@@ -1,4 +1,5 @@
 
+use crate::pattern::probabilistic::UniformPattern;
 use std::cell::RefCell;
 use ::rand::{Rng,rngs::StdRng};
 use quantifiable_derive::Quantifiable;//the derive macro

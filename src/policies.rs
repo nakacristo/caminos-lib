@@ -2055,7 +2055,21 @@ impl MapLabel
 	}
 }
 
-///Depending on the traffic index in the message, it applies a different policy.
+/**
+Depending on the traffic index in the message, it applies a different policy.
+```ignore
+	MapTrafficIndex{
+		traffic_to_policy:[
+			ArgumentVC{allowed:[0,1,2,3]},// policy for traffic index 0
+			ArgumentVC{allowed:[4,5,6,7]},// policy for traffic index 1
+			ArgumentVC{allowed:[8,9,10,11]},// policy for traffic index 2
+			ArgumentVC{allowed:[12,13,14,15]},// policy for traffic index 3
+			ArgumentVC{allowed:[16,17,18,19]},// policy for traffic index 4
+			ArgumentVC{allowed:[20,21,22,23]},// policy for traffic index 5
+			ArgumentVC{allowed:[24,25,26,27]},// policy for traffic index 6
+		],
+},```
+ **/
 #[derive(Debug)]
 pub struct MapTrafficIndex
 {

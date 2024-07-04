@@ -1,3 +1,4 @@
+use crate::pattern::probabilistic::UniformPattern;
 use ::rand::{rngs::StdRng};
 use super::prelude::*;
 use super::cartesian::CartesianData;
@@ -7,7 +8,7 @@ use crate::matrix::Matrix;
 use crate::quantify::Quantifiable;
 use crate::match_object_panic;
 use crate::pattern::prelude::*;
-use crate::pattern::UniformPattern;
+use crate::pattern::Pattern;
 
 /**
 Builds a dragonfly topology, this is, a hierarchical topology where each group is fully-connected (a complete graph) and each pair of groups is connected at least with a global link.

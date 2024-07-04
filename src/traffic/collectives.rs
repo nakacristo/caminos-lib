@@ -1,10 +1,11 @@
+use crate::pattern::extra::get_cartesian_transform;
+use crate::pattern::extra::get_candidates_selection;
 use crate::AsMessage;
 use std::rc::Rc;
 use quantifiable_derive::Quantifiable;
 use rand::prelude::StdRng;
 use crate::config_parser::ConfigurationValue;
 use crate::{match_object_panic, Message, Time};
-use crate::pattern::{get_candidates_selection, get_cartesian_transform};
 use crate::topology::Topology;
 use crate::traffic::{new_traffic, TaskTrafficState, Traffic, TrafficBuilderArgument, TrafficError};
 use crate::traffic::basic::{build_message_cv, BuildMessageCVArgs};
