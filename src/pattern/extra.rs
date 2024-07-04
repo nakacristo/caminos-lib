@@ -195,12 +195,10 @@ impl ComponentsPattern
 
 
 /**
-For each server, it keeps a shuffled list of destinations to which send.
-Select each destination with a probability.
-
+A pattern that returns in order values recieved from a list of values.
 ```ignore
 InmediateSequencePattern{
-
+    sequence: [0,1,2,3,4,5,6,7,8,9],
 }
 ```
  **/
@@ -303,7 +301,7 @@ impl ElementComposition
     }
 }
 /**
- * Pattern which simulates an all-gather or all-reduce in log p steps, applying the recursive doubling technique.
+ * Pattern which simulates the communications of an all-gather or all-reduce in log p steps, applying the recursive doubling technique.
  * The communications represent a Hypercube.
  **/
 #[derive(Quantifiable)]
