@@ -324,7 +324,7 @@ pub fn new_virtual_channel_policy(arg:VCPolicyBuilderArgument) -> Box<dyn Virtua
 			"Either" => Box::new(Either::new(arg)),
 			"MapEntryVC" => Box::new(MapEntryVC::new(arg)),
 			"MapTrafficIndex" => Box::new(MapTrafficIndex::new(arg)),
-			"VCFunction" => Box::new(VCFunction::new(arg)),
+			// "VCFunction" => Box::new(VCFunction::new(arg)),
 			"MapMessageSize" => Box::new(MapMessageSize::new(arg)),
 			"Chain" => Box::new(Chain::new(arg)),
 			"VOQ" => Box::new(VOQ::new(arg)),
@@ -2739,9 +2739,6 @@ impl VOQ
 		}
 	}
 }
-
-
-
 
 
 /**

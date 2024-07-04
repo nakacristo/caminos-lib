@@ -1,16 +1,16 @@
 use crate::packet::ReferredPayload;
 use crate::AsMessage;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::convert::TryInto;
 use std::rc::Rc;
 use quantifiable_derive::Quantifiable;
-use rand::prelude::StdRng;
+use rand::prelude::{SliceRandom, StdRng};
 use crate::{match_object_panic, Message, Time};
 use crate::measures::TrafficStatistics;
 use crate::pattern::{new_pattern, Pattern, PatternBuilderArgument};
 use crate::topology::Topology;
 use crate::traffic::{new_traffic, TaskTrafficState, Traffic, TrafficBuilderArgument, TrafficError};
-use crate::traffic::TaskTrafficState::{Finished, Generating, WaitingData};
+use crate::traffic::TaskTrafficState::{Generating, WaitingData};
 use crate::ConfigurationValue;
 
 
@@ -247,6 +247,7 @@ TrafficSum{
 	statistics_temporal_step: 1000, //step to record temporal statistics for each subtraffic.
 	box_size: 1000, //group results for the messages histogram.
 	finish_when: [0, 1] // (Optional) finish when the first and second subtraffics are finished. It waits for all by default
+    server_task_isolation: false //(Optional) if true, a server can be assigned more than one task. Default is false.
 }
 ```
  **/
@@ -257,39 +258,26 @@ pub struct Sum
     ///List of traffic summands
     list: Vec<Box<dyn Traffic>>,
     ///For each task, the index of the traffic that is generating messages.
-    index_to_generate: Vec<Vec<usize>>,
+    index_to_generate: Vec<VecDeque<usize>>,
     ///Statistics for the traffic
     statistics: TrafficStatistics,
     ///Total number of tasks
     tasks:usize,
     ///Indicate the traffics that should be finished to finish the traffic.
     finish_when: Vec<usize>,
+    ///Indicate if only one task should be generating messages at a time in the server.
+    server_task_isolation: bool,
 }
 
 impl Traffic for Sum
 {
     fn generate_message(&mut self, origin:usize, cycle:Time, topology:&dyn Topology, rng: &mut StdRng) -> Result<Rc<Message>,TrafficError>
     {
-
-        // let mut traffics: Vec<&mut Box<dyn Traffic>> = self.list.iter_mut().filter(|t|t.should_generate(origin, cycle, rng)).collect();
-        // let probs:Vec<f32>  = traffics.iter().map(|t|t.probability_per_cycle(origin)).collect();
-        //
-        // //let mut r=rng.gen_range(0f32,probs.iter().sum());//rand-0.4
-        // if traffics.len() == 0{
-        // 	panic!("This origin is not generating messages in any Traffic")
-        // }
-        // if traffics.len() > 1{
-        // 	panic!("Warning: Multiple traffics are generating messages in the same task.");
-        // }
-        if self.index_to_generate[origin].len() == 0{
-            panic!("This origin is not generating messages in any Traffic")
-        }
-        if self.index_to_generate[origin].len() > 1 && self.index_to_generate[origin].iter().min().unwrap() != self.index_to_generate[origin].iter().max().unwrap(){
-            panic!("Warning: Multiple traffics are generating messages in the same task.");
+        if self.server_task_isolation && self.index_to_generate[origin].len() > 1{
+            panic!("Server task isolation is enabled and there are more than one task generating messages in the server.")
         }
 
-        let r= 0;//rng.gen_range(0..self.index_to_generate[origin].len());//rand-0.8
-        let index = self.index_to_generate[origin][r];
+        let index = self.index_to_generate[origin].pop_front().expect("There was no traffic generating a message with this origin.");
         let message = self.list[index].generate_message(origin,cycle,topology,rng);
 
         if let Ok(ref message) = message{
@@ -348,38 +336,39 @@ impl Traffic for Sum
     }
     fn should_generate(&mut self, task:usize, cycle:Time, rng: &mut StdRng) -> bool
     {
-        self.index_to_generate[task].clear(); //FIXME: This may not be the best way.
-        for (index, t) in self.list.iter_mut().enumerate(){
-            if t.should_generate(task,cycle,rng){
-                self.index_to_generate[task].push(index);
+        if self.index_to_generate[task].len() > 0{ //TODO: tasks statistics should be checked
+
+            for traffic in self.index_to_generate[task].iter(){
+                self.statistics.track_task_state(task, Generating, cycle, Some(*traffic) );
             }
+
+            return true;
         }
-        // panic if task generates in more than one traffic
-        if self.index_to_generate[task].len() > 1{
-            panic!("Warning: Multiple traffics are generating messages in the same task.");
+
+        let mut indexes = (0..self.list.len()).collect::<Vec<usize>>();
+        indexes.shuffle(rng);
+
+        for index in indexes.iter(){
+            if self.list[*index].should_generate(task,cycle,rng){
+                self.index_to_generate[task].push_back(*index);
+            }
         }
 
         if self.index_to_generate[task].len() > 0{
-            let task_state = self.list[self.index_to_generate[task][0]].task_state(task,cycle).expect("Should belong to the traffic");
 
-            self.statistics.track_task_state(task, task_state , cycle, Some(self.index_to_generate[task][0]) );
+            for traffic in self.index_to_generate[task].iter(){
+                self.statistics.track_task_state(task, Generating, cycle, Some(*traffic) );
+            }
 
         }else{
 
-            let mut task_state = Finished;
-            let mut t_index = None;
             for (i,traffic) in self.list.iter().enumerate()
             {
                 if let Some(state) = traffic.task_state(task,cycle)
                 {
-                    t_index = Some(i);
-                    task_state = state;
-                    break;
+                    self.statistics.track_task_state(task, state, cycle,  Some(i) );
                 }
             }
-
-            self.statistics.track_task_state(task, task_state, cycle, t_index );
-
         }
 
         self.index_to_generate[task].len() > 0
@@ -421,6 +410,7 @@ impl Sum
         let mut box_size = 1000;
         let mut tasks = None;
         let mut finish_when = None;
+        let mut server_task_isolation = true;
         match_object_panic!(arg.cv,"TrafficSum",value,
 			"list" => list = Some(value.as_array().expect("bad value for list").iter()
 				.map(|v|new_traffic(TrafficBuilderArgument{cv:v,rng:&mut arg.rng,..arg})).collect()),
@@ -428,7 +418,8 @@ impl Sum
 			"tasks" => tasks = Some(value.as_f64().expect("bad value for tasks") as usize),
 			"box_size" => box_size = value.as_f64().expect("bad value for box_size") as usize,
 			"finish_when" => finish_when = Some(value.as_array().expect("bad value for finish_when").iter().map(|v|v.as_usize().expect("bad value for finish_when")).collect()),
-		);
+            "server_task_isolation" => server_task_isolation = value.as_bool().expect("bad value for server_task_isolation"),
+        );
         let list=list.expect("There were no list");
         assert!( !list.is_empty() , "cannot sum 0 traffics" );
         let size = list[0].number_tasks();
@@ -444,10 +435,11 @@ impl Sum
         //println!("TrafficSum list: {:?}", list);
         Sum{
             list,
-            index_to_generate: vec![vec![]; tasks ],
+            index_to_generate: vec![VecDeque::new(); tasks ],
             statistics,
             tasks,
             finish_when,
+            server_task_isolation,
         }
     }
 }
