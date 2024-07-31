@@ -6,6 +6,7 @@ use std::convert::TryInto;
 use std::rc::Rc;
 use quantifiable_derive::Quantifiable;
 use rand::prelude::StdRng;
+use rand::Rng;
 use crate::{match_object_panic, Message, Time};
 use crate::pattern::Pattern;
 use crate::topology::Topology;
@@ -96,8 +97,17 @@ impl Traffic for Homogeneous
     {
         false
     }
-    fn should_generate(&mut self, _task: usize, _cycle: Time, _rng: &mut StdRng) -> bool {
-        true
+    fn should_generate(&mut self, task: usize, _cycle: Time, rng: &mut StdRng) -> bool {
+        let rate= self.probability_per_cycle(task);
+        if rate>1.0
+        {
+            true
+        }
+        else
+        {
+            let random= rng.gen_range(0f32..1f32);
+            random<rate
+        }
     }
 	fn task_state(&self, _task:usize, _cycle:Time) -> Option<TaskTrafficState>
 	{
