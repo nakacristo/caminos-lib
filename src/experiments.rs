@@ -1238,7 +1238,7 @@ impl<'a> Experiment<'a>
 			{
 				self.initialize_remote()?;
 				let remote_root=self.remote_files.as_ref().unwrap().root.clone().unwrap();
-				let remote_binary=self.remote_files.as_ref().unwrap().binary.clone().unwrap();
+				let remote_binary=self.remote_files.as_ref().unwrap().binary.clone().expect("No binary chosen for remote machine. Required for action remote_check.");
 				let mut channel = self.remote_files.as_ref().unwrap().ssh2_session.as_ref().unwrap().channel_session().unwrap();
 				let remote_command = format!("{:?} {:?} --action=check",remote_binary,remote_root);
 				channel.exec(&remote_command).unwrap();
